@@ -1,14 +1,30 @@
 import asyncio
 import base64
 import json
+import math
 import re
 import time
 from pathlib import Path
 from typing import Any
 
 from astrbot.api import logger
-from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.event import AstrMessageEvent, MessageChain, filter
+from astrbot.api.message_components import Plain
 from astrbot.api.star import Context, Star, register
+
+from .aqqbot_compat import (
+    DEFAULT_BINDING_DATABASE,
+    BindingError,
+    BindingStore,
+    CooldownTracker,
+    PlayerAlreadyBoundError,
+    apply_aqqbot_filters,
+    format_template,
+    normalize_owner_spec,
+    parse_items,
+    strip_minecraft_colors,
+    trim_message,
+)
 
 try:
     from mcp.types import CallToolResult, ImageContent, TextContent
@@ -40,35 +56,1650 @@ MINEASTR_EXTERNAL_HINT_KEYWORDS = (
 )
 SCREENSHOT_DIR = Path("data") / "mineastr" / "screenshots"
 MAX_SCREENSHOT_SAVE_BYTES = 2 * 1024 * 1024
+_ACTIVE_RELAY_SESSIONS: set[str] = set()
+DEFAULT_PLAYER_NAME_REGEX = r"^\S{1,64}$"
+LEGACY_PLAYER_NAME_REGEX = r"^[A-Za-z0-9_]{3,16}$"
+
+AQQBOT_DEFAULT_CONFIG: dict[str, Any] = {
+    "bridge_enabled": True,
+    "relay_sessions": "",
+    "relay_prefix": "",
+    "relay_wake_messages": False,
+    "relay_commands": False,
+    "chat_to_game_template": "{message}",
+    "game_to_chat_template": "[MC/{server}] {player}: {message}",
+    "chat_to_game_filters": "",
+    "game_to_chat_filters": "",
+    "max_relay_length": 500,
+    "binding_enabled": True,
+    "binding_database": DEFAULT_BINDING_DATABASE,
+    "verify_method": "GROUP_NAME",
+    "verify_code_expire_seconds": 300,
+    "need_bind_to_login": False,
+    "max_bind_count": 1,
+    "player_name_regex": DEFAULT_PLAYER_NAME_REGEX,
+    "bind_cooldown_seconds": 60,
+    "unbind_cooldown_seconds": 86400,
+    "sync_binding_to_server": False,
+    "binding_sync_required": False,
+    "qq_auto_unbind_on_leave": True,
+    "qq_auto_group_card": True,
+    "qq_group_ids": "",
+    "qq_group_card_template": "{players}",
+    "discord_auto_unbind_on_leave": True,
+    "discord_auto_nickname": True,
+    "discord_restore_nickname_on_unbind": True,
+    "discord_guild_ids": "",
+    "discord_nickname_template": "{players}",
+    "discord_nickname_reason": "MineAstr Minecraft 账号绑定同步",
+    "remote_command_enabled": False,
+    "remote_command_admin_only": True,
+    "bridge_admin_users": "",
+    "player_mention_enabled": True,
+    "notifications_enabled": True,
+    "notify_server_start": "[MineAstr] {server} 已连接。",
+    "notify_server_stop": "[MineAstr] {server} 已断开。",
+    "notify_player_join": "[MineAstr] {player}{binding} 进入了服务器。",
+    "notify_player_leave": "[MineAstr] {player}{binding} 离开了服务器。",
+    "notify_player_death": "[MineAstr] {player}{binding} 因 {reason} 死亡。",
+    "login_reject_message": "[MineAstr] 该游戏账号尚未在聊天平台绑定，请先使用 /mc bind <游戏名>。",
+}
+
+
+class MineAstrRelayFilter(filter.CustomFilter):
+    """Only wake the relay handler for Minecraft or explicitly linked sessions."""
+
+    def filter(self, event: AstrMessageEvent, cfg: Any) -> bool:
+        return (
+            str(event.get_platform_id() or "") == "minecraft"
+            or event.unified_msg_origin in _ACTIVE_RELAY_SESSIONS
+        )
 
 
 @register(
     "astrbot_plugin_mineastr",
     "MineAstr",
-    "将 Minecraft 聊天桥接为 AstrBot 群聊会话，并提供状态、背包、区域分析、受控命令与截图工具。",
-    "0.4.0",
+    "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
+    "0.6.5",
 )
 class MineAstrPlugin(Star):
-    def __init__(self, context: Context):
+    def __init__(self, context: Context, config: Any | None = None):
         super().__init__(context)
+        self.config = config if config is not None else {}
+        try:
+            config_changed = False
+            if str(self.config.get("player_name_regex", "")) == LEGACY_PLAYER_NAME_REGEX:
+                self.config["player_name_regex"] = DEFAULT_PLAYER_NAME_REGEX
+                config_changed = True
+                logger.info("MineAstr 已把旧版正版玩家名规则迁移为 AQQBot 兼容规则。")
+            if str(self.config.get("discord_nickname_template", "")) == "{player}":
+                self.config["discord_nickname_template"] = "{players}"
+                config_changed = True
+            if config_changed:
+                save_config = getattr(self.config, "save_config", None)
+                if callable(save_config):
+                    save_config()
+        except (AttributeError, TypeError):
+            pass
         self._screenshot_last_request_at: dict[tuple[str, str, str], float] = {}
+        self._cooldowns = CooldownTracker()
+        self._verify_codes: dict[str, dict[str, Any]] = {}
+        self._relay_sessions: set[str] = set()
+        self._listener_adapter: Any | None = None
+        self._qq_listener_bindings: dict[str, tuple[Any, Any]] = {}
+        self._discord_listener_bindings: dict[str, tuple[Any, Any]] = {}
+        self._discord_attach_task: asyncio.Task | None = None
+        self._binding_reconcile_tasks: set[asyncio.Task] = set()
+        self._binding_store = BindingStore(str(self._cfg("binding_database")))
+        self._refresh_relay_sessions()
         from .minecraft_adapter import MinecraftPlatformAdapter  # noqa: F401
 
     async def initialize(self):
-        logger.info("MineAstr 插件已初始化。请在 AstrBot 中启用 minecraft 平台适配器。")
+        await self._binding_store.initialize()
+        self._attach_adapter_listener()
+        self._attach_qq_listeners()
+        self._schedule_discord_listener_attach()
+        logger.info(
+            "MineAstr 插件已初始化：AQQBot 兼容功能与 AstrBot QQ/Discord 桥接已加载。"
+        )
 
     async def terminate(self):
+        for task in self._binding_reconcile_tasks:
+            task.cancel()
+        if self._binding_reconcile_tasks:
+            await asyncio.gather(
+                *self._binding_reconcile_tasks, return_exceptions=True
+            )
+        self._binding_reconcile_tasks.clear()
+        if self._discord_attach_task is not None:
+            self._discord_attach_task.cancel()
+            try:
+                await self._discord_attach_task
+            except asyncio.CancelledError:
+                pass
+            self._discord_attach_task = None
+        self._detach_discord_listeners()
+        self._detach_qq_listeners()
+        if self._listener_adapter is not None and hasattr(
+            self._listener_adapter, "remove_bridge_event_listener"
+        ):
+            self._listener_adapter.remove_bridge_event_listener(
+                self._on_minecraft_bridge_event
+            )
+        self._listener_adapter = None
+        _ACTIVE_RELAY_SESSIONS.difference_update(self._relay_sessions)
         logger.info("MineAstr 插件已终止。")
 
+    def _cfg(self, key: str) -> Any:
+        try:
+            value = self.config.get(key, AQQBOT_DEFAULT_CONFIG[key])
+        except (AttributeError, KeyError):
+            value = AQQBOT_DEFAULT_CONFIG[key]
+        return AQQBOT_DEFAULT_CONFIG[key] if value is None else value
+
+    def _cfg_bool(self, key: str) -> bool:
+        value = self._cfg(key)
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on", "是", "开启"}
+        return bool(value)
+
+    def _cfg_int(self, key: str) -> int:
+        try:
+            return int(self._cfg(key))
+        except (TypeError, ValueError):
+            return int(AQQBOT_DEFAULT_CONFIG[key])
+
+    def _refresh_relay_sessions(self) -> None:
+        _ACTIVE_RELAY_SESSIONS.difference_update(self._relay_sessions)
+        self._relay_sessions = set(parse_items(self._cfg("relay_sessions")))
+        _ACTIVE_RELAY_SESSIONS.update(self._relay_sessions)
+
+    def _save_plugin_config(self) -> None:
+        save_config = getattr(self.config, "save_config", None)
+        if callable(save_config):
+            save_config()
+
+    def _set_relay_sessions(self, sessions: set[str]) -> None:
+        try:
+            self.config["relay_sessions"] = "\n".join(sorted(sessions))
+        except (TypeError, AttributeError):
+            return
+        self._save_plugin_config()
+        self._refresh_relay_sessions()
+
+    def _attach_adapter_listener(self) -> None:
+        adapter = self._minecraft_adapter()
+        if adapter is self._listener_adapter:
+            return
+        if self._listener_adapter is not None and hasattr(
+            self._listener_adapter, "remove_bridge_event_listener"
+        ):
+            self._listener_adapter.remove_bridge_event_listener(
+                self._on_minecraft_bridge_event
+            )
+        self._listener_adapter = None
+        if adapter is not None and hasattr(adapter, "add_bridge_event_listener"):
+            adapter.add_bridge_event_listener(self._on_minecraft_bridge_event)
+            self._listener_adapter = adapter
+
+    def _platform_instances(self) -> list[Any]:
+        manager = getattr(self.context, "platform_manager", None)
+        instances = getattr(manager, "platform_insts", ())
+        return list(instances) if instances else []
+
+    @staticmethod
+    def _is_discord_adapter(adapter: Any) -> bool:
+        try:
+            return str(adapter.meta().name).casefold() == "discord"
+        except Exception:
+            return False
+
+    @staticmethod
+    def _is_qq_adapter(adapter: Any) -> bool:
+        try:
+            return str(adapter.meta().name).casefold() == "aiocqhttp"
+        except Exception:
+            return False
+
+    def _qq_adapters(self) -> list[tuple[str, Any]]:
+        adapters: list[tuple[str, Any]] = []
+        for adapter in self._platform_instances():
+            if not self._is_qq_adapter(adapter):
+                continue
+            try:
+                platform_id = str(adapter.meta().id or "").strip()
+            except Exception:
+                continue
+            if platform_id:
+                adapters.append((platform_id, adapter))
+        return adapters
+
+    def _attach_qq_listeners(self) -> None:
+        if not self._cfg_bool("qq_auto_unbind_on_leave"):
+            return
+        for platform_id, adapter in self._qq_adapters():
+            bot = getattr(adapter, "bot", None)
+            if bot is None and hasattr(adapter, "get_client"):
+                bot = adapter.get_client()
+            if bot is None or not hasattr(bot, "subscribe"):
+                continue
+            current = self._qq_listener_bindings.get(platform_id)
+            if current is not None and current[0] is bot:
+                continue
+            if current is not None:
+                old_bot, old_callback = current
+                try:
+                    old_bot.unsubscribe("notice.group_decrease", old_callback)
+                except Exception:
+                    pass
+
+            async def on_group_decrease(
+                event: Any, *, _platform_id: str = platform_id
+            ) -> None:
+                try:
+                    await self._on_qq_member_decrease(_platform_id, event)
+                except Exception as exc:
+                    logger.warning("MineAstr 处理 QQ 退群事件失败：%s", exc)
+
+            bot.subscribe("notice.group_decrease", on_group_decrease)
+            self._qq_listener_bindings[platform_id] = (bot, on_group_decrease)
+            logger.info(
+                "MineAstr 已为 QQ/OneBot 平台 %s 注册退群自动解绑监听。",
+                platform_id,
+            )
+
+    def _detach_qq_listeners(self) -> None:
+        for bot, callback in self._qq_listener_bindings.values():
+            try:
+                bot.unsubscribe("notice.group_decrease", callback)
+            except Exception:
+                pass
+        self._qq_listener_bindings.clear()
+
+    def _qq_group_allowed(self, group_id: str) -> bool:
+        configured = set(parse_items(self._cfg("qq_group_ids")))
+        return not configured or group_id in configured
+
+    async def _on_qq_member_decrease(self, platform_id: str, event: Any) -> None:
+        if not self._cfg_bool("qq_auto_unbind_on_leave"):
+            return
+        get_value = getattr(event, "get", None)
+        if not callable(get_value):
+            return
+        group_id = str(get_value("group_id") or "").strip()
+        user_id = str(get_value("user_id") or "").strip()
+        self_id = str(get_value("self_id") or "").strip()
+        if (
+            not group_id
+            or not user_id
+            or user_id == self_id
+            or not self._qq_group_allowed(group_id)
+        ):
+            return
+
+        owner_key = f"{platform_id}:{user_id}"
+        removed = await self._binding_store.unbind(owner_key)
+        if not removed:
+            return
+        sync_results = await asyncio.gather(
+            *(self._sync_binding_to_server("unbind", record) for record in removed),
+            return_exceptions=True,
+        )
+        failures = [
+            result
+            for result in sync_results
+            if isinstance(result, Exception)
+            or (isinstance(result, dict) and not result.get("ok"))
+        ]
+        logger.info(
+            "MineAstr：QQ 用户 %s 离开群 %s，已自动解绑 %s。",
+            owner_key,
+            group_id,
+            ", ".join(record.player_name for record in removed),
+        )
+        if failures:
+            logger.warning(
+                "MineAstr：QQ 退群解绑已写入本地，但有 %d 条 Minecraft 同步失败。",
+                len(failures),
+            )
+
+    async def _update_qq_group_card_after_bind(
+        self, event: AstrMessageEvent, record: Any
+    ) -> dict[str, Any]:
+        if not self._cfg_bool("qq_auto_group_card"):
+            return {"ok": True, "skipped": True}
+        try:
+            if str(event.get_platform_name()).casefold() != "aiocqhttp":
+                return {"ok": True, "skipped": True}
+            group_id = str(event.get_group_id() or "").strip()
+            platform_id = str(event.get_platform_id() or "").strip()
+        except Exception:
+            return {"ok": True, "skipped": True}
+        if (
+            not group_id
+            or record.platform_id != platform_id
+            or not self._qq_group_allowed(group_id)
+        ):
+            return {"ok": True, "skipped": True}
+        adapter = None
+        try:
+            adapter = self.context.get_platform_inst(platform_id)
+        except Exception:
+            pass
+        bot = getattr(adapter, "bot", None) if adapter is not None else None
+        if bot is None or not hasattr(bot, "call_action"):
+            return {"ok": False, "error": "对应的 QQ/OneBot 平台实例未运行"}
+        numeric_group_id = int(group_id) if group_id.isdigit() else group_id
+        numeric_user_id = (
+            int(record.user_id)
+            if str(record.user_id).isdigit()
+            else str(record.user_id)
+        )
+        try:
+            member = await bot.call_action(
+                "get_group_member_info",
+                group_id=numeric_group_id,
+                user_id=numeric_user_id,
+                no_cache=True,
+            )
+        except Exception:
+            member = {}
+        if not isinstance(member, dict):
+            member = {}
+        records = await self._binding_store.get_by_owner(record.owner_key)
+        card = self._bounded_nickname(
+            records,
+            str(self._cfg("qq_group_card_template")),
+            60,
+            {
+                "owner": str(record.owner_display or record.user_id),
+                "user_id": str(record.user_id),
+                "qq": str(record.user_id),
+                "nickname": str(member.get("nickname") or record.owner_display),
+                "card": str(member.get("card") or ""),
+            },
+        )
+        try:
+            await bot.call_action(
+                "set_group_card",
+                group_id=numeric_group_id,
+                user_id=numeric_user_id,
+                card=card,
+            )
+        except Exception as exc:
+            return {"ok": False, "error": str(exc) or exc.__class__.__name__}
+        return {"ok": True, "card": card}
+
+    def _discord_adapters(self) -> list[tuple[str, Any]]:
+        adapters: list[tuple[str, Any]] = []
+        for adapter in self._platform_instances():
+            if not self._is_discord_adapter(adapter):
+                continue
+            try:
+                platform_id = str(adapter.meta().id or "").strip()
+            except Exception:
+                continue
+            if platform_id:
+                adapters.append((platform_id, adapter))
+        return adapters
+
+    def _schedule_discord_listener_attach(self) -> None:
+        if not self._cfg_bool("discord_auto_unbind_on_leave"):
+            return
+        if self._discord_attach_task is not None and not self._discord_attach_task.done():
+            return
+        self._discord_attach_task = asyncio.create_task(
+            self._attach_discord_listeners_with_retry(),
+            name="mineastr-discord-member-listener",
+        )
+
+    async def _attach_discord_listeners_with_retry(self) -> None:
+        """Attach after the Discord adapter has created its Pycord client."""
+
+        try:
+            for _ in range(120):
+                waiting = False
+                for platform_id, adapter in self._discord_adapters():
+                    client = getattr(adapter, "client", None)
+                    if client is None or not hasattr(client, "add_listener"):
+                        waiting = True
+                        continue
+                    current = self._discord_listener_bindings.get(platform_id)
+                    if current is not None and current[0] is client:
+                        continue
+                    if current is not None:
+                        old_client, old_callback = current
+                        try:
+                            old_client.remove_listener(
+                                old_callback, "on_member_remove"
+                            )
+                        except Exception:
+                            pass
+
+                    async def on_member_remove(
+                        member: Any, *, _platform_id: str = platform_id
+                    ) -> None:
+                        await self._on_discord_member_remove(_platform_id, member)
+
+                    client.add_listener(on_member_remove, "on_member_remove")
+                    self._discord_listener_bindings[platform_id] = (
+                        client,
+                        on_member_remove,
+                    )
+                    logger.info(
+                        "MineAstr 已为 Discord 平台 %s 注册退群自动解绑监听。",
+                        platform_id,
+                    )
+                if not waiting:
+                    return
+                await asyncio.sleep(0.5)
+            if self._discord_adapters():
+                logger.warning(
+                    "MineAstr 等待 Discord 客户端初始化超时，退群自动解绑监听尚未注册。"
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("MineAstr 注册 Discord 成员监听失败：%s", exc)
+
+    def _detach_discord_listeners(self) -> None:
+        for client, callback in self._discord_listener_bindings.values():
+            try:
+                client.remove_listener(callback, "on_member_remove")
+            except Exception:
+                pass
+        self._discord_listener_bindings.clear()
+
+    def _discord_guild_allowed(self, guild_id: str) -> bool:
+        configured = set(parse_items(self._cfg("discord_guild_ids")))
+        return not configured or guild_id in configured
+
+    def _discord_adapter(self, platform_id: str) -> Any | None:
+        try:
+            adapter = self.context.get_platform_inst(platform_id)
+        except Exception:
+            adapter = None
+        return adapter if adapter is not None and self._is_discord_adapter(adapter) else None
+
+    @staticmethod
+    def _discord_member_from_event(event: AstrMessageEvent) -> Any | None:
+        try:
+            if str(event.get_platform_name()).casefold() != "discord":
+                return None
+        except Exception:
+            return None
+        raw = getattr(getattr(event, "message_obj", None), "raw_message", None)
+        member = getattr(raw, "author", None) or getattr(raw, "user", None)
+        return member if getattr(member, "guild", None) is not None else None
+
+    async def _discord_members_for_owner(
+        self,
+        platform_id: str,
+        user_id: str,
+        member_hint: Any | None = None,
+    ) -> list[Any]:
+        adapter = self._discord_adapter(platform_id)
+        client = getattr(adapter, "client", None) if adapter is not None else None
+        if client is None:
+            return [member_hint] if member_hint is not None else []
+        try:
+            numeric_user_id = int(user_id)
+        except (TypeError, ValueError):
+            return []
+
+        members: dict[str, Any] = {}
+        if member_hint is not None:
+            guild = getattr(member_hint, "guild", None)
+            guild_id = str(getattr(guild, "id", ""))
+            if guild_id and self._discord_guild_allowed(guild_id):
+                members[guild_id] = member_hint
+        for guild in list(getattr(client, "guilds", ()) or ()):
+            guild_id = str(getattr(guild, "id", ""))
+            if not guild_id or not self._discord_guild_allowed(guild_id):
+                continue
+            member = getattr(guild, "get_member", lambda _user_id: None)(
+                numeric_user_id
+            )
+            if member is None and hasattr(guild, "fetch_member"):
+                try:
+                    member = await guild.fetch_member(numeric_user_id)
+                except Exception:
+                    member = None
+            if member is not None:
+                members[guild_id] = member
+        return list(members.values())
+
+    @staticmethod
+    def _bounded_nickname(
+        records: list[Any],
+        template: str,
+        max_length: int,
+        extra_values: dict[str, str] | None = None,
+    ) -> str:
+        if not records or max_length <= 0:
+            return ""
+        player_names = [str(record.player_name) for record in records]
+        base_values = {
+            "owner": str(records[0].owner_display or records[0].user_id),
+            "user_id": str(records[0].user_id),
+        }
+        if extra_values:
+            base_values.update(extra_values)
+        best = ""
+        for count in range(1, len(player_names) + 1):
+            values = {
+                **base_values,
+                "player": player_names[0],
+                "players": ", ".join(player_names[:count]),
+            }
+            candidate = format_template(template, values)
+            candidate = re.sub(r"[\r\n\t]+", " ", candidate).strip()
+            if len(candidate) > max_length:
+                break
+            best = candidate
+        if best:
+            return best
+        first = format_template(
+            template,
+            {
+                **base_values,
+                "player": player_names[0],
+                "players": player_names[0],
+            },
+        )
+        first = re.sub(r"[\r\n\t]+", " ", first).strip() or player_names[0]
+        if len(first) <= max_length:
+            return first
+        return first[: max(1, max_length - 1)] + ("…" if max_length > 1 else "")
+
+    def _discord_nickname(self, records: list[Any]) -> str:
+        return self._bounded_nickname(
+            records,
+            str(self._cfg("discord_nickname_template")),
+            32,
+        )
+
+    async def _refresh_discord_nickname_for_owner(
+        self,
+        platform_id: str,
+        user_id: str,
+        owner_key: str,
+        member_hint: Any | None = None,
+    ) -> dict[str, Any]:
+        if not self._cfg_bool("discord_auto_nickname") or not platform_id:
+            return {"ok": True, "skipped": True, "updated": 0}
+        adapter = self._discord_adapter(platform_id)
+        if adapter is None and member_hint is None:
+            return {
+                "ok": False,
+                "error": "对应的 Discord 平台实例未运行",
+                "updated": 0,
+            }
+        records = await self._binding_store.get_by_owner(owner_key)
+        members = await self._discord_members_for_owner(
+            platform_id, user_id, member_hint
+        )
+        if not members:
+            return {
+                "ok": False,
+                "error": "未在允许的 Discord 服务器中找到成员",
+                "updated": 0,
+            }
+
+        updated = 0
+        errors: list[str] = []
+        reason = str(self._cfg("discord_nickname_reason"))[:512] or None
+        for member in members:
+            guild = getattr(member, "guild", None)
+            guild_id = str(getattr(guild, "id", ""))
+            if not guild_id or not self._discord_guild_allowed(guild_id):
+                continue
+            guild_name = str(getattr(guild, "name", guild_id))
+            try:
+                if records:
+                    nickname = self._discord_nickname(records)
+                    if getattr(member, "nick", None) == nickname:
+                        continue
+                    await self._binding_store.remember_discord_nickname(
+                        owner_key, guild_id, getattr(member, "nick", None)
+                    )
+                    await member.edit(nick=nickname, reason=reason)
+                    updated += 1
+                    continue
+
+                state = await self._binding_store.get_discord_nickname(
+                    owner_key, guild_id
+                )
+                if state is None:
+                    continue
+                if self._cfg_bool("discord_restore_nickname_on_unbind"):
+                    await member.edit(nick=state.original_nickname, reason=reason)
+                    updated += 1
+                await self._binding_store.pop_discord_nickname(owner_key, guild_id)
+            except Exception as exc:
+                errors.append(f"{guild_name}: {str(exc) or exc.__class__.__name__}")
+        return {
+            "ok": not errors,
+            "updated": updated,
+            "errors": errors,
+            "error": "；".join(errors),
+        }
+
+    async def _on_discord_member_remove(
+        self, platform_id: str, member: Any
+    ) -> None:
+        if not self._cfg_bool("discord_auto_unbind_on_leave"):
+            return
+        guild = getattr(member, "guild", None)
+        guild_id = str(getattr(guild, "id", ""))
+        user_id = str(getattr(member, "id", ""))
+        if not guild_id or not user_id or not self._discord_guild_allowed(guild_id):
+            return
+
+        owner_key = f"{platform_id}:{user_id}"
+        removed = await self._binding_store.unbind(owner_key)
+        await self._binding_store.pop_discord_nickname(owner_key, guild_id)
+        if not removed:
+            return
+        sync_results = await asyncio.gather(
+            *(self._sync_binding_to_server("unbind", record) for record in removed),
+            return_exceptions=True,
+        )
+        failures = [
+            result
+            for result in sync_results
+            if isinstance(result, Exception)
+            or (isinstance(result, dict) and not result.get("ok"))
+        ]
+        await self._refresh_discord_nickname_for_owner(
+            platform_id, user_id, owner_key
+        )
+        logger.info(
+            "MineAstr：Discord 用户 %s 离开服务器 %s，已自动解绑 %s。",
+            owner_key,
+            guild_id,
+            ", ".join(record.player_name for record in removed),
+        )
+        if failures:
+            logger.warning(
+                "MineAstr：Discord 退群解绑已写入本地，但有 %d 条 Minecraft 同步失败。",
+                len(failures),
+            )
+
+    @filter.on_platform_loaded()
+    async def mineastr_on_platform_loaded(self) -> None:
+        self._attach_adapter_listener()
+        self._attach_qq_listeners()
+        self._schedule_discord_listener_attach()
+
+    @staticmethod
+    def _identity(event: AstrMessageEvent) -> dict[str, str]:
+        platform_id = str(event.get_platform_id() or "unknown").strip()
+        user_id = str(event.get_sender_id() or "unknown").strip()
+        sender_name = str(event.get_sender_name() or user_id).strip()
+        return {
+            "owner_key": f"{platform_id}:{user_id}",
+            "platform_id": platform_id,
+            "user_id": user_id,
+            "owner_display": sender_name,
+        }
+
+    def _is_bridge_admin(self, event: AstrMessageEvent) -> bool:
+        if event.is_admin():
+            return True
+        identity = self._identity(event)
+        configured = set(parse_items(self._cfg("bridge_admin_users")))
+        return identity["owner_key"] in configured or identity["user_id"] in configured
+
+    def _is_mineastr_command(self, text: str) -> bool:
+        normalized = text.strip().lstrip("/").casefold()
+        root = normalized.split(" ", 1)[0]
+        return root in {"mc", "mineastr", "minecraft"}
+
+    @staticmethod
+    def _command_tail(event: AstrMessageEvent) -> str:
+        parts = re.sub(r"\s+", " ", event.message_str.strip()).split(" ", 2)
+        return parts[2].strip() if len(parts) >= 3 else ""
+
+    async def _send_to_relay_sessions(self, content: str, *, exclude: str = "") -> None:
+        message = trim_message(content, self._cfg_int("max_relay_length"))
+        if not message:
+            return
+        for session in sorted(self._relay_sessions):
+            if session == exclude:
+                continue
+            try:
+                sent = await self.context.send_message(
+                    session, MessageChain([Plain(message)])
+                )
+                if not sent:
+                    logger.warning("MineAstr 找不到桥接会话：%s", session)
+            except Exception as exc:
+                logger.warning("MineAstr 向桥接会话 %s 发送消息失败：%s", session, exc)
+
+    async def _sync_binding_to_server(self, action: str, record: Any) -> dict[str, Any]:
+        if not self._cfg_bool("sync_binding_to_server"):
+            return {"ok": True, "skipped": True}
+        adapter = self._minecraft_adapter()
+        if adapter is None or not hasattr(adapter, "sync_binding"):
+            return {"ok": False, "error": "Minecraft 适配器不支持 binding 查询"}
+        try:
+            return await adapter.sync_binding(
+                None,
+                action,
+                record.player_name,
+                record.owner_key,
+                record.owner_display,
+            )
+        except Exception as exc:
+            return {"ok": False, "error": str(exc) or exc.__class__.__name__}
+
+    def _schedule_binding_reconcile(self, server_id: str) -> None:
+        if not self._cfg_bool("sync_binding_to_server") or not server_id:
+            return
+        adapter = self._minecraft_adapter()
+        if adapter is None or not hasattr(adapter, "replace_bindings"):
+            return
+        task = asyncio.create_task(
+            self._reconcile_bindings_to_server(server_id),
+            name=f"mineastr-binding-reconcile-{server_id}",
+        )
+        self._binding_reconcile_tasks.add(task)
+        task.add_done_callback(self._binding_reconcile_tasks.discard)
+
+    async def _reconcile_bindings_to_server(self, server_id: str) -> None:
+        # The hello handler must return before queries can be answered on that
+        # WebSocket, so reconciliation intentionally runs in a separate task.
+        await asyncio.sleep(0)
+        adapter = self._minecraft_adapter()
+        if adapter is None or not hasattr(adapter, "replace_bindings"):
+            return
+        try:
+            records = await self._binding_store.all()
+            result = await adapter.replace_bindings(server_id, records)
+            if result.get("ok"):
+                logger.info(
+                    "MineAstr 已向服务器 %s 对账 %d 条绑定。",
+                    server_id,
+                    int(result.get("applied", len(records))),
+                )
+            else:
+                logger.warning(
+                    "MineAstr 向服务器 %s 对账绑定失败：%s",
+                    server_id,
+                    result.get("error") or "未知错误",
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("MineAstr 向服务器 %s 对账绑定失败：%s", server_id, exc)
+
+    def _consume_verify_code(self, code: str) -> str | None:
+        now = time.monotonic()
+        for candidate, data in list(self._verify_codes.items()):
+            if float(data.get("expires_at", 0)) <= now:
+                self._verify_codes.pop(candidate, None)
+        data = self._verify_codes.pop(code.strip().casefold(), None)
+        return str(data.get("player_name") or "").strip() if data else None
+
+    async def _on_minecraft_bridge_event(
+        self, payload: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        event_name = str(payload.get("event") or "").strip().lower()
+        player_name = str(payload.get("player_name") or "").strip()
+
+        if event_name == "server_start":
+            self._schedule_binding_reconcile(str(payload.get("server_id") or ""))
+
+        if event_name == "binding_code":
+            code = str(payload.get("code") or "").strip()
+            if code and player_name and len(code) <= 64 and len(player_name) <= 64:
+                now = time.monotonic()
+                for candidate, data in list(self._verify_codes.items()):
+                    if float(data.get("expires_at", 0)) <= now:
+                        self._verify_codes.pop(candidate, None)
+                while len(self._verify_codes) >= 4096:
+                    self._verify_codes.pop(next(iter(self._verify_codes)))
+                expires = max(
+                    1, min(86400, self._cfg_int("verify_code_expire_seconds"))
+                )
+                self._verify_codes[code.casefold()] = {
+                    "player_name": player_name,
+                    "server_id": str(payload.get("server_id") or ""),
+                    "expires_at": now + expires,
+                }
+            return None
+
+        if event_name == "player_login_check":
+            if not self._cfg_bool("binding_enabled") or not self._cfg_bool(
+                "need_bind_to_login"
+            ):
+                logger.info(
+                    "MineAstr 登录绑定校验已跳过：player=%r binding_enabled=%s need_bind_to_login=%s allowed=true",
+                    player_name,
+                    self._cfg_bool("binding_enabled"),
+                    self._cfg_bool("need_bind_to_login"),
+                )
+                return {"allowed": True}
+            binding = await self._binding_store.get_by_player(player_name)
+            logger.info(
+                "MineAstr 登录绑定校验：player=%r bound=%s allowed=%s",
+                player_name,
+                binding is not None,
+                binding is not None,
+            )
+            return {
+                "allowed": binding is not None,
+                "message": "" if binding else str(self._cfg("login_reject_message")),
+                "owner_key": binding.owner_key if binding else "",
+            }
+
+        if not self._cfg_bool("notifications_enabled"):
+            return None
+        template_key = {
+            "server_start": "notify_server_start",
+            "server_stop": "notify_server_stop",
+            "player_join": "notify_player_join",
+            "player_leave": "notify_player_leave",
+            "player_death": "notify_player_death",
+        }.get(event_name)
+        if not template_key:
+            return None
+
+        binding = (
+            await self._binding_store.get_by_player(player_name)
+            if player_name
+            else None
+        )
+        binding_text = ""
+        if binding:
+            binding_text = f"（{binding.owner_display or binding.owner_key}）"
+        values = {
+            "server": str(
+                payload.get("server_name") or payload.get("server_id") or "Minecraft"
+            ),
+            "server_id": str(payload.get("server_id") or "minecraft"),
+            "player": player_name,
+            "player_uuid": str(payload.get("player_uuid") or ""),
+            "binding": binding_text,
+            "owner": binding.owner_key if binding else "",
+            "user_id": binding.user_id if binding else "-1",
+            "reason": str(
+                payload.get("reason") or payload.get("death_message") or "未知原因"
+            ),
+        }
+        await self._send_to_relay_sessions(
+            format_template(str(self._cfg(template_key)), values)
+        )
+        return None
+
+    async def _notify_mentioned_players(
+        self, event: AstrMessageEvent, text: str
+    ) -> None:
+        if not self._cfg_bool("player_mention_enabled"):
+            return
+        adapter = self._minecraft_adapter()
+        if adapter is None or not hasattr(adapter, "notify_player"):
+            return
+        identity = self._identity(event)
+        players = list(
+            dict.fromkeys(re.findall(r"(?<![\w<])@([A-Za-z0-9_]{3,16})", text))
+        )
+        for player in players[:5]:
+            try:
+                await adapter.notify_player(
+                    None,
+                    player,
+                    identity["owner_display"],
+                    identity["user_id"],
+                    identity["platform_id"],
+                    text,
+                )
+            except Exception as exc:
+                logger.debug("MineAstr 提醒玩家 %s 失败：%s", player, exc)
+
+    @filter.custom_filter(MineAstrRelayFilter, priority=-100)
+    async def mineastr_relay_message(self, event: AstrMessageEvent) -> None:
+        if not self._cfg_bool("bridge_enabled"):
+            return
+        platform_id = str(event.get_platform_id() or "")
+        text = str(event.message_str or "").strip()
+        if not text:
+            return
+
+        if platform_id == "minecraft":
+            raw = self._event_raw_message(event)
+            filtered = apply_aqqbot_filters(text, self._cfg("game_to_chat_filters"))
+            if filtered is not None:
+                filtered = strip_minecraft_colors(filtered)
+                values = {
+                    "server": str(
+                        raw.get("server_name") or raw.get("server_id") or "Minecraft"
+                    ),
+                    "server_id": str(raw.get("server_id") or "minecraft"),
+                    "player": str(
+                        raw.get("player_name") or event.get_sender_name() or "玩家"
+                    ),
+                    "player_uuid": str(raw.get("player_uuid") or event.get_sender_id()),
+                    "message": filtered,
+                }
+                await self._send_to_relay_sessions(
+                    format_template(str(self._cfg("game_to_chat_template")), values),
+                    exclude=event.unified_msg_origin,
+                )
+            if (
+                not raw.get("minecraft_mentioned_bot")
+                and not event.is_at_or_wake_command
+            ):
+                event.stop_event()
+            return
+
+        if event.unified_msg_origin not in self._relay_sessions:
+            return
+        if self._is_mineastr_command(text):
+            return
+        if text.startswith("/") and not self._cfg_bool("relay_commands"):
+            return
+        if event.is_at_or_wake_command and not self._cfg_bool("relay_wake_messages"):
+            return
+
+        prefix = str(self._cfg("relay_prefix"))
+        if prefix:
+            if not text.startswith(prefix):
+                return
+            text = text[len(prefix) :].lstrip()
+        filtered = apply_aqqbot_filters(text, self._cfg("chat_to_game_filters"))
+        if filtered is None:
+            event.stop_event()
+            return
+        identity = self._identity(event)
+        content = format_template(
+            str(self._cfg("chat_to_game_template")),
+            {
+                "platform": identity["platform_id"],
+                "sender": identity["owner_display"],
+                "user_id": identity["user_id"],
+                "message": filtered,
+            },
+        )
+        adapter = self._minecraft_adapter()
+        if adapter is None or not hasattr(adapter, "relay_chat"):
+            logger.warning("MineAstr minecraft 平台适配器未启用，无法转发聊天。")
+            return
+        try:
+            await adapter.relay_chat(
+                trim_message(content, self._cfg_int("max_relay_length")),
+                f"{identity['platform_id']}/{identity['owner_display']}",
+            )
+            await self._notify_mentioned_players(event, filtered)
+        except Exception as exc:
+            logger.warning("MineAstr 转发聊天到 Minecraft 失败：%s", exc)
+            return
+        if not self._cfg_bool("relay_wake_messages"):
+            event.stop_event()
+
+    @staticmethod
+    def _query_results(payload: dict[str, Any]) -> list[dict[str, Any]]:
+        servers = payload.get("servers")
+        if isinstance(servers, list):
+            return [item for item in servers if isinstance(item, dict)]
+        return [payload]
+
+    @staticmethod
+    def _query_data(payload: dict[str, Any]) -> dict[str, Any]:
+        data = payload.get("data")
+        return data if isinstance(data, dict) else payload
+
+    def _format_status(self, payload: dict[str, Any]) -> str:
+        results = self._query_results(payload)
+        if not results:
+            return "当前没有已连接的 Minecraft 服务器。"
+        lines: list[str] = []
+        for result in results:
+            if not result.get("ok", True):
+                lines.append(
+                    f"{result.get('server_name') or result.get('server_id') or '服务器'}："
+                    f"查询失败（{result.get('error') or '未知错误'}）"
+                )
+                continue
+            data = self._query_data(result)
+            name = str(
+                data.get("server_name")
+                or result.get("server_name")
+                or data.get("server_id")
+                or result.get("server_id")
+                or "Minecraft"
+            )
+            version = (
+                data.get("minecraft_version") or data.get("mc_version") or "未知版本"
+            )
+            online = data.get(
+                "online_players",
+                data.get("online_count", data.get("player_count", "?")),
+            )
+            maximum = data.get("max_players", data.get("player_limit", "?"))
+            extra: list[str] = []
+            if data.get("tps") is not None:
+                extra.append(f"TPS {data['tps']}")
+            if data.get("mspt") is not None:
+                extra.append(f"MSPT {data['mspt']}")
+            suffix = f"；{'，'.join(extra)}" if extra else ""
+            lines.append(f"{name}：MC {version}，在线 {online}/{maximum}{suffix}")
+        return "\n".join(lines)
+
+    def _format_players(self, payload: dict[str, Any]) -> str:
+        results = self._query_results(payload)
+        if not results:
+            return "当前没有已连接的 Minecraft 服务器。"
+        lines: list[str] = []
+        for result in results:
+            if not result.get("ok", True):
+                lines.append(
+                    f"{result.get('server_name') or result.get('server_id') or '服务器'}："
+                    f"查询失败（{result.get('error') or '未知错误'}）"
+                )
+                continue
+            data = self._query_data(result)
+            raw_players = data.get("players") or data.get("online_players") or []
+            names: list[str] = []
+            if isinstance(raw_players, list):
+                for player in raw_players:
+                    if isinstance(player, dict):
+                        name = player.get("name") or player.get("player_name")
+                    else:
+                        name = player
+                    if name:
+                        names.append(str(name))
+            name = str(
+                data.get("server_name")
+                or result.get("server_name")
+                or data.get("server_id")
+                or result.get("server_id")
+                or "Minecraft"
+            )
+            count = data.get("count", data.get("online_count", len(names)))
+            lines.append(
+                f"{name} 在线玩家（{count}）：{', '.join(names) if names else '无'}"
+            )
+        return "\n".join(lines)
+
+    def _format_performance(self, payload: dict[str, Any]) -> str:
+        results = self._query_results(payload)
+        if not results:
+            return "当前没有已连接的 Minecraft 服务器。"
+        lines: list[str] = []
+        for result in results:
+            if not result.get("ok", True):
+                lines.append(
+                    f"{result.get('server_name') or result.get('server_id') or '服务器'}："
+                    f"查询失败（{result.get('error') or '旧版 Mod 不支持 performance 查询'}）"
+                )
+                continue
+            data = self._query_data(result)
+            name = str(
+                data.get("server_name")
+                or result.get("server_name")
+                or data.get("server_id")
+                or result.get("server_id")
+                or "Minecraft"
+            )
+            fields = []
+            for key, label in (
+                ("tps", "TPS"),
+                ("mspt", "MSPT"),
+                ("cpu_percent", "CPU"),
+                ("memory_used_mb", "内存 MB"),
+            ):
+                if data.get(key) is not None:
+                    fields.append(f"{label} {data[key]}")
+            lines.append(
+                f"{name}：{', '.join(fields) if fields else json.dumps(data, ensure_ascii=False)}"
+            )
+        return "\n".join(lines)
+
+    def _validated_player_name(self, value: str) -> str:
+        player_name = value.strip()
+        try:
+            valid = re.fullmatch(str(self._cfg("player_name_regex")), player_name)
+        except re.error as exc:
+            raise BindingError(f"player_name_regex 配置无效：{exc}") from exc
+        if not valid:
+            raise BindingError(f"玩家名不符合规则 {self._cfg('player_name_regex')}。")
+        return player_name
+
+    @staticmethod
+    def _validated_verified_player_name(value: str) -> str:
+        """Validate an authenticated name reported by the Minecraft server.
+
+        A verification code proves which exact login name requested access, so
+        the configurable GROUP_NAME regex must not reject that server identity.
+        """
+
+        player_name = str(value or "").strip()
+        if not player_name or len(player_name) > 64:
+            raise BindingError("Minecraft 服务端上报的玩家名为空或超过 64 个字符。")
+        if any(
+            ord(character) < 32 or ord(character) == 127
+            for character in player_name
+        ):
+            raise BindingError("Minecraft 服务端上报的玩家名包含控制字符。")
+        return player_name
+
+    async def _create_binding(
+        self, identity: dict[str, str], player_name: str
+    ) -> tuple[Any, dict[str, Any]]:
+        record = await self._binding_store.bind(
+            owner_key=identity["owner_key"],
+            platform_id=identity["platform_id"],
+            user_id=identity["user_id"],
+            owner_display=identity["owner_display"],
+            player_name=player_name,
+            max_bind_count=max(1, self._cfg_int("max_bind_count")),
+        )
+        sync_result = await self._sync_binding_to_server("bind", record)
+        if (
+            self._cfg_bool("sync_binding_to_server")
+            and self._cfg_bool("binding_sync_required")
+            and not sync_result.get("ok")
+        ):
+            await self._binding_store.unbind(record.owner_key, record.player_name)
+            raise BindingError(
+                f"Minecraft 端同步失败，已回滚绑定：{sync_result.get('error') or '未知错误'}"
+            )
+        return record, sync_result
+
+    @filter.command_group("mc", alias={"mineastr", "minecraft"})
+    def mc(self):
+        """MineAstr / AQQBot 兼容指令。"""
+        pass
+
+    @mc.command("help", alias={"帮助"})
+    async def mineastr_help(self, event: AstrMessageEvent):
+        """显示 MineAstr 指令帮助。"""
+        yield event.plain_result(
+            "MineAstr 指令：\n"
+            "/mc status [server_id] - 服务器状态\n"
+            "/mc list [server_id] - 在线玩家\n"
+            "/mc performance [server_id] - TPS/MSPT/CPU\n"
+            "/mc bind <玩家名或验证码> - 绑定账号\n"
+            "/mc unbind [玩家名] - 解绑账号\n"
+            "/mc bindings - 查看自己的绑定\n"
+            "/mc who <玩家名> - 查询玩家绑定\n"
+            "/mc discord_status - Discord 自动化状态（管理员）\n"
+            "/mc command <命令> - 执行受控命令（默认关闭）\n"
+            "管理员：/mc bridge_add、bridge_remove、bridge_list、admin_bind、admin_unbind、say"
+        )
+
+    @mc.command("status", alias={"状态"})
+    async def mineastr_status_command(
+        self, event: AstrMessageEvent, server_id: str = ""
+    ):
+        """查询服务器状态。"""
+        adapter = self._minecraft_adapter()
+        if adapter is None:
+            yield event.plain_result("Minecraft 平台适配器未启用。")
+            return
+        try:
+            payload = await adapter.query_status(server_id.strip() or None)
+            yield event.plain_result(self._format_status(payload))
+        except Exception as exc:
+            yield event.plain_result(f"查询失败：{exc}")
+
+    @mc.command("list", alias={"在线玩家", "玩家"})
+    async def mineastr_list_command(self, event: AstrMessageEvent, server_id: str = ""):
+        """查询在线玩家。"""
+        adapter = self._minecraft_adapter()
+        if adapter is None:
+            yield event.plain_result("Minecraft 平台适配器未启用。")
+            return
+        try:
+            payload = await adapter.query_players(server_id.strip() or None)
+            yield event.plain_result(self._format_players(payload))
+        except Exception as exc:
+            yield event.plain_result(f"查询失败：{exc}")
+
+    @mc.command("performance", alias={"性能", "tps", "mspt"})
+    async def mineastr_performance_command(
+        self, event: AstrMessageEvent, server_id: str = ""
+    ):
+        """查询服务器 TPS、MSPT 与 CPU 等性能数据。"""
+        adapter = self._minecraft_adapter()
+        if adapter is None or not hasattr(adapter, "query_performance"):
+            yield event.plain_result("当前 Minecraft 适配器不支持性能查询。")
+            return
+        try:
+            payload = await adapter.query_performance(server_id.strip() or None)
+            yield event.plain_result(self._format_performance(payload))
+        except Exception as exc:
+            yield event.plain_result(f"查询失败：{exc}")
+
+    @mc.command("bind", alias={"绑定"})
+    async def mineastr_bind_command(self, event: AstrMessageEvent, value: str):
+        """绑定当前聊天账号与 Minecraft 玩家。"""
+        if not self._cfg_bool("binding_enabled"):
+            yield event.plain_result("账号绑定功能未启用。")
+            return
+        identity = self._identity(event)
+        remaining = self._cooldowns.check_and_mark(
+            "bind",
+            identity["owner_key"],
+            max(0, self._cfg_int("bind_cooldown_seconds")),
+        )
+        if remaining > 0:
+            yield event.plain_result(
+                f"绑定操作冷却中，请等待 {math.ceil(remaining)} 秒。"
+            )
+            return
+
+        verify_method = str(self._cfg("verify_method")).strip().upper()
+        verified_by_code = verify_method == "VERIFY_CODE"
+        if verified_by_code:
+            player_name = self._consume_verify_code(value)
+            if not player_name:
+                yield event.plain_result(
+                    "验证码不存在或已过期。请先尝试登录服务器获取验证码。"
+                )
+                return
+        else:
+            player_name = value
+        try:
+            player_name = (
+                self._validated_verified_player_name(player_name)
+                if verified_by_code
+                else self._validated_player_name(player_name)
+            )
+            record, sync_result = await self._create_binding(identity, player_name)
+        except PlayerAlreadyBoundError:
+            yield event.plain_result(f"玩家 {player_name} 已被其他聊天账号绑定。")
+            return
+        except BindingError as exc:
+            yield event.plain_result(str(exc))
+            return
+        note = ""
+        if self._cfg_bool("sync_binding_to_server") and not sync_result.get("ok"):
+            note = (
+                f"；但 Minecraft 端同步失败：{sync_result.get('error') or '未知错误'}"
+            )
+        qq_card_result = await self._update_qq_group_card_after_bind(event, record)
+        if not qq_card_result.get("ok"):
+            note += (
+                "；但 QQ 群名片同步失败："
+                f"{qq_card_result.get('error') or '未知错误'}"
+            )
+        member = self._discord_member_from_event(event)
+        if member is not None:
+            nickname_result = await self._refresh_discord_nickname_for_owner(
+                record.platform_id,
+                record.user_id,
+                record.owner_key,
+                member,
+            )
+            if not nickname_result.get("ok"):
+                note += (
+                    "；但 Discord 昵称同步失败："
+                    f"{nickname_result.get('error') or '未知错误'}"
+                )
+        yield event.plain_result(f"绑定成功：{record.player_name}{note}")
+
+    @mc.command("unbind", alias={"解绑"})
+    async def mineastr_unbind_command(
+        self, event: AstrMessageEvent, player_name: str = ""
+    ):
+        """解绑当前聊天账号的 Minecraft 玩家。"""
+        if not self._cfg_bool("binding_enabled"):
+            yield event.plain_result("账号绑定功能未启用。")
+            return
+        identity = self._identity(event)
+        remaining = self._cooldowns.check_and_mark(
+            "unbind",
+            identity["owner_key"],
+            max(0, self._cfg_int("unbind_cooldown_seconds")),
+        )
+        if remaining > 0:
+            yield event.plain_result(
+                f"解绑操作冷却中，请等待 {math.ceil(remaining)} 秒。"
+            )
+            return
+        records = await self._binding_store.get_by_owner(identity["owner_key"])
+        if not records:
+            yield event.plain_result("你还没有绑定 Minecraft 账号。")
+            return
+        if not player_name and len(records) > 1:
+            yield event.plain_result(
+                "你绑定了多个账号，请指定玩家名："
+                + ", ".join(r.player_name for r in records)
+            )
+            return
+        target_name = player_name or records[0].player_name
+        target = next(
+            (r for r in records if r.player_name.casefold() == target_name.casefold()),
+            None,
+        )
+        if target is None:
+            yield event.plain_result(f"{target_name} 不是你绑定的玩家。")
+            return
+        required_sync = self._cfg_bool("sync_binding_to_server") and self._cfg_bool(
+            "binding_sync_required"
+        )
+        sync_result: dict[str, Any] = {"ok": True, "skipped": True}
+        if required_sync:
+            sync_result = await self._sync_binding_to_server("unbind", target)
+            if not sync_result.get("ok"):
+                yield event.plain_result(
+                    f"Minecraft 端同步失败，未解绑：{sync_result.get('error') or '未知错误'}"
+                )
+                return
+        removed = await self._binding_store.unbind(
+            identity["owner_key"], target.player_name
+        )
+        if not removed:
+            yield event.plain_result("绑定记录已不存在。")
+            return
+        if not required_sync:
+            sync_result = await self._sync_binding_to_server("unbind", target)
+        note = ""
+        if self._cfg_bool("sync_binding_to_server") and not sync_result.get("ok"):
+            note = (
+                f"；但 Minecraft 端同步失败：{sync_result.get('error') or '未知错误'}"
+            )
+        qq_card_result = await self._update_qq_group_card_after_bind(event, target)
+        if not qq_card_result.get("ok"):
+            note += (
+                "；但 QQ 群名片同步失败："
+                f"{qq_card_result.get('error') or '未知错误'}"
+            )
+        member = self._discord_member_from_event(event)
+        if member is not None:
+            nickname_result = await self._refresh_discord_nickname_for_owner(
+                target.platform_id,
+                target.user_id,
+                target.owner_key,
+                member,
+            )
+            if not nickname_result.get("ok"):
+                note += (
+                    "；但 Discord 昵称恢复失败："
+                    f"{nickname_result.get('error') or '未知错误'}"
+                )
+        yield event.plain_result(f"解绑成功：{target.player_name}{note}")
+
+    @mc.command("bindings", alias={"我的绑定", "绑定信息"})
+    async def mineastr_bindings_command(self, event: AstrMessageEvent):
+        """查看当前聊天账号的绑定。"""
+        identity = self._identity(event)
+        records = await self._binding_store.get_by_owner(identity["owner_key"])
+        if not records:
+            yield event.plain_result("你还没有绑定 Minecraft 账号。")
+            return
+        yield event.plain_result("已绑定：" + ", ".join(r.player_name for r in records))
+
+    @mc.command("who", alias={"查询绑定"})
+    async def mineastr_who_command(self, event: AstrMessageEvent, player_name: str):
+        """查询指定 Minecraft 玩家的绑定。"""
+        record = await self._binding_store.get_by_player(player_name)
+        if not record:
+            yield event.plain_result(f"{player_name} 尚未绑定聊天账号。")
+            return
+        yield event.plain_result(
+            f"{record.player_name} 已绑定到 {record.platform_id} 用户 {record.owner_display or record.user_id}。"
+        )
+
+    @mc.command("command", alias={"sudo", "执行"})
+    async def mineastr_command_command(self, event: AstrMessageEvent):
+        """执行一条受 Minecraft 端白名单约束的服务器命令。"""
+        if not self._cfg_bool("remote_command_enabled"):
+            yield event.plain_result("远程命令功能未启用。")
+            return
+        if self._cfg_bool("remote_command_admin_only") and not self._is_bridge_admin(
+            event
+        ):
+            yield event.plain_result("你没有权限执行服务器命令。")
+            return
+        command = self._command_tail(event).lstrip("/")
+        if not command:
+            yield event.plain_result("用法：/mc command <服务器命令>")
+            return
+        adapter = self._minecraft_adapter()
+        if adapter is None:
+            yield event.plain_result("Minecraft 平台适配器未启用。")
+            return
+        identity = self._identity(event)
+        try:
+            payload = await adapter.run_server_command(
+                None,
+                command,
+                identity["user_id"],
+                "",
+                identity["owner_display"],
+                identity["platform_id"],
+            )
+            data = self._query_data(payload)
+            result = data.get("result") or data.get("output") or data.get("error")
+            yield event.plain_result(
+                str(result)
+                if result is not None
+                else json.dumps(payload, ensure_ascii=False)
+            )
+        except Exception as exc:
+            yield event.plain_result(f"命令执行失败：{exc}")
+
+    @mc.command("say", alias={"广播"})
+    async def mineastr_say_command(self, event: AstrMessageEvent):
+        """以聊天平台身份向 Minecraft 广播消息。"""
+        if not self._is_bridge_admin(event):
+            yield event.plain_result("你没有权限使用广播命令。")
+            return
+        content = self._command_tail(event)
+        if not content:
+            yield event.plain_result("用法：/mc say <消息>")
+            return
+        adapter = self._minecraft_adapter()
+        if adapter is None or not hasattr(adapter, "relay_chat"):
+            yield event.plain_result("Minecraft 平台适配器未启用。")
+            return
+        identity = self._identity(event)
+        await adapter.relay_chat(
+            content, f"{identity['platform_id']}/{identity['owner_display']}"
+        )
+        yield event.plain_result("已发送到 Minecraft。")
+
+    @mc.command("bridge_add", alias={"桥接当前频道"})
+    async def mineastr_bridge_add_command(self, event: AstrMessageEvent):
+        """把当前群聊/Discord 频道加入群服互联。"""
+        if not self._is_bridge_admin(event):
+            yield event.plain_result("你没有权限修改桥接频道。")
+            return
+        sessions = set(self._relay_sessions)
+        sessions.add(event.unified_msg_origin)
+        self._set_relay_sessions(sessions)
+        yield event.plain_result(f"已桥接当前会话：{event.unified_msg_origin}")
+
+    @mc.command("bridge_remove", alias={"取消桥接当前频道"})
+    async def mineastr_bridge_remove_command(self, event: AstrMessageEvent):
+        """从群服互联中移除当前群聊/Discord 频道。"""
+        if not self._is_bridge_admin(event):
+            yield event.plain_result("你没有权限修改桥接频道。")
+            return
+        sessions = set(self._relay_sessions)
+        sessions.discard(event.unified_msg_origin)
+        self._set_relay_sessions(sessions)
+        yield event.plain_result(f"已取消桥接：{event.unified_msg_origin}")
+
+    @mc.command("bridge_list", alias={"桥接列表"})
+    async def mineastr_bridge_list_command(self, event: AstrMessageEvent):
+        """查看已桥接的 AstrBot 会话。"""
+        if not self._is_bridge_admin(event):
+            yield event.plain_result("你没有权限查看桥接配置。")
+            return
+        yield event.plain_result(
+            "已桥接会话：\n" + ("\n".join(sorted(self._relay_sessions)) or "（无）")
+        )
+
+    @mc.command("discord_status", alias={"discord状态"})
+    async def mineastr_discord_status_command(self, event: AstrMessageEvent):
+        """查看 Discord 退群解绑、昵称同步及成员 Intent 状态。"""
+        if not self._is_bridge_admin(event):
+            yield event.plain_result("你没有权限查看 Discord 自动化状态。")
+            return
+        configured_guilds = parse_items(self._cfg("discord_guild_ids"))
+        lines = [
+            "Discord 自动化：",
+            "退群自动解绑："
+            + ("开启" if self._cfg_bool("discord_auto_unbind_on_leave") else "关闭"),
+            "绑定自动昵称："
+            + ("开启" if self._cfg_bool("discord_auto_nickname") else "关闭"),
+            "目标服务器："
+            + (", ".join(configured_guilds) if configured_guilds else "全部"),
+        ]
+        adapters = self._discord_adapters()
+        if not adapters:
+            lines.append("Discord 平台：未加载")
+        for platform_id, adapter in adapters:
+            client = getattr(adapter, "client", None)
+            ready = bool(
+                client is not None
+                and callable(getattr(client, "is_ready", None))
+                and client.is_ready()
+            )
+            members_intent = bool(
+                getattr(getattr(client, "intents", None), "members", False)
+            )
+            guild_count = len(list(getattr(client, "guilds", ()) or ()))
+            listener = platform_id in self._discord_listener_bindings
+            lines.append(
+                f"{platform_id}：{'在线' if ready else '未就绪'}，"
+                f"成员 Intent {'已申请' if members_intent else '未申请'}，"
+                f"退群监听 {'已注册' if listener else '未注册'}，"
+                f"可见服务器 {guild_count}"
+            )
+        lines.append(
+            "注：指令只能确认客户端已申请成员 Intent；Developer Portal 开关需人工确认。"
+        )
+        yield event.plain_result("\n".join(lines))
+
+    @mc.command("admin_bind", alias={"管理绑定"})
+    async def mineastr_admin_bind_command(
+        self, event: AstrMessageEvent, owner: str, player_name: str
+    ):
+        """管理员为指定平台用户绑定玩家。"""
+        if not self._is_bridge_admin(event):
+            yield event.plain_result("你没有权限管理他人的绑定。")
+            return
+        try:
+            owner_key, platform_id, user_id = normalize_owner_spec(
+                owner, str(event.get_platform_id() or "unknown")
+            )
+            player_name = self._validated_player_name(player_name)
+            record, sync_result = await self._create_binding(
+                {
+                    "owner_key": owner_key,
+                    "platform_id": platform_id,
+                    "user_id": user_id,
+                    "owner_display": owner,
+                },
+                player_name,
+            )
+        except (ValueError, BindingError) as exc:
+            yield event.plain_result(str(exc))
+            return
+        note = ""
+        if self._cfg_bool("sync_binding_to_server") and not sync_result.get("ok"):
+            note = f"；Minecraft 端同步失败：{sync_result.get('error') or '未知错误'}"
+        qq_card_result = await self._update_qq_group_card_after_bind(event, record)
+        if not qq_card_result.get("ok"):
+            note += (
+                "；QQ 群名片同步失败："
+                f"{qq_card_result.get('error') or '未知错误'}"
+            )
+        if self._discord_adapter(record.platform_id) is not None:
+            nickname_result = await self._refresh_discord_nickname_for_owner(
+                record.platform_id,
+                record.user_id,
+                record.owner_key,
+            )
+            if not nickname_result.get("ok"):
+                note += (
+                    "；Discord 昵称同步失败："
+                    f"{nickname_result.get('error') or '未知错误'}"
+                )
+        yield event.plain_result(
+            f"已为 {record.owner_key} 绑定 {record.player_name}{note}"
+        )
+
+    @mc.command("admin_unbind", alias={"管理解绑"})
+    async def mineastr_admin_unbind_command(
+        self, event: AstrMessageEvent, owner: str, player_name: str
+    ):
+        """管理员解除指定平台用户的玩家绑定。"""
+        if not self._is_bridge_admin(event):
+            yield event.plain_result("你没有权限管理他人的绑定。")
+            return
+        try:
+            owner_key, _, _ = normalize_owner_spec(
+                owner, str(event.get_platform_id() or "unknown")
+            )
+        except ValueError as exc:
+            yield event.plain_result(str(exc))
+            return
+        records = await self._binding_store.get_by_owner(owner_key)
+        target = next(
+            (r for r in records if r.player_name.casefold() == player_name.casefold()),
+            None,
+        )
+        if target is None:
+            yield event.plain_result(f"{owner_key} 没有绑定 {player_name}。")
+            return
+        required_sync = self._cfg_bool("sync_binding_to_server") and self._cfg_bool(
+            "binding_sync_required"
+        )
+        sync_result: dict[str, Any] = {"ok": True, "skipped": True}
+        if required_sync:
+            sync_result = await self._sync_binding_to_server("unbind", target)
+            if not sync_result.get("ok"):
+                yield event.plain_result(
+                    f"Minecraft 端同步失败，未解绑：{sync_result.get('error') or '未知错误'}"
+                )
+                return
+        await self._binding_store.unbind(owner_key, target.player_name)
+        if not required_sync:
+            sync_result = await self._sync_binding_to_server("unbind", target)
+        note = ""
+        if self._cfg_bool("sync_binding_to_server") and not sync_result.get("ok"):
+            note = f"；Minecraft 端同步失败：{sync_result.get('error') or '未知错误'}"
+        qq_card_result = await self._update_qq_group_card_after_bind(event, target)
+        if not qq_card_result.get("ok"):
+            note += (
+                "；QQ 群名片同步失败："
+                f"{qq_card_result.get('error') or '未知错误'}"
+            )
+        if self._discord_adapter(target.platform_id) is not None:
+            nickname_result = await self._refresh_discord_nickname_for_owner(
+                target.platform_id,
+                target.user_id,
+                target.owner_key,
+            )
+            if not nickname_result.get("ok"):
+                note += (
+                    "；Discord 昵称恢复失败："
+                    f"{nickname_result.get('error') or '未知错误'}"
+                )
+        yield event.plain_result(
+            f"已解除 {owner_key} 与 {target.player_name} 的绑定{note}"
+        )
+
     @filter.on_llm_request()
-    async def mineastr_on_llm_request(self, event: AstrMessageEvent, request: Any) -> None:
+    async def mineastr_on_llm_request(
+        self, event: AstrMessageEvent, request: Any
+    ) -> None:
         text = (getattr(event, "message_str", "") or "").lower()
         platform_id = ""
         get_platform_id = getattr(event, "get_platform_id", None)
         if callable(get_platform_id):
             platform_id = str(get_platform_id() or "")
         raw_message = self._event_raw_message(event)
-        if platform_id != "minecraft" and not any(keyword in text for keyword in MINEASTR_EXTERNAL_HINT_KEYWORDS):
+        if platform_id != "minecraft" and not any(
+            keyword in text for keyword in MINEASTR_EXTERNAL_HINT_KEYWORDS
+        ):
             return
 
         current_prompt = getattr(request, "system_prompt", "") or ""
@@ -79,7 +1710,9 @@ class MineAstrPlugin(Star):
             )
         if MINEASTR_TOOL_HINT not in current_prompt:
             prompt_parts.append(MINEASTR_TOOL_HINT)
-        request.system_prompt = "\n\n".join(part for part in prompt_parts if part).strip()
+        request.system_prompt = "\n\n".join(
+            part for part in prompt_parts if part
+        ).strip()
 
     def _minecraft_adapter(self) -> Any | None:
         getter = getattr(self.context, "get_platform_inst", None)
@@ -113,7 +1746,12 @@ class MineAstrPlugin(Star):
         mime_type: str,
     ) -> Any:
         text = self._tool_json(title, payload)
-        if not image_base64 or CallToolResult is None or ImageContent is None or TextContent is None:
+        if (
+            not image_base64
+            or CallToolResult is None
+            or ImageContent is None
+            or TextContent is None
+        ):
             return text
         try:
             return CallToolResult(
@@ -150,7 +1788,9 @@ class MineAstrPlugin(Star):
         player_name: str,
     ) -> tuple[str | None, str, str]:
         raw = self._event_raw_message(event)
-        target_server = server_id.strip() or str(raw.get("server_id") or "").strip() or None
+        target_server = (
+            server_id.strip() or str(raw.get("server_id") or "").strip() or None
+        )
         target_uuid = player_uuid.strip() or str(raw.get("player_uuid") or "").strip()
         target_name = player_name.strip() or str(raw.get("player_name") or "").strip()
         return target_server, target_uuid, target_name
@@ -158,10 +1798,19 @@ class MineAstrPlugin(Star):
     def _requester_identity(self, event: AstrMessageEvent) -> dict[str, str]:
         raw = self._event_raw_message(event)
         return {
-            "requester_id": str(raw.get("player_uuid") or self._event_value(event, "get_sender_id") or "").strip(),
+            "requester_id": str(
+                raw.get("player_uuid")
+                or self._event_value(event, "get_sender_id")
+                or ""
+            ).strip(),
             "requester_uuid": str(raw.get("player_uuid") or "").strip(),
-            "requester_name": str(raw.get("player_name") or self._event_value(event, "get_sender_name") or "").strip(),
-            "requester_platform": self._event_value(event, "get_platform_id") or "unknown",
+            "requester_name": str(
+                raw.get("player_name")
+                or self._event_value(event, "get_sender_name")
+                or ""
+            ).strip(),
+            "requester_platform": self._event_value(event, "get_platform_id")
+            or "unknown",
         }
 
     @staticmethod
@@ -192,11 +1841,16 @@ class MineAstrPlugin(Star):
         suffix = ".jpg" if mime_type == "image/jpeg" else ".bin"
         server_id = self._safe_filename(payload.get("server_id"), "minecraft")
         player_name = self._safe_filename(data.get("player_name"), "player")
-        message_id = self._safe_filename(payload.get("message_id"), str(int(time.time() * 1000)))
+        message_id = self._safe_filename(
+            payload.get("message_id"), str(int(time.time() * 1000))
+        )
         timestamp = time.strftime("%Y%m%d-%H%M%S")
 
         SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
-        path = SCREENSHOT_DIR / f"{timestamp}_{server_id}_{player_name}_{message_id}{suffix}"
+        path = (
+            SCREENSHOT_DIR
+            / f"{timestamp}_{server_id}_{player_name}_{message_id}{suffix}"
+        )
         path.write_bytes(image_bytes)
 
         saved = dict(payload)
@@ -219,7 +1873,9 @@ class MineAstrPlugin(Star):
             (player_name or "").lower(),
         )
 
-    def _mark_screenshot_cooldown(self, key: tuple[str, str, str], cooldown_seconds: float) -> float:
+    def _mark_screenshot_cooldown(
+        self, key: tuple[str, str, str], cooldown_seconds: float
+    ) -> float:
         if cooldown_seconds <= 0:
             return 0.0
         now = time.monotonic()
@@ -241,7 +1897,9 @@ class MineAstrPlugin(Star):
         return 0.0
 
     @filter.llm_tool(name="mineastr_get_server_status")
-    async def mineastr_get_server_status(self, event: AstrMessageEvent, server_id: str = "") -> str:
+    async def mineastr_get_server_status(
+        self, event: AstrMessageEvent, server_id: str = ""
+    ) -> str:
         """查询 Minecraft 服务器状态，包括连接状态、服务器名称、版本和在线人数。
 
         Args:
@@ -263,7 +1921,9 @@ class MineAstrPlugin(Star):
         return self._tool_json("Minecraft 服务器状态查询结果", payload)
 
     @filter.llm_tool(name="mineastr_get_online_players")
-    async def mineastr_get_online_players(self, event: AstrMessageEvent, server_id: str = "") -> str:
+    async def mineastr_get_online_players(
+        self, event: AstrMessageEvent, server_id: str = ""
+    ) -> str:
         """查询 Minecraft 当前在线玩家列表和玩家数量。
 
         Args:
@@ -306,7 +1966,9 @@ class MineAstrPlugin(Star):
             event, server_id, player_uuid, player_name
         )
         try:
-            payload = await adapter.query_player_state(target_server, target_uuid, target_name)
+            payload = await adapter.query_player_state(
+                target_server, target_uuid, target_name
+            )
         except Exception as exc:
             logger.warning("MineAstr 查询玩家状态失败：%s", exc)
             payload = {"ok": False, "error": str(exc) or exc.__class__.__name__}
@@ -447,7 +2109,9 @@ class MineAstrPlugin(Star):
         if adapter is None:
             return "MineAstr 的 minecraft 平台适配器未启用或版本过旧。"
         raw = self._event_raw_message(event)
-        target_server = server_id.strip() or str(raw.get("server_id") or "").strip() or None
+        target_server = (
+            server_id.strip() or str(raw.get("server_id") or "").strip() or None
+        )
         requester = self._requester_identity(event)
         try:
             payload = await adapter.run_server_command(
@@ -482,16 +2146,28 @@ class MineAstrPlugin(Star):
         """
         adapter = self._minecraft_adapter()
         if adapter is None:
-            return "MineAstr 的 minecraft 平台适配器未启用，暂时无法请求 Minecraft 截图。"
+            return (
+                "MineAstr 的 minecraft 平台适配器未启用，暂时无法请求 Minecraft 截图。"
+            )
 
         raw = self._event_raw_message(event)
         target_uuid = player_uuid.strip() or str(raw.get("player_uuid") or "").strip()
         target_name = player_name.strip() or str(raw.get("player_name") or "").strip()
-        target_server = server_id.strip() or str(raw.get("server_id") or "").strip() or None
-        request_reason = reason.strip() or "AstrBot 需要查看当前 Minecraft 画面以回答玩家问题。"
-        cooldown_seconds = float(getattr(adapter, "screenshot_cooldown_seconds", 10.0) or 0.0)
-        cooldown_key = self._screenshot_cooldown_key(target_server, target_uuid, target_name)
-        cooldown_remaining = self._mark_screenshot_cooldown(cooldown_key, cooldown_seconds)
+        target_server = (
+            server_id.strip() or str(raw.get("server_id") or "").strip() or None
+        )
+        request_reason = (
+            reason.strip() or "AstrBot 需要查看当前 Minecraft 画面以回答玩家问题。"
+        )
+        cooldown_seconds = float(
+            getattr(adapter, "screenshot_cooldown_seconds", 10.0) or 0.0
+        )
+        cooldown_key = self._screenshot_cooldown_key(
+            target_server, target_uuid, target_name
+        )
+        cooldown_remaining = self._mark_screenshot_cooldown(
+            cooldown_key, cooldown_seconds
+        )
         if cooldown_remaining > 0:
             wait_seconds = max(1, int(cooldown_remaining + 0.999))
             return self._tool_json(
@@ -543,4 +2219,6 @@ class MineAstrPlugin(Star):
                 "error": str(exc) or exc.__class__.__name__,
                 "local_status": await adapter.local_status(),
             }
-        return self._tool_image_result("Minecraft 低清晰度截图请求结果", payload, image_base64, mime_type)
+        return self._tool_image_result(
+            "Minecraft 低清晰度截图请求结果", payload, image_base64, mime_type
+        )

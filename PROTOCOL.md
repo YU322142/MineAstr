@@ -1,0 +1,229 @@
+# MineAstr WebSocket 协议
+
+本文描述 AstrBot 插件 `v0.6.5` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
+
+## 连接与认证
+
+Mod 连接：
+
+```text
+GET ws://<astrbot-host>:8765/ws
+Authorization: Bearer <token>
+```
+
+连接后必须先发送：
+
+```json
+{
+  "type": "hello",
+  "protocol": 1,
+  "server_id": "survival",
+  "server_name": "Survival Server",
+  "mod_version": "0.6.5"
+}
+```
+
+服务端只信任该连接在 `hello` 中登记的 `server_id` / `server_name`。后续 `chat` 或 `event` 中伪造的同名字段会被覆盖。未发送 `hello` 就提交聊天、事件或查询结果会被拒绝。
+
+`server_id` 在同一个 AstrBot 实例中应保持唯一、稳定，长度不要超过 64 字符。
+
+## 既有消息
+
+### Mod → AstrBot 聊天
+
+```json
+{
+  "type": "chat",
+  "message_id": "uuid",
+  "player_uuid": "minecraft-player-uuid",
+  "player_name": "Steve",
+  "content": "@AstrBot 现在有几个人？"
+}
+```
+
+### AstrBot → Mod 聊天
+
+```json
+{
+  "type": "chat",
+  "message_id": "uuid",
+  "sender_name": "discord/Alice",
+  "content": "大家好"
+}
+```
+
+### 查询
+
+AstrBot 发出 `type=query`，Mod 必须复制 `message_id` 并返回 `type=query_result`。查询结果只能由收到该请求的同一个 WebSocket 连接完成；其他连接伪造相同 `message_id` 会被忽略。
+
+```json
+{
+  "type": "query",
+  "message_id": "uuid",
+  "query": "players",
+  "time_ms": 1785196800000
+}
+```
+
+```json
+{
+  "type": "query_result",
+  "message_id": "uuid",
+  "query": "players",
+  "ok": true,
+  "data": {
+    "count": 2,
+    "players": ["Steve", "Alex"]
+  }
+}
+```
+
+## v0.6.5 查询扩展
+
+### `performance`
+
+无额外请求参数。推荐响应字段：
+
+```json
+{
+  "type": "query_result",
+  "message_id": "uuid",
+  "query": "performance",
+  "ok": true,
+  "data": {
+    "tps": 20.0,
+    "mspt": 12.4,
+    "cpu_percent": 18.6,
+    "memory_used_mb": 2048
+  }
+}
+```
+
+无法获取某项时可以省略，不要返回伪造值。TPS/MSPT 可直接由服务端 tick 统计得到，不强制依赖 spark。
+
+### `notify_player`
+
+```json
+{
+  "type": "query",
+  "message_id": "uuid",
+  "query": "notify_player",
+  "player_name": "Steve",
+  "sender_name": "Alice",
+  "sender_id": "123456789",
+  "sender_platform": "my-discord",
+  "message": "@Steve 回基地"
+}
+```
+
+Mod 应只允许通知在线的准确玩家名，并在服务端配置中决定是否播放声音、显示 action bar/title。不要把 `message` 当作命令或 JSON 组件直接执行。
+
+### `binding`
+
+```json
+{
+  "type": "query",
+  "message_id": "uuid",
+  "query": "binding",
+  "action": "bind",
+  "player_name": "Steve",
+  "owner_key": "my-discord:123456789",
+  "owner_display": "Alice"
+}
+```
+
+`action` 支持 `bind` / `unbind` / `reset`。`reset` 不带玩家身份，用于 Mod 每次重连后先清空绑定缓存，再由 AstrBot 逐条发送当前 SQLite 中的全部绑定；启用白名单同步时也会移除旧缓存对应的白名单条目。AstrBot SQLite 数据库仍是聊天平台绑定的事实来源。Mod 应按服务器认证模式解析 `NameAndId`，直接更新和保存原版白名单，并仅在读回状态与目标一致时返回 `ok=true`。成功响应的 `data` 会包含 `player_uuid`、`whitelist_changed` 与 `whitelist_verified`。
+
+## Mod → AstrBot 事件扩展
+
+通用结构：
+
+```json
+{
+  "type": "event",
+  "event": "player_join",
+  "message_id": "uuid",
+  "time_ms": 1785196800000,
+  "player_uuid": "minecraft-player-uuid",
+  "player_name": "Steve"
+}
+```
+
+支持的 `event`：
+
+| 名称 | 必需字段 | 用途 |
+| --- | --- | --- |
+| `player_join` | `player_name`、建议 `player_uuid` | 向桥接会话发送进入通知 |
+| `player_leave` | `player_name`、建议 `player_uuid` | 向桥接会话发送离开通知 |
+| `player_death` | `player_name`、`reason` 或 `death_message` | 发送死亡通知 |
+| `binding_code` | `player_name`、`code` | `VERIFY_CODE` 绑定；验证码由 Mod 在登录尝试时生成 |
+| `player_login_check` | `message_id`、`player_name` | 登录前检查玩家名是否已经绑定 |
+
+WebSocket 成功 `hello` 和断开会由 AstrBot 自动转成 `server_start` / `server_stop` 通知，Mod 不需要重复上报。
+
+### 登录检查响应
+
+Mod 在异步登录校验阶段发送：
+
+```json
+{
+  "type": "event",
+  "event": "player_login_check",
+  "message_id": "login-attempt-uuid",
+  "player_uuid": "minecraft-player-uuid",
+  "player_name": "Steve"
+}
+```
+
+AstrBot 返回：
+
+```json
+{
+  "type": "event_result",
+  "event": "player_login_check",
+  "message_id": "login-attempt-uuid",
+  "ok": true,
+  "allowed": false,
+  "message": "[MineAstr] 该游戏账号尚未在聊天平台绑定，请先使用 /mc bind <游戏名>。",
+  "owner_key": ""
+}
+```
+
+实现要求：
+
+- 不要阻塞 Minecraft 主线程等待网络；在平台允许的异步登录事件/阶段发起，并设置短超时。
+- AstrBot 连接不可用或超时时的 fail-open / fail-closed 策略必须由 Mod 服务端配置明确决定。建议默认 fail-open，避免 AstrBot 故障锁死服务器，并向控制台输出醒目告警。
+- `need_bind_to_login=false` 时 AstrBot 返回 `allowed=true`。
+- `VERIFY_CODE` 模式下，未绑定玩家的登录流程应先生成 `binding_code` 事件，再按配置拒绝本次登录。
+- 玩家名比较在 AstrBot 侧不区分大小写；Mod 侧应使用服务端解析出的真实玩家名，不能信任客户端自报字符串。
+
+## 错误响应
+
+协议或输入错误：
+
+```json
+{
+  "type": "error",
+  "message": "不支持的服务器事件：unknown"
+}
+```
+
+查询业务失败仍应使用 `query_result` 并带上 `ok=false`、稳定的 `error` 代码/说明：
+
+```json
+{
+  "type": "query_result",
+  "message_id": "uuid",
+  "query": "notify_player",
+  "ok": false,
+  "error": "player_not_online"
+}
+```
+
+## 安全边界
+
+- WebSocket Token 必须使用随机长字符串；跨机器部署优先通过 TLS 反向代理或受信内网，不要把明文 WS 直接暴露到公网。
+- `command`、`binding`、`notify_player` 都必须由 Mod 再次做开关、请求者、参数白名单和审计检查。
+- 不要因为 AstrBot 侧已经判断管理员，就在 Mod 侧允许任意命令。
+- 截图继续受客户端同意、大小、格式、冷却和超时限制。
+- 所有文本进入 Minecraft 命令、JSON 组件或日志前都要按目标上下文转义；聊天文本不能当作命令执行。

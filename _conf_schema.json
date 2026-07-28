@@ -1,86 +1,255 @@
 {
-  "host": {
-    "description": "WebSocket 监听地址",
-    "type": "string",
-    "hint": "单机部署通常保持 127.0.0.1；跨机器连接时改为可被 MC 服务器访问的地址。",
-    "default": "127.0.0.1"
+  "bridge_enabled": {
+    "description": "启用 AQQBot 群服互联",
+    "type": "bool",
+    "hint": "启用后，relay_sessions 中的 AstrBot 群聊/Discord 频道会与 Minecraft 双向转发文本消息。",
+    "default": true
   },
-  "port": {
-    "description": "WebSocket 监听端口",
+  "relay_sessions": {
+    "description": "桥接会话列表",
+    "type": "text",
+    "hint": "每行一个 AstrBot unified_msg_origin，例如 discord:GroupMessage:123456789。也可在目标频道执行 /mc bridge_add 自动写入。",
+    "default": ""
+  },
+  "relay_prefix": {
+    "description": "聊天平台转游戏前缀",
+    "type": "string",
+    "hint": "留空表示转发桥接频道内的普通消息；设置后只有以此前缀开头的消息才会进入游戏，前缀本身会被去掉。",
+    "default": ""
+  },
+  "relay_wake_messages": {
+    "description": "同时转发唤醒机器人消息",
+    "type": "bool",
+    "hint": "默认关闭，避免 Discord 中 @AstrBot 的对话同时刷入游戏；开启后消息会转发且继续交给 AstrBot。",
+    "default": false
+  },
+  "relay_commands": {
+    "description": "转发斜杠指令",
+    "type": "bool",
+    "hint": "默认不把 / 开头的 AstrBot/Discord 指令转发进 Minecraft。",
+    "default": false
+  },
+  "chat_to_game_template": {
+    "description": "聊天平台到游戏模板",
+    "type": "string",
+    "hint": "支持 {platform}、{sender}、{user_id}、{message}；游戏内发送者标签会另外显示为 平台/昵称。",
+    "default": "{message}"
+  },
+  "game_to_chat_template": {
+    "description": "游戏到聊天平台模板",
+    "type": "string",
+    "hint": "支持 {server}、{server_id}、{player}、{player_uuid}、{message}。",
+    "default": "[MC/{server}] {player}: {message}"
+  },
+  "chat_to_game_filters": {
+    "description": "聊天平台到游戏过滤规则",
+    "type": "text",
+    "hint": "每行一条 AQQBot 本地规则，支持 $filter:{内容} 和 $regex:{表达式}，可追加 $replaceTo:{内容} 或 !CANCEL。",
+    "default": ""
+  },
+  "game_to_chat_filters": {
+    "description": "游戏到聊天平台过滤规则",
+    "type": "text",
+    "hint": "每行一条 AQQBot 本地过滤规则；为安全起见不加载 $url 远程词库。",
+    "default": ""
+  },
+  "max_relay_length": {
+    "description": "跨平台转发最大字数",
     "type": "int",
-    "hint": "需要与 MineAstr Mod 配置中的 websocketUrl 端口一致；端口被占用时可以换成其他未使用端口。",
-    "default": 8765
+    "hint": "超出长度会以省略号截断；Discord 自身仍有 2000 字限制。",
+    "default": 500
   },
-  "path": {
-    "description": "WebSocket 路径",
+  "binding_enabled": {
+    "description": "启用账号绑定",
+    "type": "bool",
+    "hint": "提供 /mc bind、unbind、bindings、who 及管理员绑定指令。QQ、Discord 等平台账号会使用 平台ID:用户ID 唯一标识。",
+    "default": true
+  },
+  "binding_database": {
+    "description": "绑定数据库路径",
     "type": "string",
-    "hint": "需要与 MineAstr Mod 配置中的 websocketUrl 路径一致；不清楚如何修改时保持 /ws。",
-    "default": "/ws"
+    "hint": "SQLite 文件路径；相对路径从 AstrBot 工作目录解析。修改后需要重载插件。",
+    "default": "data/mineastr/bindings.sqlite3"
   },
-  "token": {
-    "description": "连接认证 Token",
+  "verify_method": {
+    "description": "绑定验证方式",
     "type": "string",
-    "hint": "Minecraft Mod 连接 AstrBot 时使用，两端必须完全一致；建议把 change-me 改成较长的随机字符串。",
-    "default": "change-me"
+    "options": ["GROUP_NAME", "VERIFY_CODE"],
+    "hint": "GROUP_NAME 直接绑定玩家名；VERIFY_CODE 要求新版 Minecraft Mod 在玩家登录时上报验证码事件。",
+    "default": "GROUP_NAME"
   },
-  "group_id": {
-    "description": "AstrBot 群组 ID",
-    "type": "string",
-    "hint": "所有 Minecraft 聊天都会进入这个虚拟群聊；一般保持 minecraft，改动后会被 AstrBot 视为另一个群。",
-    "default": "minecraft"
-  },
-  "group_name": {
-    "description": "AstrBot 群组名称",
-    "type": "string",
-    "hint": "用于显示这个虚拟 Minecraft 群聊的名称，只影响识别和展示。",
-    "default": "Minecraft"
-  },
-  "bot_id": {
-    "description": "机器人 ID",
-    "type": "string",
-    "hint": "AstrBot 在 minecraft 虚拟平台中的机器人账号 ID；一般不需要修改。",
-    "default": "astrbot"
-  },
-  "bot_display_name": {
-    "description": "机器人显示名称",
-    "type": "string",
-    "hint": "AstrBot 回复广播到 Minecraft 时方括号内显示的名称。",
-    "default": "AstrBot"
-  },
-  "mention_aliases": {
-    "description": "Minecraft @ 唤醒别名",
-    "type": "string",
-    "hint": "玩家在 Minecraft 聊天开头使用这些名字 @ 机器人时，会被转换为 AstrBot 唤醒消息。多个别名用英文逗号分隔，例如 AstrBot,Aria。",
-    "default": "AstrBot,Aria,astrbot"
-  },
-  "max_message_length": {
-    "description": "最大聊天长度",
+  "verify_code_expire_seconds": {
+    "description": "验证码有效期",
     "type": "int",
-    "hint": "单条 Minecraft 消息转发到 AstrBot 前允许的最大长度；超出部分会被截断，建议保持默认。",
-    "default": 1000
+    "hint": "VERIFY_CODE 模式下验证码在 AstrBot 侧保留的秒数。",
+    "default": 300
   },
-  "outbound_max_message_length": {
-    "description": "广播回游戏的最大长度",
-    "type": "int",
-    "hint": "AstrBot 回复广播到 Minecraft 前允许的最大长度；过长回复会被截断，避免刷屏或触发客户端显示问题。",
-    "default": 2000
+  "need_bind_to_login": {
+    "description": "未绑定禁止登录",
+    "type": "bool",
+    "hint": "配套 Fabric 0.6.5 Mod 支持 player_login_check/event_result；还需在 Mod 侧开启 loginBindingCheckEnabled。",
+    "default": false
   },
-  "websocket_max_message_bytes": {
-    "description": "WebSocket 单包大小上限",
+  "max_bind_count": {
+    "description": "单个聊天账号最大绑定数",
     "type": "int",
-    "hint": "MineAstr 插件接收 Mod WebSocket 消息的最大字节数；截图查询结果也会经过这里，建议保持默认。",
-    "default": 2097152
+    "hint": "与 AQQBot whitelist.max_bind_count 对应。",
+    "default": 1
   },
-  "screenshot_cooldown_seconds": {
-    "description": "截图请求冷却秒数",
-    "type": "int",
-    "hint": "同一目标玩家在冷却时间内重复请求截图时，插件会直接拦截，避免连续弹窗和网络压力。",
-    "default": 10
+  "player_name_regex": {
+    "description": "Minecraft 玩家名规则",
+    "type": "string",
+    "hint": "Python 正则表达式。默认与 AQQBot 兼容，允许 1-64 个非空白字符，包括 Floodgate 的点号前缀及离线服务器使用的 Unicode 名称。",
+    "default": "^\\S{1,64}$"
   },
-  "screenshot_timeout_seconds": {
-    "description": "截图请求超时秒数",
+  "bind_cooldown_seconds": {
+    "description": "绑定冷却秒数",
     "type": "int",
-    "hint": "等待 Minecraft 客户端返回截图的最长时间；超时后会立即把失败原因返回给模型。",
-    "default": 30
+    "hint": "同一聊天账号重复执行绑定的冷却时间。",
+    "default": 60
+  },
+  "unbind_cooldown_seconds": {
+    "description": "解绑冷却秒数",
+    "type": "int",
+    "hint": "沿用 AQQBot 默认值 86400 秒；测试环境可调低。",
+    "default": 86400
+  },
+  "sync_binding_to_server": {
+    "description": "同步绑定到 Minecraft Mod",
+    "type": "bool",
+    "hint": "启用后同步服务端绑定缓存并在 Mod 重连时全量对账；原版白名单是否同步由 Mod 的 bindingSyncWhitelist 决定。",
+    "default": false
+  },
+  "binding_sync_required": {
+    "description": "服务端同步失败时回滚",
+    "type": "bool",
+    "hint": "仅在 sync_binding_to_server 开启时生效。开启后服务端拒绝或超时会阻止/回滚 AstrBot 侧绑定变更。",
+    "default": false
+  },
+  "qq_auto_unbind_on_leave": {
+    "description": "QQ 退群自动解绑",
+    "type": "bool",
+    "hint": "监听 aiocqhttp/OneBot v11 的 group_decrease 事件，并删除该 QQ 账号的全部 Minecraft 绑定。",
+    "default": true
+  },
+  "qq_auto_group_card": {
+    "description": "绑定后修改 QQ 群名片",
+    "type": "bool",
+    "hint": "QQ 群内绑定成功后调用 OneBot set_group_card；机器人必须是群管理员或群主。",
+    "default": true
+  },
+  "qq_group_ids": {
+    "description": "启用自动操作的 QQ 群号",
+    "type": "text",
+    "hint": "每行一个 QQ 群号；留空表示该 aiocqhttp 实例收到的全部群。建议明确填写，避免离开其他群时触发解绑。",
+    "default": ""
+  },
+  "qq_group_card_template": {
+    "description": "QQ 群名片模板",
+    "type": "string",
+    "hint": "支持 {player}、{players}、{owner}、{user_id}、{qq}、{nickname}、{card}。{players} 按绑定先后并列显示，超出 60 字符时只保留能完整放下的最早几项。",
+    "default": "{players}"
+  },
+  "discord_auto_unbind_on_leave": {
+    "description": "Discord 退群自动解绑",
+    "type": "bool",
+    "hint": "监听 Discord 成员离开事件并删除该 Discord 账号的全部 Minecraft 绑定。需要在 Discord Developer Portal 开启 Server Members Intent。",
+    "default": true
+  },
+  "discord_auto_nickname": {
+    "description": "绑定后自动修改 Discord 昵称",
+    "type": "bool",
+    "hint": "绑定成功后把服务器昵称改为 Minecraft 玩家名；机器人需要 Manage Nicknames 权限且角色必须高于目标成员。",
+    "default": true
+  },
+  "discord_restore_nickname_on_unbind": {
+    "description": "解绑后恢复 Discord 原昵称",
+    "type": "bool",
+    "hint": "MineAstr 会在首次改名前保存该服务器中的原昵称，并在最后一个绑定解除后恢复。",
+    "default": true
+  },
+  "discord_guild_ids": {
+    "description": "启用自动操作的 Discord 服务器 ID",
+    "type": "text",
+    "hint": "每行一个 Discord Guild ID；留空表示该 AstrBot Discord 实例加入的全部服务器。多服务器部署建议明确填写，避免用户离开任一服务器时触发全局解绑。",
+    "default": ""
+  },
+  "discord_nickname_template": {
+    "description": "Discord 昵称模板",
+    "type": "string",
+    "hint": "支持 {player}（第一个绑定）、{players}、{owner}、{user_id}；{players} 按绑定先后并列显示，超出 Discord 32 字符限制时只保留能完整放下的最早几项。",
+    "default": "{players}"
+  },
+  "discord_nickname_reason": {
+    "description": "Discord 审计日志原因",
+    "type": "string",
+    "hint": "修改或恢复昵称时写入 Discord 服务器审核日志的原因。",
+    "default": "MineAstr Minecraft 账号绑定同步"
+  },
+  "remote_command_enabled": {
+    "description": "启用聊天平台远程命令",
+    "type": "bool",
+    "hint": "高风险功能，默认关闭；即使开启，Minecraft Mod 仍会检查其命令工具开关、可信用户和命令白名单。",
+    "default": false
+  },
+  "remote_command_admin_only": {
+    "description": "远程命令仅限管理员",
+    "type": "bool",
+    "hint": "管理员由 AstrBot 管理员身份或 bridge_admin_users 判断。建议保持开启。",
+    "default": true
+  },
+  "bridge_admin_users": {
+    "description": "MineAstr 管理员账号",
+    "type": "text",
+    "hint": "每行一个 platform_id:user_id，也可只写 user_id。Discord 服务器管理员不会自动获得此权限，除非同时被 AstrBot 识别为管理员。",
+    "default": ""
+  },
+  "player_mention_enabled": {
+    "description": "启用聊天平台 @游戏玩家",
+    "type": "bool",
+    "hint": "检测桥接消息中的 @PlayerName 并发送 notify_player 查询；声音/标题动作由 Minecraft Mod 端安全配置决定。",
+    "default": true
+  },
+  "notifications_enabled": {
+    "description": "启用服务器与玩家事件通知",
+    "type": "bool",
+    "hint": "服务器 WebSocket 连接/断开可直接通知；玩家进出和死亡要求新版 Mod 上报 event 消息。",
+    "default": true
+  },
+  "notify_server_start": {
+    "description": "服务器连接通知模板",
+    "type": "string",
+    "hint": "支持 {server}、{server_id}。",
+    "default": "[MineAstr] {server} 已连接。"
+  },
+  "notify_server_stop": {
+    "description": "服务器断开通知模板",
+    "type": "string",
+    "hint": "支持 {server}、{server_id}。",
+    "default": "[MineAstr] {server} 已断开。"
+  },
+  "notify_player_join": {
+    "description": "玩家进入通知模板",
+    "type": "string",
+    "hint": "支持 {player}、{player_uuid}、{binding}、{owner}、{user_id}、{server}。",
+    "default": "[MineAstr] {player}{binding} 进入了服务器。"
+  },
+  "notify_player_leave": {
+    "description": "玩家离开通知模板",
+    "type": "string",
+    "hint": "支持玩家和绑定占位符。",
+    "default": "[MineAstr] {player}{binding} 离开了服务器。"
+  },
+  "notify_player_death": {
+    "description": "玩家死亡通知模板",
+    "type": "string",
+    "hint": "额外支持 {reason} 死亡原因。",
+    "default": "[MineAstr] {player}{binding} 因 {reason} 死亡。"
+  },
+  "login_reject_message": {
+    "description": "未绑定登录拒绝消息",
+    "type": "string",
+    "hint": "need_bind_to_login 开启且新版 Mod 发起登录检查时返回给玩家。",
+    "default": "[MineAstr] 该游戏账号尚未在聊天平台绑定，请先使用 /mc bind <游戏名>。"
   }
 }

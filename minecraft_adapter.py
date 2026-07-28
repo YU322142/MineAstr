@@ -1,8 +1,10 @@
 import asyncio
+import inspect
 import json
 import re
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +20,7 @@ from astrbot.api.platform import (
     PlatformMetadata,
     register_platform_adapter,
 )
+
 try:
     from astrbot.core.platform.message_session import MessageSesion
 except ImportError:
@@ -28,7 +31,9 @@ PROTOCOL_VERSION = 1
 QUERY_TIMEOUT_SECONDS = 5.0
 SCREENSHOT_QUERY_TIMEOUT_SECONDS = 30.0
 LOGO_PATH = str(Path(__file__).resolve().with_name("logo.png"))
-MINECRAFT_LEADING_MENTION_RE = re.compile(r"^\s*@(?P<target>[^\s@]+)(?P<body>(?:\s+.*)?)$")
+MINECRAFT_LEADING_MENTION_RE = re.compile(
+    r"^\s*@(?P<target>[^\s@]+)(?P<body>(?:\s+.*)?)$"
+)
 DEFAULT_MENTION_ALIASES = "AstrBot,Aria,astrbot"
 MAX_SENDER_NAME_LENGTH = 64
 DEFAULT_CONFIG = {
@@ -51,7 +56,7 @@ CONFIG_METADATA = {
     "host": {
         "description": "WebSocket 监听地址",
         "type": "string",
-        "hint": "单机部署通常保持 127.0.0.1；跨机器连接时改为可被 MC 服务器访问的地址。",
+        "hint": "单机保持 127.0.0.1；跨机器或 Docker 部署必须填 0.0.0.0，不要填写公网 IP。公网 IP 只写在 Mod 的 websocketUrl 中。",
         "default": "127.0.0.1",
     },
     "port": {
@@ -178,7 +183,9 @@ def _plain_text_from_chain(message: MessageChain) -> str:
         elif hasattr(item, "text"):
             parts.append(str(item.text))
         else:
-            logger.warning("MineAstr 已忽略不支持的出站消息片段：%s", type(item).__name__)
+            logger.warning(
+                "MineAstr 已忽略不支持的出站消息片段：%s", type(item).__name__
+            )
     return "".join(parts).strip()
 
 
@@ -193,27 +200,36 @@ class MinecraftConnectionManager:
         self._bot_display_name = bot_display_name
         self._outbound_max_message_length = max(1, outbound_max_message_length)
         self._connections: dict[web.WebSocketResponse, dict[str, Any]] = {}
-        self._pending_queries: dict[str, tuple[web.WebSocketResponse, asyncio.Future[dict[str, Any]]]] = {}
+        self._pending_queries: dict[
+            str, tuple[web.WebSocketResponse, asyncio.Future[dict[str, Any]]]
+        ] = {}
         self._lock = asyncio.Lock()
 
     @property
     def connected_count(self) -> int:
         return len(self._connections)
 
-    async def register(self, ws: web.WebSocketResponse, hello: dict[str, Any]) -> None:
+    async def register(
+        self, ws: web.WebSocketResponse, hello: dict[str, Any]
+    ) -> tuple[dict[str, Any], bool]:
         now = int(time.time() * 1000)
+        metadata = {
+            "server_id": _trim_sender_name(hello.get("server_id"), "minecraft"),
+            "server_name": _trim_sender_name(
+                hello.get("server_name"), "Minecraft Server"
+            ),
+            "mod_version": _trim_sender_name(hello.get("mod_version"), "unknown"),
+            "connected_at": now,
+            "last_seen_at": now,
+        }
         async with self._lock:
-            self._connections[ws] = {
-                "server_id": hello.get("server_id", "minecraft"),
-                "server_name": hello.get("server_name", "Minecraft Server"),
-                "mod_version": hello.get("mod_version", "unknown"),
-                "connected_at": now,
-                "last_seen_at": now,
-            }
+            is_new = ws not in self._connections
+            self._connections[ws] = metadata
+        return dict(metadata), is_new
 
-    async def unregister(self, ws: web.WebSocketResponse) -> None:
+    async def unregister(self, ws: web.WebSocketResponse) -> dict[str, Any] | None:
         async with self._lock:
-            self._connections.pop(ws, None)
+            metadata = self._connections.pop(ws, None)
             pending_ids = [
                 message_id
                 for message_id, (pending_ws, _) in self._pending_queries.items()
@@ -223,6 +239,16 @@ class MinecraftConnectionManager:
                 _, future = self._pending_queries.pop(message_id)
                 if not future.done():
                     future.set_exception(RuntimeError("Minecraft WebSocket 已断开"))
+        return dict(metadata) if metadata else None
+
+    async def is_registered(self, ws: web.WebSocketResponse) -> bool:
+        async with self._lock:
+            return ws in self._connections
+
+    async def metadata_for(self, ws: web.WebSocketResponse) -> dict[str, Any] | None:
+        async with self._lock:
+            metadata = self._connections.get(ws)
+            return dict(metadata) if metadata else None
 
     async def snapshot(self) -> list[dict[str, Any]]:
         async with self._lock:
@@ -240,7 +266,12 @@ class MinecraftConnectionManager:
         for ws in connections:
             await ws.close()
 
-    async def send_chat(self, content: str, sender_name: str | None = None) -> None:
+    async def send_chat(
+        self,
+        content: str,
+        sender_name: str | None = None,
+        server_id: str | None = None,
+    ) -> None:
         content = _trim_outbound_content(content, self._outbound_max_message_length)
         if not content:
             return
@@ -250,10 +281,18 @@ class MinecraftConnectionManager:
             "sender_name": _trim_sender_name(sender_name, self._bot_display_name),
             "content": content,
         }
-        await self._broadcast(payload)
+        if server_id:
+            ws, _ = await self._select_connection(server_id)
+            await ws.send_str(json.dumps(payload, ensure_ascii=False))
+        else:
+            await self._broadcast(payload)
 
-    async def send_pong(self, ws: web.WebSocketResponse, time_ms: int | None = None) -> None:
-        await ws.send_str(json.dumps({"type": "pong", "time_ms": time_ms or int(time.time() * 1000)}))
+    async def send_pong(
+        self, ws: web.WebSocketResponse, time_ms: int | None = None
+    ) -> None:
+        await ws.send_str(
+            json.dumps({"type": "pong", "time_ms": time_ms or int(time.time() * 1000)})
+        )
 
     async def send_error(self, ws: web.WebSocketResponse, message: str) -> None:
         await ws.send_str(json.dumps({"type": "error", "message": message}))
@@ -263,16 +302,25 @@ class MinecraftConnectionManager:
             if ws in self._connections:
                 self._connections[ws]["last_seen_at"] = int(time.time() * 1000)
 
-    async def resolve_query(self, payload: dict[str, Any]) -> None:
+    async def resolve_query(
+        self, ws: web.WebSocketResponse, payload: dict[str, Any]
+    ) -> None:
         message_id = str(payload.get("message_id") or "")
         if not message_id:
             return
         async with self._lock:
-            pending = self._pending_queries.pop(message_id, None)
+            pending = self._pending_queries.get(message_id)
+            if pending and pending[0] is ws:
+                self._pending_queries.pop(message_id, None)
         if not pending:
             logger.debug("MineAstr 已忽略未知查询结果：%s", message_id)
             return
-        _, future = pending
+        pending_ws, future = pending
+        if pending_ws is not ws:
+            logger.warning(
+                "MineAstr 已拒绝来自错误服务器连接的查询结果：%s", message_id
+            )
+            return
         if not future.done():
             future.set_result(payload)
 
@@ -286,7 +334,12 @@ class MinecraftConnectionManager:
         ws, _ = await self._select_connection(server_id)
         return await self._query_ws(ws, query_type, params=params, timeout=timeout)
 
-    async def query_all(self, query_type: str) -> list[dict[str, Any]]:
+    async def query_all(
+        self,
+        query_type: str,
+        params: dict[str, Any] | None = None,
+        timeout: float = QUERY_TIMEOUT_SECONDS,
+    ) -> list[dict[str, Any]]:
         async with self._lock:
             targets = [
                 (ws, dict(meta))
@@ -296,7 +349,10 @@ class MinecraftConnectionManager:
         if not targets:
             return []
 
-        tasks = [self._query_ws(ws, query_type) for ws, _ in targets]
+        tasks = [
+            self._query_ws(ws, query_type, params=params, timeout=timeout)
+            for ws, _ in targets
+        ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         normalized: list[dict[str, Any]] = []
         for (_, meta), result in zip(targets, results):
@@ -312,7 +368,14 @@ class MinecraftConnectionManager:
                     }
                 )
             else:
-                normalized.append(result)
+                normalized_result = dict(result)
+                normalized_result.setdefault(
+                    "server_id", meta.get("server_id", "minecraft")
+                )
+                normalized_result.setdefault(
+                    "server_name", meta.get("server_name", "Minecraft Server")
+                )
+                normalized.append(normalized_result)
         return normalized
 
     async def _broadcast(self, payload: dict[str, Any]) -> None:
@@ -329,7 +392,9 @@ class MinecraftConnectionManager:
                 logger.warning("MineAstr 发送 WebSocket 数据失败：%s", exc)
                 await self.unregister(ws)
 
-    async def _select_connection(self, server_id: str | None) -> tuple[web.WebSocketResponse, dict[str, Any]]:
+    async def _select_connection(
+        self, server_id: str | None
+    ) -> tuple[web.WebSocketResponse, dict[str, Any]]:
         async with self._lock:
             connections = [
                 (ws, dict(meta))
@@ -355,7 +420,9 @@ class MinecraftConnectionManager:
         if ws.closed:
             raise RuntimeError("Minecraft WebSocket 已关闭")
         message_id = str(uuid.uuid4())
-        future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
+        future: asyncio.Future[dict[str, Any]] = (
+            asyncio.get_running_loop().create_future()
+        )
         async with self._lock:
             self._pending_queries[message_id] = (ws, future)
         payload = {
@@ -404,7 +471,12 @@ class MinecraftPlatformEvent(AstrMessageEvent):
     config_metadata=CONFIG_METADATA,
 )
 class MinecraftPlatformAdapter(Platform):
-    def __init__(self, platform_config: dict[str, Any], platform_settings: dict[str, Any], event_queue):
+    def __init__(
+        self,
+        platform_config: dict[str, Any],
+        platform_settings: dict[str, Any],
+        event_queue,
+    ):
         try:
             super().__init__(platform_config or {}, event_queue)
         except TypeError:
@@ -421,14 +493,69 @@ class MinecraftPlatformAdapter(Platform):
         self.group_name = str(_config_value(self.config, "group_name"))
         self.bot_id = str(_config_value(self.config, "bot_id"))
         self.bot_display_name = str(_config_value(self.config, "bot_display_name"))
-        self.mention_aliases = _parse_aliases(_config_value(self.config, "mention_aliases"))
-        self.max_message_length = max(1, int(_config_value(self.config, "max_message_length")))
-        self.outbound_max_message_length = max(1, int(_config_value(self.config, "outbound_max_message_length")))
-        self.websocket_max_message_bytes = max(8192, int(_config_value(self.config, "websocket_max_message_bytes")))
-        self.screenshot_cooldown_seconds = max(0.0, float(_config_value(self.config, "screenshot_cooldown_seconds")))
-        self.screenshot_timeout_seconds = max(1.0, float(_config_value(self.config, "screenshot_timeout_seconds")))
-        self.connection_manager = MinecraftConnectionManager(self.bot_display_name, self.outbound_max_message_length)
+        self.mention_aliases = _parse_aliases(
+            _config_value(self.config, "mention_aliases")
+        )
+        self.max_message_length = max(
+            1, int(_config_value(self.config, "max_message_length"))
+        )
+        self.outbound_max_message_length = max(
+            1, int(_config_value(self.config, "outbound_max_message_length"))
+        )
+        self.websocket_max_message_bytes = max(
+            8192, int(_config_value(self.config, "websocket_max_message_bytes"))
+        )
+        self.screenshot_cooldown_seconds = max(
+            0.0, float(_config_value(self.config, "screenshot_cooldown_seconds"))
+        )
+        self.screenshot_timeout_seconds = max(
+            1.0, float(_config_value(self.config, "screenshot_timeout_seconds"))
+        )
+        self.connection_manager = MinecraftConnectionManager(
+            self.bot_display_name, self.outbound_max_message_length
+        )
         self._runner: web.AppRunner | None = None
+        self._bridge_event_listeners: list[
+            Callable[
+                [dict[str, Any]],
+                Awaitable[dict[str, Any] | None] | dict[str, Any] | None,
+            ]
+        ] = []
+
+    def add_bridge_event_listener(
+        self,
+        listener: Callable[
+            [dict[str, Any]],
+            Awaitable[dict[str, Any] | None] | dict[str, Any] | None,
+        ],
+    ) -> None:
+        if listener not in self._bridge_event_listeners:
+            self._bridge_event_listeners.append(listener)
+
+    def remove_bridge_event_listener(
+        self,
+        listener: Callable[
+            [dict[str, Any]],
+            Awaitable[dict[str, Any] | None] | dict[str, Any] | None,
+        ],
+    ) -> None:
+        if listener in self._bridge_event_listeners:
+            self._bridge_event_listeners.remove(listener)
+
+    async def _notify_bridge_event(
+        self, payload: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        for listener in list(self._bridge_event_listeners):
+            try:
+                result = listener(dict(payload))
+                if inspect.isawaitable(result):
+                    result = await result
+                if isinstance(result, dict):
+                    results.append(result)
+            except Exception as exc:
+                logger.warning("MineAstr 桥接事件监听器执行失败：%s", exc)
+        return results
 
     def _bot_mention_aliases(self) -> set[str]:
         aliases = {
@@ -439,7 +566,9 @@ class MinecraftPlatformAdapter(Platform):
         aliases.discard("")
         return aliases
 
-    def _parse_minecraft_message(self, content: str) -> tuple[list[Any], str, str | None]:
+    def _parse_minecraft_message(
+        self, content: str
+    ) -> tuple[list[Any], str, str | None]:
         text = content.strip()
         match = MINECRAFT_LEADING_MENTION_RE.match(text)
         if not match:
@@ -473,7 +602,9 @@ class MinecraftPlatformAdapter(Platform):
         await self._runner.setup()
         site = web.TCPSite(self._runner, self.host, self.port)
         await site.start()
-        logger.info("MineAstr WebSocket 正在监听 ws://%s:%s%s", self.host, self.port, self.path)
+        logger.info(
+            "MineAstr WebSocket 正在监听 ws://%s:%s%s", self.host, self.port, self.path
+        )
 
         try:
             await asyncio.Event().wait()
@@ -482,11 +613,21 @@ class MinecraftPlatformAdapter(Platform):
             if self._runner:
                 await self._runner.cleanup()
 
-    async def send_by_session(self, session: MessageSesion, message_chain: MessageChain):
+    async def send_by_session(
+        self, session: MessageSesion, message_chain: MessageChain
+    ):
         content = _plain_text_from_chain(message_chain)
         if not content:
             return
         await self.connection_manager.send_chat(content, self.bot_display_name)
+
+    async def relay_chat(
+        self,
+        content: str,
+        sender_name: str,
+        server_id: str | None = None,
+    ) -> None:
+        await self.connection_manager.send_chat(content, sender_name, server_id)
 
     async def query_status(self, server_id: str | None = None) -> dict[str, Any]:
         if server_id:
@@ -510,6 +651,17 @@ class MinecraftPlatformAdapter(Platform):
             "servers": await self.connection_manager.query_all("players"),
         }
 
+    async def query_performance(self, server_id: str | None = None) -> dict[str, Any]:
+        if server_id:
+            return await self.connection_manager.query("performance", server_id)
+        return {
+            "type": "query_result",
+            "query": "performance",
+            "ok": True,
+            "connected_count": self.connection_manager.connected_count,
+            "servers": await self.connection_manager.query_all("performance"),
+        }
+
     async def query_player_state(
         self,
         server_id: str | None = None,
@@ -519,7 +671,10 @@ class MinecraftPlatformAdapter(Platform):
         return await self.connection_manager.query(
             "player_state",
             server_id,
-            params={"player_uuid": player_uuid.strip(), "player_name": player_name.strip()},
+            params={
+                "player_uuid": player_uuid.strip(),
+                "player_name": player_name.strip(),
+            },
         )
 
     async def query_inventory(
@@ -583,7 +738,9 @@ class MinecraftPlatformAdapter(Platform):
                     "z": int(z),
                 }
             )
-        return await self.connection_manager.query("region_features", server_id, params=params, timeout=10.0)
+        return await self.connection_manager.query(
+            "region_features", server_id, params=params, timeout=10.0
+        )
 
     async def run_server_command(
         self,
@@ -629,6 +786,94 @@ class MinecraftPlatformAdapter(Platform):
             timeout=self.screenshot_timeout_seconds,
         )
 
+    async def notify_player(
+        self,
+        server_id: str | None,
+        player_name: str,
+        sender_name: str,
+        sender_id: str,
+        sender_platform: str,
+        message: str,
+    ) -> dict[str, Any]:
+        params = {
+            "player_name": player_name.strip(),
+            "sender_name": sender_name.strip(),
+            "sender_id": sender_id.strip(),
+            "sender_platform": sender_platform.strip(),
+            "message": message.strip(),
+        }
+        if server_id:
+            return await self.connection_manager.query(
+                "notify_player", server_id, params=params
+            )
+        results = await self.connection_manager.query_all(
+            "notify_player", params=params
+        )
+        return {
+            "type": "query_result",
+            "query": "notify_player",
+            "ok": any(result.get("ok") for result in results),
+            "servers": results,
+        }
+
+    async def sync_binding(
+        self,
+        server_id: str | None,
+        action: str,
+        player_name: str,
+        owner_key: str,
+        owner_display: str,
+    ) -> dict[str, Any]:
+        params = {
+            "action": action.strip().lower(),
+            "player_name": player_name.strip(),
+            "owner_key": owner_key.strip(),
+            "owner_display": owner_display.strip(),
+        }
+        if server_id:
+            return await self.connection_manager.query(
+                "binding", server_id, params=params
+            )
+        results = await self.connection_manager.query_all("binding", params=params)
+        return {
+            "type": "query_result",
+            "query": "binding",
+            "ok": bool(results) and all(result.get("ok") for result in results),
+            "servers": results,
+            "error": "" if results else "当前没有已连接的 Minecraft 服务器",
+        }
+
+    async def replace_bindings(
+        self, server_id: str, records: list[Any]
+    ) -> dict[str, Any]:
+        """Replace one connected server's binding cache after (re)connect."""
+
+        reset = await self.connection_manager.query(
+            "binding", server_id, params={"action": "reset"}
+        )
+        if not reset.get("ok"):
+            return reset
+        applied = 0
+        for record in records:
+            result = await self.connection_manager.query(
+                "binding",
+                server_id,
+                params={
+                    "action": "bind",
+                    "player_name": str(record.player_name),
+                    "owner_key": str(record.owner_key),
+                    "owner_display": str(record.owner_display),
+                },
+            )
+            if not result.get("ok"):
+                return {
+                    "ok": False,
+                    "error": result.get("error") or "binding_reconcile_failed",
+                    "applied": applied,
+                }
+            applied += 1
+        return {"ok": True, "applied": applied, "server_id": server_id}
+
     async def local_status(self) -> dict[str, Any]:
         return {
             "ok": True,
@@ -640,7 +885,9 @@ class MinecraftPlatformAdapter(Platform):
         if not self._authorized(request):
             return web.Response(status=401, text="未授权")
 
-        ws = web.WebSocketResponse(heartbeat=30, max_msg_size=self.websocket_max_message_bytes)
+        ws = web.WebSocketResponse(
+            heartbeat=30, max_msg_size=self.websocket_max_message_bytes
+        )
         await ws.prepare(request)
         logger.info("MineAstr WebSocket 客户端已连接：%s", request.remote)
 
@@ -651,7 +898,16 @@ class MinecraftPlatformAdapter(Platform):
                 elif msg.type == WSMsgType.ERROR:
                     logger.warning("MineAstr WebSocket 出错：%s", ws.exception())
         finally:
-            await self.connection_manager.unregister(ws)
+            metadata = await self.connection_manager.unregister(ws)
+            if metadata:
+                await self._notify_bridge_event(
+                    {
+                        "type": "event",
+                        "event": "server_stop",
+                        **metadata,
+                        "time_ms": int(time.time() * 1000),
+                    }
+                )
             logger.info("MineAstr WebSocket 客户端已断开")
         return ws
 
@@ -668,7 +924,9 @@ class MinecraftPlatformAdapter(Platform):
             await self.connection_manager.send_error(ws, "无效的 JSON")
             return
         if not isinstance(payload, dict):
-            await self.connection_manager.send_error(ws, "WebSocket 消息必须是 JSON 对象")
+            await self.connection_manager.send_error(
+                ws, "WebSocket 消息必须是 JSON 对象"
+            )
             return
 
         try:
@@ -676,41 +934,132 @@ class MinecraftPlatformAdapter(Platform):
             if payload_type == "hello":
                 await self._handle_hello(ws, payload)
             elif payload_type == "chat":
+                if not await self.connection_manager.is_registered(ws):
+                    await self.connection_manager.send_error(
+                        ws, "请先发送 hello 完成注册"
+                    )
+                    return
                 await self.connection_manager.mark_seen(ws)
-                await self._handle_chat(payload)
+                await self._handle_chat(ws, payload)
             elif payload_type == "ping":
                 await self.connection_manager.mark_seen(ws)
                 await self.connection_manager.send_pong(ws, payload.get("time_ms"))
             elif payload_type == "query_result":
+                if not await self.connection_manager.is_registered(ws):
+                    await self.connection_manager.send_error(
+                        ws, "请先发送 hello 完成注册"
+                    )
+                    return
                 await self.connection_manager.mark_seen(ws)
-                await self.connection_manager.resolve_query(payload)
+                await self.connection_manager.resolve_query(ws, payload)
+            elif payload_type == "event":
+                if not await self.connection_manager.is_registered(ws):
+                    await self.connection_manager.send_error(
+                        ws, "请先发送 hello 完成注册"
+                    )
+                    return
+                await self.connection_manager.mark_seen(ws)
+                await self._handle_bridge_event(ws, payload)
             else:
-                await self.connection_manager.send_error(ws, f"不支持的消息类型：{payload_type}")
+                await self.connection_manager.send_error(
+                    ws, f"不支持的消息类型：{payload_type}"
+                )
         except (TypeError, ValueError, RuntimeError) as exc:
             logger.warning("MineAstr 处理 WebSocket 消息失败：%s", exc)
             await self.connection_manager.send_error(ws, str(exc))
 
-    async def _handle_hello(self, ws: web.WebSocketResponse, payload: dict[str, Any]) -> None:
+    async def _handle_hello(
+        self, ws: web.WebSocketResponse, payload: dict[str, Any]
+    ) -> None:
         try:
             protocol = int(payload.get("protocol", 0))
         except (TypeError, ValueError):
             await self.connection_manager.send_error(ws, "协议版本必须是整数")
             return
         if protocol != PROTOCOL_VERSION:
-            await self.connection_manager.send_error(ws, f"不支持的协议版本：{protocol}")
+            await self.connection_manager.send_error(
+                ws, f"不支持的协议版本：{protocol}"
+            )
             return
-        await self.connection_manager.register(ws, payload)
+        metadata, is_new = await self.connection_manager.register(ws, payload)
         logger.info(
             "MineAstr 已注册服务器 %s（%s）",
             payload.get("server_id", "minecraft"),
             payload.get("server_name", "Minecraft Server"),
         )
+        if is_new:
+            await self._notify_bridge_event(
+                {
+                    "type": "event",
+                    "event": "server_start",
+                    **metadata,
+                    "time_ms": int(time.time() * 1000),
+                }
+            )
 
-    async def _handle_chat(self, payload: dict[str, Any]) -> None:
+    async def _handle_bridge_event(
+        self, ws: web.WebSocketResponse, payload: dict[str, Any]
+    ) -> None:
+        event_name = str(payload.get("event") or "").strip().lower()
+        allowed_events = {
+            "player_join",
+            "player_leave",
+            "player_death",
+            "binding_code",
+            "player_login_check",
+        }
+        if event_name not in allowed_events:
+            raise ValueError(f"不支持的服务器事件：{event_name}")
+
+        metadata = await self.connection_manager.metadata_for(ws)
+        if not metadata:
+            raise RuntimeError("Minecraft 服务器尚未注册")
+        enriched = dict(payload)
+        enriched.update(
+            {
+                "type": "event",
+                "event": event_name,
+                "server_id": metadata.get("server_id", "minecraft"),
+                "server_name": metadata.get("server_name", "Minecraft Server"),
+            }
+        )
+        results = await self._notify_bridge_event(enriched)
+
+        if event_name == "player_login_check":
+            response: dict[str, Any] = {
+                "allowed": True,
+                "message": "MineAstr AstrBot 侧未启用登录绑定检查。",
+            }
+            for candidate in results:
+                if "allowed" in candidate:
+                    response.update(candidate)
+                    break
+            await ws.send_str(
+                json.dumps(
+                    {
+                        "type": "event_result",
+                        "event": event_name,
+                        "message_id": str(payload.get("message_id") or ""),
+                        "ok": True,
+                        **response,
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+    async def _handle_chat(
+        self, ws: web.WebSocketResponse, payload: dict[str, Any]
+    ) -> None:
         content = _trim_content(payload.get("content"), self.max_message_length)
         if not content:
             return
-        message = self._convert_chat(payload, content)
+        metadata = await self.connection_manager.metadata_for(ws)
+        if not metadata:
+            raise RuntimeError("Minecraft 服务器尚未注册")
+        trusted_payload = dict(payload)
+        trusted_payload["server_id"] = metadata.get("server_id", "minecraft")
+        trusted_payload["server_name"] = metadata.get("server_name", "Minecraft Server")
+        message = self._convert_chat(trusted_payload, content)
         event = MinecraftPlatformEvent(
             message_str=message.message_str,
             message_obj=message,
@@ -723,9 +1072,13 @@ class MinecraftPlatformAdapter(Platform):
 
     def _convert_chat(self, payload: dict[str, Any], content: str) -> AstrBotMessage:
         message = AstrBotMessage()
-        player_uuid = str(payload.get("player_uuid") or payload.get("player_name") or "unknown")
+        player_uuid = str(
+            payload.get("player_uuid") or payload.get("player_name") or "unknown"
+        )
         player_name = str(payload.get("player_name") or player_uuid)
-        message_chain, message_str, mention_target = self._parse_minecraft_message(content)
+        message_chain, message_str, mention_target = self._parse_minecraft_message(
+            content
+        )
         message.type = MessageType.GROUP_MESSAGE
         message.group_id = self.group_id
         if message.group:
