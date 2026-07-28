@@ -1,6 +1,6 @@
 # MineAstr WebSocket 协议
 
-本文描述 AstrBot 插件 `v0.6.8` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
+本文描述 AstrBot 插件 `v0.6.9` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
 
 ## 连接与认证
 
@@ -19,7 +19,7 @@ Authorization: Bearer <token>
   "protocol": 1,
   "server_id": "survival",
   "server_name": "Survival Server",
-  "mod_version": "0.6.7"
+  "mod_version": "0.6.9"
 }
 ```
 
@@ -144,6 +144,24 @@ Mod 应只允许通知在线的准确玩家名，并在服务端配置中决定�
 ```
 
 `action` 支持 `bind` / `unbind` / `reset`。`reset` 不带玩家身份，用于 Mod 每次重连后先清空绑定缓存，再由 AstrBot 逐条发送当前 SQLite 中的全部绑定；启用白名单同步时也会移除旧缓存对应的白名单条目。AstrBot SQLite 数据库仍是聊天平台绑定的事实来源。Mod 应按服务器认证模式解析 `NameAndId`，直接更新和保存原版白名单，并仅在读回状态与目标一致时返回 `ok=true`。成功响应的 `data` 会包含 `player_uuid`、`whitelist_changed` 与 `whitelist_verified`。
+
+## v0.6.9 管理员可信名单扩展
+
+### `trusted_users`
+
+AstrBot 插件可在 Mod 建立连接后发送当前 Bot 管理员列表：
+
+```json
+{
+  "type": "query",
+  "message_id": "uuid",
+  "query": "trusted_users",
+  "action": "replace",
+  "users": ["123456789", "default:123456789", "discord:987654321"]
+}
+```
+
+该查询仅在 AstrBot 插件 `sync_command_admins_to_server=true` 且 Mod `syncTrustedCommandUsers=true` 时使用。`replace` 只替换本次 WebSocket 连接同步的内存集合；不得覆盖或保存 Mod 的静态 `trustedCommandUsers`。连接关闭或认证失败后必须清空同步集合。命令执行仍须同时满足 `enableCommandTool=true` 和 `allowedCommandRules`，因此同步管理员不会隐式允许 `op` 或任意命令。
 
 ## Mod → AstrBot 事件扩展
 

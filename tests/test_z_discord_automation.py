@@ -155,6 +155,24 @@ class ConfigLayoutTests(unittest.TestCase):
             "discord:99",
         )
 
+    def test_command_admin_sync_unions_plugin_and_astrbot_admins_safely(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "admin_command_settings": {
+                "bridge_admin_users": "default:42\n42\nbad value",
+                "sync_command_admins_to_server": True,
+            }
+        }
+        plugin.context = types.SimpleNamespace(
+            get_config=lambda: {
+                "admins_id": ["42", "discord:99", "also bad value"]
+            }
+        )
+        self.assertEqual(
+            plugin._configured_command_admins(),
+            ["default:42", "42", "discord:99"],
+        )
+
 
 class NotificationLocalizationTests(unittest.IsolatedAsyncioTestCase):
     def _plugin(self):
@@ -265,6 +283,52 @@ class NotificationLocalizationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             plugin._send_to_relay_session.await_args.args[0],
             "default:GroupMessage:10001",
+        )
+
+    async def test_each_platform_supports_single_or_multiple_custom_languages(self):
+        plugin = self._plugin()
+        qq_settings = plugin.config["qq_settings"]["qq_notification_settings"]
+        discord_settings = plugin.config["discord_settings"][
+            "discord_notification_settings"
+        ]
+        qq_settings["language"] = "zh_CN\nen_US"
+        qq_settings["localized_templates"] = {
+            "zh_CN": {
+                "notify_server_start": "【中文】\n{server} 已上线"
+            },
+            "en_US": {
+                "notify_server_start": "[English]\n{server} is online"
+            },
+        }
+        discord_settings["language"] = "en_US"
+        values = {
+            "server": "Motiquies",
+            "server_id": "minecraft",
+        }
+
+        await plugin._send_event_to_relay_sessions(
+            "server_start", values, {}
+        )
+
+        calls = {
+            call.args[0]: call.args[1]
+            for call in plugin._send_to_relay_session.await_args_list
+        }
+        self.assertEqual(
+            calls["default:GroupMessage:10001"],
+            "【中文】\nMotiquies 已上线\n[English]\nMotiquies is online",
+        )
+        self.assertEqual(
+            calls["discord:GroupMessage:20002"],
+            "[MC] Motiquies connected.",
+        )
+
+    def test_notification_language_list_is_ordered_deduplicated_and_validated(self):
+        self.assertEqual(
+            MAIN.MineAstrPlugin._notification_languages(
+                "en-us\nzh_CN\nen_US\ninvalid"
+            ),
+            ("en_US", "zh_CN"),
         )
 
 

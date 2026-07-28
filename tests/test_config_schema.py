@@ -44,10 +44,13 @@ class ConfigSchemaTests(unittest.TestCase):
         metadata_path = Path(__file__).resolve().parents[1] / "metadata.yaml"
         metadata = metadata_path.read_text(encoding="utf-8")
         self.assertIn("author: YU322142", metadata)
+        self.assertIn("version: v0.6.9", metadata)
         self.assertIn(
             'repo: "https://github.com/YU322142/MineAstr/tree/astrbot-plugin"',
             metadata,
         )
+        main = (metadata_path.parent / "main.py").read_text(encoding="utf-8")
+        self.assertIn('    "0.6.9",\n)', main)
 
     def test_newline_delimited_fields_use_astrbot_textarea_type(self):
         schema = self._schema()
@@ -152,8 +155,18 @@ class ConfigSchemaTests(unittest.TestCase):
                     settings["items"]["platform_ids"]["default"], expected_id
                 )
                 self.assertIn("language", settings["items"])
+                self.assertEqual(settings["items"]["language"]["type"], "text")
                 self.assertIn("notifications_enabled", settings["items"])
                 self.assertIn("notify_player_death_enabled", settings["items"])
+                localized = settings["items"]["localized_templates"]
+                self.assertEqual(localized["type"], "object")
+                for language in ("zh_CN", "en_US"):
+                    self.assertEqual(
+                        localized["items"][language]["items"][
+                            "notify_player_death"
+                        ]["type"],
+                        "text",
+                    )
 
     def test_notification_defaults_use_mc_prefix_and_login_has_a_switch(self):
         schema = self._schema()
@@ -181,6 +194,12 @@ class ConfigSchemaTests(unittest.TestCase):
         self.assertTrue(
             self._visible_field(schema, "game_translation_show_original")["default"]
         )
+
+    def test_command_admin_sync_is_explicit_and_disabled_by_default(self):
+        schema = self._schema()
+        field = self._visible_field(schema, "sync_command_admins_to_server")
+        self.assertEqual(field["type"], "bool")
+        self.assertFalse(field["default"])
 
 
 if __name__ == "__main__":

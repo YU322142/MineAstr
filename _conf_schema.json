@@ -88,7 +88,7 @@
       "game_translation_show_original": {
         "description": "默认同时显示原文",
         "type": "bool",
-        "hint": "未安装客户端 Mod 的玩家使用此默认值；安装 v0.6.7 客户端 Mod 后，玩家可在 F8 设置中自行选择翻译、翻译+原文或仅原文。",
+        "hint": "未安装客户端 Mod 的玩家使用此默认值；安装 v0.6.7 或更高版本客户端 Mod 后，玩家可在 F8 设置中自行选择翻译、翻译+原文或仅原文。",
         "default": true
       },
       "game_translation_timeout_seconds": {
@@ -222,9 +222,9 @@
             "default": "default"
           },
           "language": {
-            "description": "QQ 通知语言",
-            "type": "string",
-            "options": ["zh_CN", "en_US"],
+            "description": "QQ 通知语言（每行一个）",
+            "type": "text",
+            "hint": "单语只写一行；中英同时显示时写两行：zh_CN 和 en_US。输出顺序与这里一致。",
             "default": "zh_CN"
           },
           "notifications_enabled": {"description": "QQ 事件通知总开关", "type": "bool", "default": true},
@@ -233,11 +233,41 @@
           "notify_player_join_enabled": {"description": "QQ：玩家进入通知", "type": "bool", "default": true},
           "notify_player_leave_enabled": {"description": "QQ：玩家离开通知", "type": "bool", "default": true},
           "notify_player_death_enabled": {"description": "QQ：玩家死亡通知", "type": "bool", "default": true},
-          "notify_server_start": {"description": "QQ 服务器连接模板（留空使用语言预设）", "type": "string", "default": ""},
-          "notify_server_stop": {"description": "QQ 服务器断开模板（留空使用语言预设）", "type": "string", "default": ""},
-          "notify_player_join": {"description": "QQ 玩家进入模板（留空使用语言预设）", "type": "string", "default": ""},
-          "notify_player_leave": {"description": "QQ 玩家离开模板（留空使用语言预设）", "type": "string", "default": ""},
-          "notify_player_death": {"description": "QQ 玩家死亡模板（留空使用语言预设）", "type": "string", "default": ""}
+          "notify_server_start": {"description": "QQ 通用服务器连接模板（高级兼容）", "type": "string", "hint": "非空时只发送这一份并覆盖多语言输出；多语言自定义请使用下方分语言样式。", "default": ""},
+          "notify_server_stop": {"description": "QQ 通用服务器断开模板（高级兼容）", "type": "string", "hint": "非空时只发送这一份并覆盖多语言输出。", "default": ""},
+          "notify_player_join": {"description": "QQ 通用玩家进入模板（高级兼容）", "type": "string", "hint": "非空时只发送这一份并覆盖多语言输出。", "default": ""},
+          "notify_player_leave": {"description": "QQ 通用玩家离开模板（高级兼容）", "type": "string", "hint": "非空时只发送这一份并覆盖多语言输出。", "default": ""},
+          "notify_player_death": {"description": "QQ 通用玩家死亡模板（高级兼容）", "type": "string", "hint": "非空时只发送这一份并覆盖多语言输出。", "default": ""},
+          "localized_templates": {
+            "description": "QQ 分语言自定义样式",
+            "type": "object",
+            "hint": "每种语言可分别定制五类通知；留空使用该语言预设。支持原有模板占位符，文本框内可换行。",
+            "obvious_hint": true,
+            "items": {
+              "zh_CN": {
+                "description": "简体中文样式",
+                "type": "object",
+                "items": {
+                  "notify_server_start": {"description": "服务器连接", "type": "text", "default": ""},
+                  "notify_server_stop": {"description": "服务器断开", "type": "text", "default": ""},
+                  "notify_player_join": {"description": "玩家进入", "type": "text", "default": ""},
+                  "notify_player_leave": {"description": "玩家离开", "type": "text", "default": ""},
+                  "notify_player_death": {"description": "玩家死亡", "type": "text", "default": ""}
+                }
+              },
+              "en_US": {
+                "description": "English (US) styles",
+                "type": "object",
+                "items": {
+                  "notify_server_start": {"description": "Server connected", "type": "text", "default": ""},
+                  "notify_server_stop": {"description": "Server disconnected", "type": "text", "default": ""},
+                  "notify_player_join": {"description": "Player joined", "type": "text", "default": ""},
+                  "notify_player_leave": {"description": "Player left", "type": "text", "default": ""},
+                  "notify_player_death": {"description": "Player death", "type": "text", "default": ""}
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -293,9 +323,9 @@
             "default": "discord"
           },
           "language": {
-            "description": "Discord 通知语言",
-            "type": "string",
-            "options": ["zh_CN", "en_US"],
+            "description": "Discord 通知语言（每行一个）",
+            "type": "text",
+            "hint": "单语只写一行；中英同时显示时写两行：zh_CN 和 en_US。输出顺序与这里一致。",
             "default": "zh_CN"
           },
           "notifications_enabled": {"description": "Discord 事件通知总开关", "type": "bool", "default": true},
@@ -304,11 +334,41 @@
           "notify_player_join_enabled": {"description": "Discord：玩家进入通知", "type": "bool", "default": true},
           "notify_player_leave_enabled": {"description": "Discord：玩家离开通知", "type": "bool", "default": true},
           "notify_player_death_enabled": {"description": "Discord：玩家死亡通知", "type": "bool", "default": true},
-          "notify_server_start": {"description": "Discord 服务器连接模板（留空使用语言预设）", "type": "string", "default": ""},
-          "notify_server_stop": {"description": "Discord 服务器断开模板（留空使用语言预设）", "type": "string", "default": ""},
-          "notify_player_join": {"description": "Discord 玩家进入模板（留空使用语言预设）", "type": "string", "default": ""},
-          "notify_player_leave": {"description": "Discord 玩家离开模板（留空使用语言预设）", "type": "string", "default": ""},
-          "notify_player_death": {"description": "Discord 玩家死亡模板（留空使用语言预设）", "type": "string", "default": ""}
+          "notify_server_start": {"description": "Discord 通用服务器连接模板（高级兼容）", "type": "string", "hint": "非空时只发送这一份并覆盖多语言输出；多语言自定义请使用下方分语言样式。", "default": ""},
+          "notify_server_stop": {"description": "Discord 通用服务器断开模板（高级兼容）", "type": "string", "hint": "非空时只发送这一份并覆盖多语言输出。", "default": ""},
+          "notify_player_join": {"description": "Discord 通用玩家进入模板（高级兼容）", "type": "string", "hint": "非空时只发送这一份并覆盖多语言输出。", "default": ""},
+          "notify_player_leave": {"description": "Discord 通用玩家离开模板（高级兼容）", "type": "string", "hint": "非空时只发送这一份并覆盖多语言输出。", "default": ""},
+          "notify_player_death": {"description": "Discord 通用玩家死亡模板（高级兼容）", "type": "string", "hint": "非空时只发送这一份并覆盖多语言输出。", "default": ""},
+          "localized_templates": {
+            "description": "Discord 分语言自定义样式",
+            "type": "object",
+            "hint": "每种语言可分别定制五类通知；留空使用该语言预设。支持原有模板占位符，文本框内可换行。",
+            "obvious_hint": true,
+            "items": {
+              "zh_CN": {
+                "description": "简体中文样式",
+                "type": "object",
+                "items": {
+                  "notify_server_start": {"description": "服务器连接", "type": "text", "default": ""},
+                  "notify_server_stop": {"description": "服务器断开", "type": "text", "default": ""},
+                  "notify_player_join": {"description": "玩家进入", "type": "text", "default": ""},
+                  "notify_player_leave": {"description": "玩家离开", "type": "text", "default": ""},
+                  "notify_player_death": {"description": "玩家死亡", "type": "text", "default": ""}
+                }
+              },
+              "en_US": {
+                "description": "English (US) styles",
+                "type": "object",
+                "items": {
+                  "notify_server_start": {"description": "Server connected", "type": "text", "default": ""},
+                  "notify_server_stop": {"description": "Server disconnected", "type": "text", "default": ""},
+                  "notify_player_join": {"description": "Player joined", "type": "text", "default": ""},
+                  "notify_player_leave": {"description": "Player left", "type": "text", "default": ""},
+                  "notify_player_death": {"description": "Player death", "type": "text", "default": ""}
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -325,6 +385,13 @@
         "hint": "QQ 示例 default:123456789；Discord 示例 discord:123456789012345678。也可只写用户 ID。只有一个管理员时写一行即可。",
         "obvious_hint": true,
         "default": ""
+      },
+      "sync_command_admins_to_server": {
+        "description": "同步 Bot 管理员到服务端命令可信名单",
+        "type": "bool",
+        "hint": "开启后，Mod 每次连接时会用 MineAstr 管理员和 AstrBot 全局 admins_id 更新一份内存可信名单。Mod 侧还需 syncTrustedCommandUsers=true；本地 trustedCommandUsers、allowedCommandRules 和命令总开关不会被修改。",
+        "obvious_hint": true,
+        "default": false
       },
       "remote_command_enabled": {
         "description": "启用 /mc command",
@@ -457,7 +524,7 @@
     "invisible": true,
     "items": {
       "platform_ids": {"type": "text", "default": "default"},
-      "language": {"type": "string", "default": "zh_CN"},
+      "language": {"type": "text", "default": "zh_CN"},
       "notifications_enabled": {"type": "bool", "default": true},
       "notify_server_start_enabled": {"type": "bool", "default": true},
       "notify_server_stop_enabled": {"type": "bool", "default": true},
@@ -468,7 +535,32 @@
       "notify_server_stop": {"type": "string", "default": ""},
       "notify_player_join": {"type": "string", "default": ""},
       "notify_player_leave": {"type": "string", "default": ""},
-      "notify_player_death": {"type": "string", "default": ""}
+      "notify_player_death": {"type": "string", "default": ""},
+      "localized_templates": {
+        "type": "object",
+        "items": {
+          "zh_CN": {
+            "type": "object",
+            "items": {
+              "notify_server_start": {"type": "text", "default": ""},
+              "notify_server_stop": {"type": "text", "default": ""},
+              "notify_player_join": {"type": "text", "default": ""},
+              "notify_player_leave": {"type": "text", "default": ""},
+              "notify_player_death": {"type": "text", "default": ""}
+            }
+          },
+          "en_US": {
+            "type": "object",
+            "items": {
+              "notify_server_start": {"type": "text", "default": ""},
+              "notify_server_stop": {"type": "text", "default": ""},
+              "notify_player_join": {"type": "text", "default": ""},
+              "notify_player_leave": {"type": "text", "default": ""},
+              "notify_player_death": {"type": "text", "default": ""}
+            }
+          }
+        }
+      }
     }
   },
   "discord_auto_unbind_on_leave": {"type": "bool", "default": true, "invisible": true},
@@ -482,7 +574,7 @@
     "invisible": true,
     "items": {
       "platform_ids": {"type": "text", "default": "discord"},
-      "language": {"type": "string", "default": "zh_CN"},
+      "language": {"type": "text", "default": "zh_CN"},
       "notifications_enabled": {"type": "bool", "default": true},
       "notify_server_start_enabled": {"type": "bool", "default": true},
       "notify_server_stop_enabled": {"type": "bool", "default": true},
@@ -493,12 +585,38 @@
       "notify_server_stop": {"type": "string", "default": ""},
       "notify_player_join": {"type": "string", "default": ""},
       "notify_player_leave": {"type": "string", "default": ""},
-      "notify_player_death": {"type": "string", "default": ""}
+      "notify_player_death": {"type": "string", "default": ""},
+      "localized_templates": {
+        "type": "object",
+        "items": {
+          "zh_CN": {
+            "type": "object",
+            "items": {
+              "notify_server_start": {"type": "text", "default": ""},
+              "notify_server_stop": {"type": "text", "default": ""},
+              "notify_player_join": {"type": "text", "default": ""},
+              "notify_player_leave": {"type": "text", "default": ""},
+              "notify_player_death": {"type": "text", "default": ""}
+            }
+          },
+          "en_US": {
+            "type": "object",
+            "items": {
+              "notify_server_start": {"type": "text", "default": ""},
+              "notify_server_stop": {"type": "text", "default": ""},
+              "notify_player_join": {"type": "text", "default": ""},
+              "notify_player_leave": {"type": "text", "default": ""},
+              "notify_player_death": {"type": "text", "default": ""}
+            }
+          }
+        }
+      }
     }
   },
   "remote_command_enabled": {"type": "bool", "default": false, "invisible": true},
   "remote_command_admin_only": {"type": "bool", "default": true, "invisible": true},
   "bridge_admin_users": {"type": "text", "default": "", "invisible": true},
+  "sync_command_admins_to_server": {"type": "bool", "default": false, "invisible": true},
   "player_mention_enabled": {"type": "bool", "default": true, "invisible": true},
   "notifications_enabled": {"type": "bool", "default": true, "invisible": true},
   "notification_language": {"type": "string", "default": "zh_CN", "invisible": true},

@@ -222,6 +222,39 @@ class AdapterEventTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["applied"], 1)
 
+    async def test_reconnect_replaces_trusted_command_users(self):
+        adapter = MinecraftPlatformAdapter({}, {}, None)
+        websocket = FakeWebSocket()
+        await adapter.connection_manager.register(
+            websocket,
+            {"server_id": "survival", "server_name": "Survival"},
+        )
+
+        task = asyncio.create_task(
+            adapter.replace_trusted_command_users(
+                "survival",
+                ["default:42", "discord:99", "bad value", "default:42"],
+            )
+        )
+        await asyncio.sleep(0)
+        request = websocket.sent[-1]
+        self.assertEqual(request["query"], "trusted_users")
+        self.assertEqual(request["action"], "replace")
+        self.assertEqual(request["users"], ["default:42", "discord:99"])
+        await adapter.connection_manager.resolve_query(
+            websocket,
+            {
+                "type": "query_result",
+                "query": "trusted_users",
+                "message_id": request["message_id"],
+                "ok": True,
+                "data": {"synced_count": 2},
+            },
+        )
+        result = await task
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["data"]["synced_count"], 2)
+
     async def test_login_check_listener_controls_event_result(self):
         adapter = MinecraftPlatformAdapter({}, {}, None)
         websocket = FakeWebSocket()

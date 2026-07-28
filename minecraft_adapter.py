@@ -955,6 +955,31 @@ class MinecraftPlatformAdapter(Platform):
             applied += 1
         return {"ok": True, "applied": applied, "server_id": server_id}
 
+    async def replace_trusted_command_users(
+        self, server_id: str, users: list[str]
+    ) -> dict[str, Any]:
+        """Replace the Mod's in-memory AstrBot administrator trust set."""
+
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for user in users:
+            value = str(user or "").strip()
+            folded = value.casefold()
+            if (
+                not value
+                or len(value) > 128
+                or any(character.isspace() or ord(character) < 32 for character in value)
+                or folded in seen
+            ):
+                continue
+            seen.add(folded)
+            normalized.append(value)
+        return await self.connection_manager.query(
+            "trusted_users",
+            server_id,
+            params={"action": "replace", "users": normalized[:256]},
+        )
+
     async def local_status(self) -> dict[str, Any]:
         return {
             "ok": True,

@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import copy
 import json
 import math
 import re
@@ -95,6 +96,14 @@ NOTIFICATION_EVENT_CONFIG = {
     "player_death": ("notify_player_death_enabled", "notify_player_death"),
 }
 
+LOCALIZED_NOTIFICATION_TEMPLATE_DEFAULTS: dict[str, dict[str, str]] = {
+    language: {
+        template_key: ""
+        for _, template_key in NOTIFICATION_EVENT_CONFIG.values()
+    }
+    for language in NOTIFICATION_PRESETS
+}
+
 QQ_NOTIFICATION_DEFAULTS: dict[str, Any] = {
     "platform_ids": "default",
     "language": "zh_CN",
@@ -109,11 +118,14 @@ QQ_NOTIFICATION_DEFAULTS: dict[str, Any] = {
     "notify_player_join": "",
     "notify_player_leave": "",
     "notify_player_death": "",
+    "localized_templates": copy.deepcopy(
+        LOCALIZED_NOTIFICATION_TEMPLATE_DEFAULTS
+    ),
 }
-DISCORD_NOTIFICATION_DEFAULTS: dict[str, Any] = {
-    **QQ_NOTIFICATION_DEFAULTS,
-    "platform_ids": "discord",
-}
+DISCORD_NOTIFICATION_DEFAULTS: dict[str, Any] = copy.deepcopy(
+    QQ_NOTIFICATION_DEFAULTS
+)
+DISCORD_NOTIFICATION_DEFAULTS["platform_ids"] = "discord"
 
 DAMAGE_REASON_PRESETS: dict[str, dict[str, str]] = {
     "zh_CN": {
@@ -239,17 +251,18 @@ AQQBOT_DEFAULT_CONFIG: dict[str, Any] = {
     "qq_auto_group_card": True,
     "qq_group_ids": "",
     "qq_group_card_template": "{players}",
-    "qq_notification_settings": QQ_NOTIFICATION_DEFAULTS.copy(),
+    "qq_notification_settings": copy.deepcopy(QQ_NOTIFICATION_DEFAULTS),
     "discord_auto_unbind_on_leave": True,
     "discord_auto_nickname": True,
     "discord_restore_nickname_on_unbind": True,
     "discord_guild_ids": "",
     "discord_nickname_template": "{players}",
     "discord_nickname_reason": "MineAstr Minecraft 账号绑定同步",
-    "discord_notification_settings": DISCORD_NOTIFICATION_DEFAULTS.copy(),
+    "discord_notification_settings": copy.deepcopy(DISCORD_NOTIFICATION_DEFAULTS),
     "remote_command_enabled": False,
     "remote_command_admin_only": True,
     "bridge_admin_users": "",
+    "sync_command_admins_to_server": False,
     "player_mention_enabled": True,
     "notifications_enabled": True,
     "notification_language": "zh_CN",
@@ -317,6 +330,7 @@ CONFIG_GROUP_KEYS: dict[str, tuple[str, ...]] = {
     ),
     "admin_command_settings": (
         "bridge_admin_users",
+        "sync_command_admins_to_server",
         "remote_command_enabled",
         "remote_command_admin_only",
     ),
@@ -357,7 +371,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.6.7",
+    "0.6.9",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -1204,6 +1218,23 @@ class MineAstrPlugin(Star):
                 return language
         return "zh_CN"
 
+    @staticmethod
+    def _notification_languages(value: Any) -> tuple[str, ...]:
+        languages: list[str] = []
+        for item in parse_items(value):
+            normalized = str(item or "").strip().replace("-", "_")
+            selected = next(
+                (
+                    language
+                    for language in NOTIFICATION_PRESETS
+                    if language.casefold() == normalized.casefold()
+                ),
+                None,
+            )
+            if selected and selected not in languages:
+                languages.append(selected)
+        return tuple(languages or ("zh_CN",))
+
     def _platform_notification_profile(
         self, platform_id: str
     ) -> dict[str, Any] | None:
@@ -1241,6 +1272,18 @@ class MineAstrPlugin(Star):
             if MineAstrPlugin._uses_notification_preset(key, configured)
             else custom
         )
+
+    @staticmethod
+    def _profile_localized_template(
+        profile: dict[str, Any], language: str, template_key: str
+    ) -> str:
+        localized = profile.get("localized_templates")
+        if not isinstance(localized, dict):
+            return ""
+        language_templates = localized.get(language)
+        if not isinstance(language_templates, dict):
+            return ""
+        return str(language_templates.get(template_key) or "").strip()
 
     @staticmethod
     def _death_reason(
@@ -1299,24 +1342,43 @@ class MineAstrPlugin(Star):
                 enabled = bool(profile[enabled_key])
             if not enabled:
                 continue
-            language = self._normalize_notification_language(
+            languages = self._notification_languages(
                 (profile.get("language") if profile is not None else None)
                 or self._cfg("notification_language")
             )
-            configured_template = self._cfg(template_key)
-            if profile is not None and str(profile.get(template_key) or "").strip():
-                configured_template = profile[template_key]
-            template = self._localized_template(
-                template_key, language, configured_template
+            common_template = (
+                str(profile.get(template_key) or "").strip()
+                if profile is not None
+                else ""
             )
-            localized_values = dict(values)
-            if event_name == "player_death":
-                localized_values["reason"] = self._death_reason(
-                    payload, values.get("player", ""), language
+            if common_template:
+                languages = languages[:1]
+
+            rendered_messages: list[str] = []
+            for language in languages:
+                if common_template:
+                    configured_template = common_template
+                elif profile is not None:
+                    configured_template = self._profile_localized_template(
+                        profile, language, template_key
+                    )
+                else:
+                    configured_template = self._cfg(template_key)
+                template = self._localized_template(
+                    template_key, language, configured_template
                 )
-            await self._send_to_relay_session(
-                session, format_template(template, localized_values)
-            )
+                localized_values = dict(values)
+                if event_name == "player_death":
+                    localized_values["reason"] = self._death_reason(
+                        payload, values.get("player", ""), language
+                    )
+                rendered = format_template(template, localized_values)
+                if rendered and rendered not in rendered_messages:
+                    rendered_messages.append(rendered)
+            if rendered_messages:
+                await self._send_to_relay_session(
+                    session, "\n".join(rendered_messages)
+                )
 
     async def _sync_binding_to_server(self, action: str, record: Any) -> dict[str, Any]:
         if not self._cfg_bool("sync_binding_to_server"):
@@ -1348,8 +1410,53 @@ class MineAstrPlugin(Star):
         self._binding_reconcile_tasks.add(task)
         task.add_done_callback(self._binding_reconcile_tasks.discard)
 
+    def _configured_command_admins(self) -> list[str]:
+        candidates = list(parse_items(self._cfg("bridge_admin_users")))
+        get_config = getattr(self.context, "get_config", None)
+        if callable(get_config):
+            try:
+                core_config = get_config()
+                if isinstance(core_config, dict):
+                    candidates.extend(parse_items(core_config.get("admins_id")))
+            except (AttributeError, TypeError, ValueError):
+                pass
+        admins: list[str] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            value = str(candidate or "").strip()
+            normalized = value.casefold()
+            if (
+                not value
+                or len(value) > 128
+                or any(character.isspace() or ord(character) < 32 for character in value)
+                or normalized in seen
+            ):
+                continue
+            seen.add(normalized)
+            admins.append(value)
+        return admins[:256]
+
+    def _schedule_command_admin_reconcile(self, server_id: str) -> None:
+        if not self._cfg_bool("sync_command_admins_to_server") or not server_id:
+            return
+        adapter = self._minecraft_adapter()
+        if adapter is None or not hasattr(
+            adapter, "replace_trusted_command_users"
+        ):
+            logger.warning("MineAstr minecraft 平台适配器不支持管理员可信名单同步。")
+            return
+        task = asyncio.create_task(
+            self._reconcile_command_admins_to_server(server_id),
+            name=f"mineastr-admin-reconcile-{server_id}",
+        )
+        self._binding_reconcile_tasks.add(task)
+        task.add_done_callback(self._binding_reconcile_tasks.discard)
+
     async def _schedule_connected_server_reconcile(self) -> None:
-        if not self._cfg_bool("sync_binding_to_server"):
+        if not (
+            self._cfg_bool("sync_binding_to_server")
+            or self._cfg_bool("sync_command_admins_to_server")
+        ):
             return
         adapter = self._minecraft_adapter()
         manager = getattr(adapter, "connection_manager", None)
@@ -1357,9 +1464,9 @@ class MineAstrPlugin(Star):
             return
         try:
             for metadata in await manager.snapshot():
-                self._schedule_binding_reconcile(
-                    str(metadata.get("server_id") or "")
-                )
+                server_id = str(metadata.get("server_id") or "")
+                self._schedule_binding_reconcile(server_id)
+                self._schedule_command_admin_reconcile(server_id)
         except Exception as exc:
             logger.warning("MineAstr 读取已连接服务器列表失败：%s", exc)
 
@@ -1390,6 +1497,39 @@ class MineAstrPlugin(Star):
         except Exception as exc:
             logger.warning("MineAstr 向服务器 %s 对账绑定失败：%s", server_id, exc)
 
+    async def _reconcile_command_admins_to_server(self, server_id: str) -> None:
+        await asyncio.sleep(0)
+        adapter = self._minecraft_adapter()
+        if adapter is None or not hasattr(
+            adapter, "replace_trusted_command_users"
+        ):
+            return
+        admins = self._configured_command_admins()
+        try:
+            result = await adapter.replace_trusted_command_users(
+                server_id, admins
+            )
+            if result.get("ok"):
+                logger.warning(
+                    "MineAstr 已向服务器 %s 同步 %d 个命令管理员；服务端静态可信名单保持不变。",
+                    server_id,
+                    len(admins),
+                )
+            else:
+                logger.warning(
+                    "MineAstr 向服务器 %s 同步命令管理员失败：%s",
+                    server_id,
+                    result.get("error") or "未知错误",
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                "MineAstr 向服务器 %s 同步命令管理员失败：%s",
+                server_id,
+                exc,
+            )
+
     def _consume_verify_code(self, code: str) -> str | None:
         now = time.monotonic()
         for candidate, data in list(self._verify_codes.items()):
@@ -1408,7 +1548,9 @@ class MineAstrPlugin(Star):
             logger.warning("MineAstr 已移除登录显示名中的网络地址后缀。")
 
         if event_name == "server_start":
-            self._schedule_binding_reconcile(str(payload.get("server_id") or ""))
+            server_id = str(payload.get("server_id") or "")
+            self._schedule_binding_reconcile(server_id)
+            self._schedule_command_admin_reconcile(server_id)
 
         if event_name == "binding_code":
             code = str(payload.get("code") or "").strip()
