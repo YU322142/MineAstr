@@ -16,15 +16,15 @@ MineAstr 将 Minecraft 1.21.11 Fabric 服务器接入 AstrBot、QQ/OneBot 与 Di
 
 ## 当前版本
 
-- AstrBot 插件：`0.6.5`
-- MineAstr Fabric Mod：`0.6.5`
+- AstrBot 插件：`0.6.6`
+- MineAstr Fabric Mod：`0.6.6`
 - Minecraft：`1.21.11`
 - Fabric API：`0.141.4+1.21.11`
 
 成品请从 [GitHub Releases](https://github.com/YU322142/MineAstr/releases) 下载：
 
-- `astrbot_plugin_mineastr-v0.6.5.zip`
-- `mineastr-fabric-0.6.5.jar`
+- `astrbot_plugin_mineastr-v0.6.6.zip`
+- `mineastr-fabric-0.6.6.jar`
 
 ## 连接方式
 
@@ -40,7 +40,9 @@ Minecraft MineAstr Mod -> ws://astrbot.example.com:8765/ws -> AstrBot
 
 ## 绑定与白名单
 
-`0.6.5` 会按服务器在线/离线认证模式解析玩家 UUID，直接写入并保存原版白名单，再读回核验。若解析、保存或核验失败，Mod 会向 AstrBot 返回失败，不再显示虚假的同步成功。
+`0.6.6` 会按服务器在线/离线认证模式解析玩家 UUID，直接写入并保存原版白名单，再读回核验。登录检查只使用认证得到的纯玩家名，不会把玩家 IP/端口写入绑定；插件启动时会自动迁移旧版错误记录并重新同步白名单。若解析、保存或核验失败，Mod 会向 AstrBot 返回失败，不再显示虚假的同步成功。
+
+AstrBot 插件元数据的安装/更新源为本 Fork 的 [`astrbot-plugin`](https://github.com/YU322142/MineAstr/tree/astrbot-plugin) 分支，不会回到上游仓库或下载索引用的 `main` 分支。
 
 需要“检查玩家已绑定、同步原版白名单、AstrBot 断线或超时仍放行”时：
 
@@ -51,9 +53,9 @@ Minecraft MineAstr Mod -> ws://astrbot.example.com:8765/ws -> AstrBot
 
 ## 构建验证
 
-- AstrBot 插件：29 个测试通过，另含 20 个参数化子测试。
+- AstrBot 插件：32 个测试通过，另含 20 个参数化子测试。
 - Fabric Mod：Gradle `clean build` 通过。
-- 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证绑定写入 UUID、`whitelist_verified=true`、解绑移除和正常关服保存。
+- 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证 Mixin 纯玩家名访问器加载、绑定写入 UUID、`whitelist_verified=true`、解绑移除和正常关服保存。
 
 ## 许可与来源
 
