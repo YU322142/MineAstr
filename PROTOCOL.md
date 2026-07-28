@@ -1,6 +1,6 @@
 # MineAstr WebSocket 协议
 
-本文描述 AstrBot 插件 `v0.6.9` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
+本文描述 AstrBot 插件 `v0.6.10` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
 
 ## 连接与认证
 
@@ -19,7 +19,7 @@ Authorization: Bearer <token>
   "protocol": 1,
   "server_id": "survival",
   "server_name": "Survival Server",
-  "mod_version": "0.6.9"
+  "mod_version": "0.6.10"
 }
 ```
 
@@ -143,7 +143,7 @@ Mod 应只允许通知在线的准确玩家名，并在服务端配置中决定�
 }
 ```
 
-`action` 支持 `bind` / `unbind` / `reset`。`reset` 不带玩家身份，用于 Mod 每次重连后先清空绑定缓存，再由 AstrBot 逐条发送当前 SQLite 中的全部绑定；启用白名单同步时也会移除旧缓存对应的白名单条目。AstrBot SQLite 数据库仍是聊天平台绑定的事实来源。Mod 应按服务器认证模式解析 `NameAndId`，直接更新和保存原版白名单，并仅在读回状态与目标一致时返回 `ok=true`。成功响应的 `data` 会包含 `player_uuid`、`whitelist_changed` 与 `whitelist_verified`。
+`action` 支持 `bind` / `unbind` / `reset`。`reset` 不带玩家身份，用于 Mod 每次重连后先清空绑定缓存，再由 AstrBot 逐条发送当前 SQLite 中的全部绑定；启用白名单同步时也会移除旧缓存对应的白名单条目。AstrBot SQLite 数据库仍是聊天平台绑定的事实来源。Mod 应按服务器认证模式解析 `NameAndId`，直接更新和保存原版白名单，并仅在读回状态与目标一致时返回 `ok=true`。成功响应的 `data` 会包含 `player_uuid`、`identity_source`、`whitelist_changed` 与 `whitelist_verified`。`identity_source` 可为 `offline_mode`、`authenticated_profile`、`observed_login` 或 `synced_binding`；0.6.10 Mod 还会在原版白名单检查前使用本次连接的真实 `NameAndId` 修正代理/Floodgate 身份。
 
 ## v0.6.9 管理员可信名单扩展
 
