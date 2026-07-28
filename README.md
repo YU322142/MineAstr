@@ -6,9 +6,9 @@ MineAstr 是同一仓库中 AstrBot MineAstr 插件的 Minecraft 端，已适配
 - Fabric Loader `0.19.3`（最低 `0.18.1`）
 - Fabric API `0.141.4+1.21.11`
 - Java `21`
-- MineAstr `0.6.9`
+- MineAstr `0.6.10`
 
-同一个 `mineastr-fabric-0.6.9.jar` 可以放在独立服务端、客户端或两端。服务端只安装 Mod 即可使用聊天、事件、绑定、登录检查及查询；截图功能要求目标玩家客户端也安装该 JAR。
+同一个 `mineastr-fabric-0.6.10.jar` 可以放在独立服务端、客户端或两端。服务端只安装 Mod 即可使用聊天、事件、绑定、登录检查及查询；截图功能要求目标玩家客户端也安装该 JAR。
 
 ## 功能
 
@@ -31,13 +31,13 @@ MineAstr 是同一仓库中 AstrBot MineAstr 插件的 Minecraft 端，已适配
 .\gradlew.bat clean build
 ```
 
-产物位于 `build/libs/mineastr-fabric-0.6.9.jar`。
+产物位于 `build/libs/mineastr-fabric-0.6.10.jar`。
 
 ## 安装
 
 1. 为 Minecraft 1.21.11 安装 Fabric Loader。
 2. 把 `fabric-api-0.141.4+1.21.11.jar` 放入 `mods`。
-3. 把 `mineastr-fabric-0.6.9.jar` 放入 `mods`。
+3. 把 `mineastr-fabric-0.6.10.jar` 放入 `mods`。
 4. 启动一次，生成 `config/mineastr-common.json`。
 5. 把配置中的 `token` 改成与 AstrBot `minecraft` 平台适配器完全相同的随机字符串，然后重启。
 
@@ -172,8 +172,8 @@ Mod 每次连接或重连后，AstrBot 会先重置服务端绑定缓存，再�
 - 一直重连：确认 AstrBot `minecraft` 平台已启用，端口和路径一致，防火墙允许连接。
 - 绑定没有进入 Mod：两端绑定同步开关都要启用。
 - 登录检查无效：两端登录检查开关都要启用；查看 Mod 是否已连接 AstrBot。
-- 游戏名后出现 `(/[IPv6]:端口)`：升级插件和 Mod 到 `0.6.9`；新版读取纯登录玩家名，插件会自动迁移旧绑定。
-- 绑定成功但仍提示不在白名单：必须同时使用 `0.6.9` 插件和 Mod，并在日志确认出现 `whitelist_verified=true`；正版模式下无法解析的非正版玩家名不会被假装同步成功。
+- 游戏名后出现 `(/[IPv6]:端口)`：升级插件和 Mod 到 `0.6.9` 或更高版本；新版读取纯登录玩家名，插件会自动迁移旧绑定。
+- 绑定成功但仍提示不在白名单：升级插件和 Mod 到 `0.6.10`。启动器显示“正版/online”不代表 `online-mode=false` 的后端会使用 Mojang UUID；新版会按服务端认证模式写入 UUID，并在原版白名单检查前按本次连接的真实身份再次对账。日志中的 `identity_source=offline_mode` 表示使用离线 UUID，`whitelist_verified=true` 表示目标身份已写入并持久化。
 - 截图提示不支持：目标玩家客户端也需要安装同一 MineAstr JAR 和 Fabric API。
 - F8 无反应：在“控制”中搜索 MineAstr，检查是否存在按键冲突。
 

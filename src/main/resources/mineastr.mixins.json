@@ -4,6 +4,7 @@
   "package": "com.mineastr.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "PlayerListMixin",
     "ServerLoginPacketListenerAccessor"
   ],
   "injectors": {

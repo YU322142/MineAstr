@@ -78,6 +78,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
     private final ConcurrentMap<String, ScreenshotAssembly> screenshotAssemblies = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, PendingLoginCheck> pendingLoginChecks = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, SyncedBinding> syncedBindings = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, NameAndId> observedLoginIdentities = new ConcurrentHashMap<>();
     private final Set<String> syncedTrustedCommandUsers = ConcurrentHashMap.newKeySet();
 
     private volatile MinecraftServer server;
@@ -106,6 +107,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         clearScreenshotState("Minecraft 服务器正在停止。");
         clearPendingLoginChecks("Minecraft 服务器正在停止。");
         translationPreferences.clear();
+        observedLoginIdentities.clear();
         syncedTrustedCommandUsers.clear();
         WebSocket socket = webSocket.getAndSet(null);
         if (socket != null) {
@@ -1038,15 +1040,30 @@ public final class MineAstrBridge implements WebSocket.Listener {
             return;
         }
         NameAndId identity;
+        String identitySource;
         if (existing != null) {
             identity = existing.identity;
+            identitySource = "synced_binding";
         } else {
-            try {
-                identity = currentServer.services().nameToIdCache().get(playerName).orElse(null);
-            } catch (RuntimeException exc) {
-                MineAstr.LOGGER.warn("MineAstr 无法解析玩家身份：player={}", playerName, exc);
-                sendQueryError(socket, messageId, "binding", "player_identity_lookup_failed");
-                return;
+            identity = observedLoginIdentities.get(normalizedPlayer);
+            if (identity != null) {
+                identitySource = "observed_login";
+            } else if (!currentServer.usesAuthentication()) {
+                // The Mojang name cache may return an online UUID even though an
+                // offline-mode server authenticates this connection with an offline
+                // UUID. Proxy and Floodgate UUIDs are reconciled from the real login
+                // identity immediately before vanilla performs its whitelist check.
+                identity = NameAndId.createOffline(playerName);
+                identitySource = "offline_mode";
+            } else {
+                try {
+                    identity = currentServer.services().nameToIdCache().get(playerName).orElse(null);
+                } catch (RuntimeException exc) {
+                    MineAstr.LOGGER.warn("MineAstr 无法解析玩家身份：player={}", playerName, exc);
+                    sendQueryError(socket, messageId, "binding", "player_identity_lookup_failed");
+                    return;
+                }
+                identitySource = "authenticated_profile";
             }
         }
         if (identity == null) {
@@ -1058,7 +1075,8 @@ public final class MineAstrBridge implements WebSocket.Listener {
 
         WhitelistSyncResult whitelistResult = WhitelistSyncResult.skipped();
         if (MineAstrConfig.BINDING_SYNC_WHITELIST.getAsBoolean()) {
-            whitelistResult = updateWhitelist(currentServer, identity, "bind".equals(action));
+            whitelistResult = updateWhitelist(
+                    currentServer, identity, "bind".equals(action), "bind".equals(action));
             if (!whitelistResult.ok) {
                 MineAstr.LOGGER.warn(
                         "MineAstr 原版白名单同步失败：action={} player={} uuid={} error={}",
@@ -1084,14 +1102,78 @@ public final class MineAstrBridge implements WebSocket.Listener {
         data.addProperty("owner_key", ownerKey);
         data.addProperty("cache_size", syncedBindings.size());
         data.addProperty("player_uuid", identity.id().toString());
+        data.addProperty("identity_source", identitySource);
         data.addProperty("whitelist_changed", whitelistResult.changed);
         data.addProperty("whitelist_verified", whitelistResult.verified);
         sendQueryResult(socket, messageId, "binding", data);
     }
 
+    /**
+     * Reconciles a bound player against the exact identity vanilla is about to
+     * check. This avoids guessing UUIDs for offline mode, proxies and Floodgate.
+     */
+    public void reconcileLoginWhitelistIdentity(NameAndId loginIdentity) {
+        if (loginIdentity == null || loginIdentity.name() == null || loginIdentity.name().isBlank()) {
+            return;
+        }
+        String normalizedPlayer = loginIdentity.name().toLowerCase(Locale.ROOT);
+        observedLoginIdentities.put(normalizedPlayer, loginIdentity);
+
+        MinecraftServer currentServer = server;
+        if (currentServer == null
+                || !MineAstrConfig.ENABLE_BINDING_SYNC.getAsBoolean()
+                || !MineAstrConfig.BINDING_SYNC_WHITELIST.getAsBoolean()) {
+            return;
+        }
+        SyncedBinding binding = syncedBindings.get(normalizedPlayer);
+        if (binding == null) {
+            return;
+        }
+
+        boolean identityChanged = !binding.identity.id().equals(loginIdentity.id())
+                || !binding.identity.name().equals(loginIdentity.name());
+        WhitelistSyncResult result = updateWhitelist(
+                currentServer, loginIdentity, true, true);
+        if (!result.ok) {
+            MineAstr.LOGGER.warn(
+                    "MineAstr 登录白名单身份对账失败：player={} expected_uuid={} login_uuid={} error={}",
+                    loginIdentity.name(), binding.identity.id(), loginIdentity.id(), result.error);
+            return;
+        }
+        if (identityChanged) {
+            syncedBindings.put(normalizedPlayer, new SyncedBinding(
+                    loginIdentity.name(), binding.ownerKey, binding.ownerDisplay, loginIdentity));
+        }
+        if (identityChanged || result.changed) {
+            MineAstr.LOGGER.info(
+                    "MineAstr 已按本次登录身份修正原版白名单：player={} old_uuid={} login_uuid={} changed={} verified={}",
+                    loginIdentity.name(), binding.identity.id(), loginIdentity.id(), result.changed, result.verified);
+        }
+    }
+
     private static WhitelistSyncResult updateWhitelist(
             MinecraftServer currentServer, NameAndId identity, boolean shouldBePresent) {
+        return updateWhitelist(currentServer, identity, shouldBePresent, false);
+    }
+
+    private static WhitelistSyncResult updateWhitelist(
+            MinecraftServer currentServer,
+            NameAndId identity,
+            boolean shouldBePresent,
+            boolean removeConflictingNameEntries) {
         UserWhiteList whitelist = currentServer.getPlayerList().getWhiteList();
+        boolean conflictRemoved = false;
+        if (shouldBePresent && removeConflictingNameEntries) {
+            for (UserWhiteListEntry entry : List.copyOf(whitelist.getEntries())) {
+                NameAndId other = entry.getUser();
+                if (other != null
+                        && !other.id().equals(identity.id())
+                        && other.name().equalsIgnoreCase(identity.name())) {
+                    conflictRemoved |= whitelist.remove(other);
+                }
+            }
+        }
+
         boolean wasPresent = whitelist.isWhiteListed(identity);
         if (shouldBePresent && !wasPresent) {
             whitelist.add(new UserWhiteListEntry(identity));
@@ -1102,7 +1184,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         boolean isPresent = whitelist.isWhiteListed(identity);
         if (isPresent != shouldBePresent) {
             return new WhitelistSyncResult(
-                    false, false, false, "whitelist_verification_failed");
+                    false, conflictRemoved, false, "whitelist_verification_failed");
         }
         try {
             // StoredUserList already saves during add/remove, but explicitly saving
@@ -1111,9 +1193,13 @@ public final class MineAstrBridge implements WebSocket.Listener {
         } catch (IOException exc) {
             MineAstr.LOGGER.warn("MineAstr 保存原版白名单失败：{} {}", identity.name(), identity.id(), exc);
             return new WhitelistSyncResult(
-                    false, wasPresent != isPresent, true, "whitelist_save_failed");
+                    false,
+                    conflictRemoved || wasPresent != isPresent,
+                    true,
+                    "whitelist_save_failed");
         }
-        return new WhitelistSyncResult(true, wasPresent != isPresent, true, "");
+        return new WhitelistSyncResult(
+                true, conflictRemoved || wasPresent != isPresent, true, "");
     }
 
     private static boolean isSafeBindingPlayerName(String playerName) {

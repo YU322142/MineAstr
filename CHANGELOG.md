@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.10
+
+- 修复离线模式服务端误把 Mojang 正版 UUID 写入原版白名单：绑定同步现在使用与原版离线登录一致的 UUID。
+- 在原版 `PlayerList` 白名单检查前记录并对账本次连接的真实 `NameAndId`，兼容 Velocity/BungeeCord、Floodgate 和混合认证产生的自定义 UUID。
+- 绑定时清理同名但 UUID 不同的旧白名单项，并在响应中返回 `identity_source`，避免 `whitelist_verified=true` 只验证了错误身份仍被误判为成功。
+
 ## 0.6.9
 
 - 新增 `syncTrustedCommandUsers`：可接收 AstrBot 插件同步的 MineAstr 管理员与 AstrBot 全局管理员，作为当前 WebSocket 连接的内存命令可信集合。
