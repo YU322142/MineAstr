@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.6
+
+- 登录绑定检查改为通过 Mixin Accessor 读取原始 `requestedUsername`，不再使用会拼接 IP 和端口的 `getUserName()` 日志显示值。
+- 防止连接地址进入验证码绑定、白名单 UUID 解析和聊天平台昵称。
+
 ## 0.6.5
 
 - 目标平台固定为 Minecraft 1.21.11、Fabric Loader 与 Fabric API 0.141.4+1.21.11。

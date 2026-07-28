@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.mineastr.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ServerLoginPacketListenerAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -1,6 +1,7 @@
 package com.mineastr;
 
 import com.mojang.logging.LogUtils;
+import com.mineastr.mixin.ServerLoginPacketListenerAccessor;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -15,7 +16,7 @@ import org.slf4j.Logger;
 
 public final class MineAstr implements ModInitializer {
     public static final String MODID = "mineastr";
-    public static final String MOD_VERSION = "0.6.5";
+    public static final String MOD_VERSION = "0.6.6";
     public static final Logger LOGGER = LogUtils.getLogger();
 
     private static final MineAstrBridge BRIDGE = new MineAstrBridge();
@@ -62,7 +63,16 @@ public final class MineAstr implements ModInitializer {
             if (!MineAstrConfig.LOGIN_BINDING_CHECK_ENABLED.getAsBoolean()) {
                 return;
             }
-            synchronizer.waitFor(BRIDGE.checkPlayerLogin(handler.getUserName())
+            String playerName = ((ServerLoginPacketListenerAccessor) handler).mineastr$getRequestedUsername();
+            if (playerName == null || playerName.isBlank()) {
+                LOGGER.warn("MineAstr 无法读取登录玩家的原始游戏名。");
+                if (!MineAstrConfig.LOGIN_CHECK_FAIL_OPEN.getAsBoolean()) {
+                    handler.disconnect(net.minecraft.network.chat.Component.literal(
+                            "[MineAstr] 无法读取登录玩家身份，请稍后重试。"));
+                }
+                return;
+            }
+            synchronizer.waitFor(BRIDGE.checkPlayerLogin(playerName)
                     .thenAccept(result -> {
                         if (!result.allowed()) {
                             handler.disconnect(net.minecraft.network.chat.Component.literal(result.message()));
