@@ -1,89 +1,73 @@
 package com.mineastr;
 
 import com.mojang.logging.LogUtils;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.fml.ModContainer;
-import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.config.ModConfig;
-import net.neoforged.fml.loading.FMLEnvironment;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.RegisterCommandsEvent;
-import net.neoforged.neoforge.event.ServerChatEvent;
-import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.event.server.ServerStartedEvent;
-import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerLoginConnectionEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
 
-@Mod(MineAstr.MODID)
-public final class MineAstr {
+public final class MineAstr implements ModInitializer {
     public static final String MODID = "mineastr";
-    public static final String MOD_VERSION = "0.4.1";
+    public static final String MOD_VERSION = "0.6.5";
     public static final Logger LOGGER = LogUtils.getLogger();
 
-    private static MineAstrBridge activeBridge;
-
-    private final MineAstrBridge bridge;
-
-    public MineAstr(IEventBus modEventBus, ModContainer modContainer) {
-        this.bridge = new MineAstrBridge();
-        activeBridge = this.bridge;
-        NeoForge.EVENT_BUS.register(this);
-        modEventBus.addListener(MineAstrNetwork::register);
-        modContainer.registerConfig(ModConfig.Type.COMMON, MineAstrConfig.SPEC);
-        if (FMLEnvironment.dist == Dist.CLIENT) {
-            modContainer.registerConfig(ModConfig.Type.CLIENT, MineAstrClientConfig.SPEC);
-            initClient(modContainer);
-        }
-    }
+    private static final MineAstrBridge BRIDGE = new MineAstrBridge();
 
     public static MineAstrBridge bridge() {
-        if (activeBridge == null) {
-            activeBridge = new MineAstrBridge();
-        }
-        return activeBridge;
+        return BRIDGE;
     }
 
-    private static void initClient(ModContainer modContainer) {
-        try {
-            Class<?> clientClass = Class.forName("com.mineastr.MineAstrClient");
-            clientClass.getMethod("init", ModContainer.class).invoke(null, modContainer);
-        } catch (ReflectiveOperationException exc) {
-            LOGGER.warn("MineAstr 客户端初始化失败：{}", exc.getMessage());
-        }
-    }
+    @Override
+    public void onInitialize() {
+        MineAstrConfig.load();
+        MineAstrNetwork.initializeServerNetworking();
 
-    @SubscribeEvent
-    public void onServerStarted(ServerStartedEvent event) {
-        if (!event.getServer().isDedicatedServer()
-                && FMLEnvironment.dist == Dist.CLIENT
-                && !MineAstrClientConfig.LOCAL_WORLD_SERVER_ENABLED.getAsBoolean()) {
-            LOGGER.info("MineAstr 本地世界服务端桥接默认关闭；可在客户端配置界面中启用。");
-            return;
-        }
-        bridge.start(event.getServer());
-    }
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            if (!server.isDedicatedServer()
+                    && FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT
+                    && !MineAstrClientConfig.LOCAL_WORLD_SERVER_ENABLED.getAsBoolean()) {
+                LOGGER.info("MineAstr 本地世界服务端桥接默认关闭；可在客户端配置文件中启用。");
+                return;
+            }
+            BRIDGE.start(server);
+        });
+        ServerLifecycleEvents.SERVER_STOPPING.register(server -> BRIDGE.stop());
 
-    @SubscribeEvent
-    public void onServerStopping(ServerStoppingEvent event) {
-        bridge.stop();
-    }
+        CommandRegistrationCallback.EVENT.register(
+                (dispatcher, registryAccess, environment) -> MineAstrCommands.register(dispatcher, BRIDGE));
 
-    @SubscribeEvent
-    public void onServerChat(ServerChatEvent event) {
-        bridge.forwardChat(event.getPlayer(), event.getRawText());
-    }
+        ServerMessageEvents.CHAT_MESSAGE.register(
+                (message, sender, params) -> BRIDGE.forwardChat(sender, message.signedContent()));
 
-    @SubscribeEvent
-    public void onRegisterCommands(RegisterCommandsEvent event) {
-        MineAstrCommands.register(event.getDispatcher(), bridge);
-    }
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> BRIDGE.forwardPlayerJoin(handler.player));
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            BRIDGE.forwardPlayerLeave(handler.player);
+            BRIDGE.unregisterClientCapability(handler.player);
+        });
 
-    @SubscribeEvent
-    public void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
-        if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player) {
-            bridge.unregisterClientCapability(player);
-        }
+        ServerLivingEntityEvents.AFTER_DEATH.register((entity, damageSource) -> {
+            if (entity instanceof ServerPlayer player) {
+                BRIDGE.forwardPlayerDeath(player, player.getCombatTracker().getDeathMessage().getString());
+            }
+        });
+
+        ServerLoginConnectionEvents.QUERY_START.register((handler, server, sender, synchronizer) -> {
+            if (!MineAstrConfig.LOGIN_BINDING_CHECK_ENABLED.getAsBoolean()) {
+                return;
+            }
+            synchronizer.waitFor(BRIDGE.checkPlayerLogin(handler.getUserName())
+                    .thenAccept(result -> {
+                        if (!result.allowed()) {
+                            handler.disconnect(net.minecraft.network.chat.Component.literal(result.message()));
+                        }
+                    }));
+        });
     }
 }

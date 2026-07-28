@@ -3,7 +3,7 @@ package com.mineastr;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 
 public final class MineAstrPayloads {
     public static final int MAX_REASON_LENGTH = 512;
@@ -15,7 +15,7 @@ public final class MineAstrPayloads {
     }
 
     private static <T extends CustomPacketPayload> CustomPacketPayload.Type<T> type(String path) {
-        return new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(MineAstr.MODID, path));
+        return new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath(MineAstr.MODID, path));
     }
 
     public record ClientHello(String modVersion, boolean screenshotSupported) implements CustomPacketPayload {

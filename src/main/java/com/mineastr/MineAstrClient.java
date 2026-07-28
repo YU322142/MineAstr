@@ -1,6 +1,7 @@
 package com.mineastr;
 
 import com.mojang.blaze3d.platform.NativeImage;
+import com.mojang.blaze3d.platform.InputConstants;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
@@ -18,18 +19,19 @@ import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 import javax.imageio.stream.MemoryCacheImageOutputStream;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.neoforged.fml.ModContainer;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
-import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import org.lwjgl.glfw.GLFW;
 
-public final class MineAstrClient {
+public final class MineAstrClient implements ClientModInitializer {
     private static final String MIME_TYPE = "image/jpeg";
     private static final int MAX_SCREENSHOT_CHUNKS = 64;
     private static final ExecutorService SCREENSHOT_ENCODER = Executors.newSingleThreadExecutor(r -> {
@@ -38,25 +40,25 @@ public final class MineAstrClient {
         return thread;
     });
     private static String pendingPromptRequestId;
+    private static final KeyMapping OPEN_CONFIG_KEY = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+            "key.mineastr.open_config",
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_F8,
+            KeyMapping.Category.MISC));
 
-    private MineAstrClient() {
-    }
-
-    public static void init(ModContainer modContainer) {
-        modContainer.registerExtensionPoint(
-                IConfigScreenFactory.class,
-                (container, parent) -> new MineAstrConfigScreen(parent));
-        NeoForge.EVENT_BUS.register(MineAstrClient.class);
-    }
-
-    @SubscribeEvent
-    public static void onClientLogin(ClientPlayerNetworkEvent.LoggingIn event) {
-        sendPayloadToServer(new MineAstrPayloads.ClientHello(MineAstr.MOD_VERSION, true));
-    }
-
-    @SubscribeEvent
-    public static void onClientLogout(ClientPlayerNetworkEvent.LoggingOut event) {
-        pendingPromptRequestId = null;
+    @Override
+    public void onInitializeClient() {
+        MineAstrClientConfig.load();
+        ClientPlayNetworking.registerGlobalReceiver(MineAstrPayloads.ScreenshotRequest.TYPE, (request, context) ->
+                context.client().execute(() -> handleScreenshotRequestOnClientThread(context.client(), request)));
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) ->
+                sendPayloadToServer(new MineAstrPayloads.ClientHello(MineAstr.MOD_VERSION, true)));
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> pendingPromptRequestId = null);
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            while (OPEN_CONFIG_KEY.consumeClick()) {
+                client.setScreen(new MineAstrConfigScreen(client.screen));
+            }
+        });
     }
 
     public static void handleScreenshotRequest(MineAstrPayloads.ScreenshotRequest request) {
@@ -124,25 +126,33 @@ public final class MineAstrClient {
     }
 
     private static void captureAndSend(Minecraft minecraft, MineAstrPayloads.ScreenshotRequest request) {
-        RawScreenshot screenshot;
-        try (NativeImage nativeImage = Screenshot.takeScreenshot(minecraft.getMainRenderTarget())) {
-            screenshot = new RawScreenshot(nativeImage.getWidth(), nativeImage.getHeight(), nativeImage.getPixelsRGBA());
+        try {
+            Screenshot.takeScreenshot(minecraft.getMainRenderTarget(), nativeImage -> {
+                RawScreenshot screenshot;
+                try (nativeImage) {
+                    screenshot = new RawScreenshot(
+                            nativeImage.getWidth(), nativeImage.getHeight(), nativeImage.getPixelsABGR().clone());
+                } catch (Exception exc) {
+                    MineAstr.LOGGER.warn("MineAstr 客户端截图读取失败：{}", exc.getMessage());
+                    sendError(request.requestId(), "capture_failed", "客户端截图读取失败：" + exc.getMessage());
+                    return;
+                }
+
+                CompletableFuture
+                        .supplyAsync(() -> encodeLowResolutionScreenshot(screenshot, request), SCREENSHOT_ENCODER)
+                        .whenComplete((image, throwable) -> minecraft.execute(() -> {
+                            if (throwable != null) {
+                                MineAstr.LOGGER.warn("MineAstr 客户端截图编码失败：{}", throwable.getMessage());
+                                sendError(request.requestId(), "encode_failed", "客户端截图编码失败：" + throwable.getMessage());
+                                return;
+                            }
+                            sendChunks(request.requestId(), image);
+                        }));
+            });
         } catch (Exception exc) {
             MineAstr.LOGGER.warn("MineAstr 客户端截图失败：{}", exc.getMessage());
             sendError(request.requestId(), "capture_failed", "客户端截图失败：" + exc.getMessage());
-            return;
         }
-
-        CompletableFuture
-                .supplyAsync(() -> encodeLowResolutionScreenshot(screenshot, request), SCREENSHOT_ENCODER)
-                .whenComplete((image, throwable) -> minecraft.execute(() -> {
-                    if (throwable != null) {
-                        MineAstr.LOGGER.warn("MineAstr 客户端截图编码失败：{}", throwable.getMessage());
-                        sendError(request.requestId(), "encode_failed", "客户端截图编码失败：" + throwable.getMessage());
-                        return;
-                    }
-                    sendChunks(request.requestId(), image);
-                }));
     }
 
     private static ScreenshotImage encodeLowResolutionScreenshot(RawScreenshot screenshot, MineAstrPayloads.ScreenshotRequest request) {
@@ -268,7 +278,9 @@ public final class MineAstrClient {
 
     private static void sendPayloadToServer(CustomPacketPayload payload) {
         try {
-            PacketDistributor.sendToServer(payload);
+            if (ClientPlayNetworking.canSend(payload.type())) {
+                ClientPlayNetworking.send(payload);
+            }
         } catch (RuntimeException exc) {
             MineAstr.LOGGER.debug("MineAstr 客户端发送可选网络包失败：{}", exc.getMessage());
         }

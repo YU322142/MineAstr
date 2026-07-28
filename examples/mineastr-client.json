@@ -1,0 +1,8 @@
+{
+  "localWorldServerEnabled": false,
+  "screenshotMode": "ASK",
+  "screenshotMaxWidth": 240,
+  "screenshotMaxHeight": 135,
+  "screenshotJpegQuality": 0.35,
+  "screenshotMaxBytes": 131072
+}

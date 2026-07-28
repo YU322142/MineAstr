@@ -9,6 +9,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.InputWithModifiers;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.util.FormattedCharSequence;
@@ -70,7 +71,7 @@ public final class MineAstrLocalServerConfigScreen extends Screen {
         row += 28;
         tokenField = editBox(controlLeft, row, controlWidth, 256, token);
         tokenField.setResponder(value -> token = value);
-        tokenField.setFormatter((value, index) -> FormattedCharSequence.forward("•".repeat(value.length()), Style.EMPTY));
+        tokenField.addFormatter((value, index) -> FormattedCharSequence.forward("•".repeat(value.length()), Style.EMPTY));
         tokenField.setHint(Component.translatable("screen.mineastr.local_server.token_hint"));
         addRenderableWidget(tokenField);
 
@@ -221,7 +222,7 @@ public final class MineAstrLocalServerConfigScreen extends Screen {
         }
 
         @Override
-        public void onPress() {
+        public void onPress(InputWithModifiers input) {
             value = !value;
             updateMessage();
             changed.accept(value);
@@ -239,7 +240,7 @@ public final class MineAstrLocalServerConfigScreen extends Screen {
         }
 
         @Override
-        protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        protected void renderContents(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
             int border = isHoveredOrFocused() ? 0xFFB9FFF0 : 0xFF52657C;
             int background = value ? 0xFF173D36 : 0xFF202938;
             graphics.fill(getX(), getY(), getRight(), getBottom(), border);

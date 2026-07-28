@@ -11,12 +11,13 @@ import java.util.Locale;
 import java.util.Map;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
@@ -37,7 +38,7 @@ public final class MineAstrTools {
 
     public static JsonObject buildPlayerState(ServerPlayer player) {
         JsonObject data = playerIdentity(player);
-        data.addProperty("dimension", player.serverLevel().dimension().location().toString());
+        data.addProperty("dimension", player.level().dimension().identifier().toString());
         data.addProperty("x", round2(player.getX()));
         data.addProperty("y", round2(player.getY()));
         data.addProperty("z", round2(player.getZ()));
@@ -61,7 +62,7 @@ public final class MineAstrTools {
         for (MobEffectInstance effect : player.getActiveEffects()) {
             JsonObject item = new JsonObject();
             String id = effect.getEffect().unwrapKey()
-                    .map(key -> key.location().toString())
+                    .map(key -> key.identifier().toString())
                     .orElse("unknown");
             item.addProperty("id", id);
             item.addProperty("amplifier", effect.getAmplifier());
@@ -77,8 +78,10 @@ public final class MineAstrTools {
     public static JsonObject buildInventory(ServerPlayer player, boolean includeEnderChest) {
         JsonObject data = playerIdentity(player);
         Inventory inventory = player.getInventory();
-        data.addProperty("selected_hotbar_slot", inventory.selected);
-        data.add("selected_item", stackData(inventory.getSelected(), "selected"));
+        data.addProperty("selected_hotbar_slot", inventory.getSelectedSlot());
+        data.add("selected_item", stackData(inventory.getSelectedItem(), "selected"));
+
+        List<ItemStack> nonEquipment = inventory.getNonEquipmentItems();
 
         JsonArray hotbar = new JsonArray();
         for (int slot = 0; slot < Inventory.getSelectionSize(); slot++) {
@@ -87,34 +90,32 @@ public final class MineAstrTools {
         data.add("hotbar", hotbar);
 
         JsonArray main = new JsonArray();
-        for (int slot = Inventory.getSelectionSize(); slot < inventory.items.size(); slot++) {
-            addStack(main, inventory.items.get(slot), "inventory_" + slot, slot);
+        for (int slot = Inventory.getSelectionSize(); slot < nonEquipment.size(); slot++) {
+            addStack(main, nonEquipment.get(slot), "inventory_" + slot, slot);
         }
         data.add("inventory", main);
 
-        String[] armorNames = {"feet", "legs", "chest", "head"};
         JsonArray armor = new JsonArray();
-        for (int slot = 0; slot < inventory.armor.size(); slot++) {
-            addStack(armor, inventory.armor.get(slot), armorNames[Math.min(slot, armorNames.length - 1)], slot);
-        }
+        addStack(armor, player.getItemBySlot(EquipmentSlot.FEET), "feet", 0);
+        addStack(armor, player.getItemBySlot(EquipmentSlot.LEGS), "legs", 1);
+        addStack(armor, player.getItemBySlot(EquipmentSlot.CHEST), "chest", 2);
+        addStack(armor, player.getItemBySlot(EquipmentSlot.HEAD), "head", 3);
         data.add("armor", armor);
 
         JsonArray offhand = new JsonArray();
-        for (int slot = 0; slot < inventory.offhand.size(); slot++) {
-            addStack(offhand, inventory.offhand.get(slot), "offhand", slot);
-        }
+        addStack(offhand, player.getItemBySlot(EquipmentSlot.OFFHAND), "offhand", 0);
         data.add("offhand", offhand);
 
         int occupied = 0;
         int totalItems = 0;
-        for (ItemStack stack : inventory.items) {
+        for (ItemStack stack : nonEquipment) {
             if (!stack.isEmpty()) {
                 occupied++;
                 totalItems += stack.getCount();
             }
         }
         data.addProperty("occupied_inventory_slots", occupied);
-        data.addProperty("free_inventory_slots", Math.max(0, inventory.items.size() - occupied));
+        data.addProperty("free_inventory_slots", Math.max(0, nonEquipment.size() - occupied));
         data.addProperty("total_inventory_item_count", totalItems);
 
         if (includeEnderChest) {
@@ -124,7 +125,7 @@ public final class MineAstrTools {
     }
 
     public static JsonObject buildNearbyEntities(ServerPlayer player, double radius) {
-        ServerLevel level = player.serverLevel();
+        ServerLevel level = player.level();
         AABB bounds = new AABB(
                 player.getX() - radius,
                 player.getY() - radius,
@@ -144,7 +145,7 @@ public final class MineAstrTools {
         }
 
         JsonObject data = playerIdentity(player);
-        data.addProperty("dimension", level.dimension().location().toString());
+        data.addProperty("dimension", level.dimension().identifier().toString());
         data.addProperty("radius", round2(radius));
         data.addProperty("entity_count", entities.size());
         data.add("counts_by_type", countObject(typeCounts, 32));
@@ -178,8 +179,8 @@ public final class MineAstrTools {
             int verticalRadius) {
         int minX = center.getX() - horizontalRadius;
         int maxX = center.getX() + horizontalRadius;
-        int minY = Math.max(level.getMinBuildHeight(), center.getY() - verticalRadius);
-        int maxY = Math.min(level.getMaxBuildHeight() - 1, center.getY() + verticalRadius);
+        int minY = Math.max(level.getMinY(), center.getY() - verticalRadius);
+        int maxY = Math.min(level.getMaxY() - 1, center.getY() + verticalRadius);
         int minZ = center.getZ() - horizontalRadius;
         int maxZ = center.getZ() + horizontalRadius;
         int sizeX = maxX - minX + 1;
@@ -230,7 +231,7 @@ public final class MineAstrTools {
                     gridOccupied[gridIndex]++;
                     occupiedBounds.include(x, y, z);
                     columnTop = Math.max(columnTop, y);
-                    ResourceLocation blockKey = BuiltInRegistries.BLOCK.getKey(state.getBlock());
+                    Identifier blockKey = BuiltInRegistries.BLOCK.getKey(state.getBlock());
                     String blockId = blockKey == null ? "unknown" : blockKey.toString();
                     palette.merge(blockId, 1, Integer::sum);
                     if (state.blocksMotion()) {
@@ -258,7 +259,7 @@ public final class MineAstrTools {
                     if (state.hasBlockEntity()) {
                         BlockEntity blockEntity = level.getBlockEntity(pos);
                         if (blockEntity != null) {
-                            ResourceLocation typeKey = BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(blockEntity.getType());
+                            Identifier typeKey = BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(blockEntity.getType());
                             blockEntityTypes.merge(typeKey == null ? "unknown" : typeKey.toString(), 1, Integer::sum);
                         }
                     }
@@ -267,7 +268,7 @@ public final class MineAstrTools {
                     int biomeY = columnTop == Integer.MIN_VALUE ? center.getY() : columnTop;
                     pos.set(x, Math.max(minY, Math.min(maxY, biomeY)), z);
                     String biome = level.getBiome(pos).unwrapKey()
-                            .map(key -> key.location().toString())
+                            .map(key -> key.identifier().toString())
                             .orElse("unknown");
                     biomes.merge(biome, 1, Integer::sum);
                 }
@@ -281,7 +282,7 @@ public final class MineAstrTools {
         }
 
         JsonObject data = new JsonObject();
-        data.addProperty("dimension", level.dimension().location().toString());
+        data.addProperty("dimension", level.dimension().identifier().toString());
         data.add("center", positionObject(center.getX(), center.getY(), center.getZ(), null));
         data.add("bounds", boundsObject(minX, minY, minZ, maxX, maxY, maxZ));
         data.addProperty("requested_blocks", sizeX * sizeY * sizeZ);
@@ -322,7 +323,7 @@ public final class MineAstrTools {
     private static JsonObject playerIdentity(ServerPlayer player) {
         JsonObject data = new JsonObject();
         data.addProperty("player_uuid", player.getUUID().toString());
-        data.addProperty("player_name", player.getGameProfile().getName());
+        data.addProperty("player_name", player.getGameProfile().name());
         data.addProperty("display_name", player.getDisplayName().getString());
         return data;
     }
@@ -351,7 +352,7 @@ public final class MineAstrTools {
             data.addProperty("empty", true);
             return data;
         }
-        ResourceLocation itemKey = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        Identifier itemKey = BuiltInRegistries.ITEM.getKey(stack.getItem());
         data.addProperty("id", itemKey == null ? "unknown" : itemKey.toString());
         data.addProperty("name", stack.getHoverName().getString());
         data.addProperty("count", stack.getCount());
@@ -365,7 +366,7 @@ public final class MineAstrTools {
     }
 
     private static String entityTypeId(Entity entity) {
-        ResourceLocation key = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
+        Identifier key = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
         return key == null ? "unknown" : key.toString();
     }
 

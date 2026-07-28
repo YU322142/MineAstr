@@ -5,6 +5,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
+import java.lang.management.ManagementFactory;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
@@ -13,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -31,14 +34,21 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.players.PlayerList;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.players.PlayerList;
+import net.minecraft.server.players.NameAndId;
+import net.minecraft.server.players.UserWhiteList;
+import net.minecraft.server.players.UserWhiteListEntry;
+import net.minecraft.server.permissions.LevelBasedPermissionSet;
+import net.minecraft.server.permissions.PermissionLevel;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.level.Level;
-import net.neoforged.neoforge.network.PacketDistributor;
 
 public final class MineAstrBridge implements WebSocket.Listener {
     private static final Gson GSON = new Gson();
@@ -49,6 +59,8 @@ public final class MineAstrBridge implements WebSocket.Listener {
     private static final int MAX_BROADCAST_SENDER_LENGTH = 64;
     private static final int SCREENSHOT_TIMEOUT_SECONDS = 30;
     private static final int SCREENSHOT_MAX_CHUNKS = 64;
+    private static final int MAX_EVENT_TEXT_LENGTH = 512;
+    private static final Random VERIFY_CODE_RANDOM = new java.security.SecureRandom();
 
     private final AtomicReference<WebSocket> webSocket = new AtomicReference<>();
     private final AtomicBoolean connecting = new AtomicBoolean(false);
@@ -61,6 +73,8 @@ public final class MineAstrBridge implements WebSocket.Listener {
     private final ConcurrentMap<String, PendingScreenshot> pendingScreenshots = new ConcurrentHashMap<>();
     private final ConcurrentMap<UUID, String> pendingScreenshotByPlayer = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, ScreenshotAssembly> screenshotAssemblies = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, PendingLoginCheck> pendingLoginChecks = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, SyncedBinding> syncedBindings = new ConcurrentHashMap<>();
 
     private volatile MinecraftServer server;
     private volatile ScheduledExecutorService reconnectExecutor = createReconnectExecutor();
@@ -86,6 +100,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         connecting.set(false);
         cancelReconnect();
         clearScreenshotState("Minecraft 服务器正在停止。");
+        clearPendingLoginChecks("Minecraft 服务器正在停止。");
         WebSocket socket = webSocket.getAndSet(null);
         if (socket != null) {
             socket.sendClose(WebSocket.NORMAL_CLOSURE, "server stopping");
@@ -147,9 +162,69 @@ public final class MineAstrBridge implements WebSocket.Listener {
         payload.addProperty("server_id", MineAstrConfig.SERVER_ID.get());
         payload.addProperty("server_name", MineAstrConfig.SERVER_NAME.get());
         payload.addProperty("player_uuid", player.getUUID().toString());
-        payload.addProperty("player_name", player.getGameProfile().getName());
+        payload.addProperty("player_name", player.getGameProfile().name());
         payload.addProperty("content", content);
         sendJson(socket, payload);
+    }
+
+    public void forwardPlayerJoin(ServerPlayer player) {
+        sendPlayerEvent("player_join", player, null);
+    }
+
+    public void forwardPlayerLeave(ServerPlayer player) {
+        sendPlayerEvent("player_leave", player, null);
+    }
+
+    public void forwardPlayerDeath(ServerPlayer player, String deathMessage) {
+        sendPlayerEvent("player_death", player, trimFlatContent(deathMessage, MAX_EVENT_TEXT_LENGTH));
+    }
+
+    private void sendPlayerEvent(String event, ServerPlayer player, String deathMessage) {
+        WebSocket socket = webSocket.get();
+        if (socket == null || socket.isOutputClosed()) {
+            return;
+        }
+        JsonObject payload = eventEnvelope(event);
+        payload.addProperty("player_uuid", player.getUUID().toString());
+        payload.addProperty("player_name", player.getGameProfile().name());
+        if (deathMessage != null && !deathMessage.isBlank()) {
+            payload.addProperty("death_message", deathMessage);
+            payload.addProperty("reason", deathMessage);
+        }
+        sendJson(socket, payload);
+    }
+
+    public CompletableFuture<LoginCheckResult> checkPlayerLogin(String playerName) {
+        if (!MineAstrConfig.LOGIN_BINDING_CHECK_ENABLED.getAsBoolean()) {
+            return CompletableFuture.completedFuture(new LoginCheckResult(true, ""));
+        }
+        WebSocket socket = webSocket.get();
+        if (socket == null || socket.isOutputClosed()) {
+            return CompletableFuture.completedFuture(loginCheckFallback("AstrBot 未连接"));
+        }
+
+        String messageId = UUID.randomUUID().toString();
+        CompletableFuture<LoginCheckResult> future = new CompletableFuture<>();
+        String normalizedName = trimFlatContent(playerName, 64);
+        PendingLoginCheck pending = new PendingLoginCheck(socket, normalizedName, future);
+        pendingLoginChecks.put(messageId, pending);
+
+        JsonObject payload = eventEnvelope("player_login_check");
+        payload.addProperty("message_id", messageId);
+        payload.addProperty("player_name", normalizedName);
+        sendJson(socket, payload);
+
+        int timeoutSeconds = MineAstrConfig.LOGIN_CHECK_TIMEOUT_SECONDS.getAsInt();
+        return future
+                .orTimeout(timeoutSeconds, TimeUnit.SECONDS)
+                .exceptionally(error -> loginCheckFallback("等待 AstrBot 登录校验超时"))
+                .whenComplete((result, error) -> pendingLoginChecks.remove(messageId, pending));
+    }
+
+    private LoginCheckResult loginCheckFallback(String reason) {
+        boolean allowed = MineAstrConfig.LOGIN_CHECK_FAIL_OPEN.getAsBoolean();
+        MineAstr.LOGGER.warn("MineAstr 登录绑定校验失败：{}；策略={}", reason, allowed ? "fail-open" : "fail-closed");
+        return new LoginCheckResult(allowed, allowed ? "" : "[MineAstr] 无法连接 AstrBot 完成账号绑定校验，请稍后重试。");
     }
 
     public void registerClientCapability(ServerPlayer player, boolean screenshotSupported, String clientModVersion) {
@@ -158,7 +233,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
             return;
         }
         clientCapabilities.put(player.getUUID(), new ClientCapability(clientModVersion, System.currentTimeMillis()));
-        MineAstr.LOGGER.debug("MineAstr 已记录客户端能力：{} {}", player.getGameProfile().getName(), clientModVersion);
+        MineAstr.LOGGER.debug("MineAstr 已记录客户端能力：{} {}", player.getGameProfile().name(), clientModVersion);
     }
 
     public void unregisterClientCapability(ServerPlayer player) {
@@ -228,7 +303,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         payload.addProperty("server_id", MineAstrConfig.SERVER_ID.get());
         payload.addProperty("server_name", MineAstrConfig.SERVER_NAME.get());
         payload.addProperty("mod_version", MineAstr.MOD_VERSION);
-        payload.addProperty("minecraft_version", SharedConstants.getCurrentVersion().getName());
+        payload.addProperty("minecraft_version", SharedConstants.getCurrentVersion().name());
         JsonArray capabilities = new JsonArray();
         capabilities.add("status");
         capabilities.add("players");
@@ -238,7 +313,17 @@ public final class MineAstrBridge implements WebSocket.Listener {
         capabilities.add("region_features");
         capabilities.add("command");
         capabilities.add("screenshot");
+        capabilities.add("performance");
+        capabilities.add("notify_player");
+        capabilities.add("binding");
         payload.add("query_capabilities", capabilities);
+        JsonArray eventCapabilities = new JsonArray();
+        eventCapabilities.add("player_join");
+        eventCapabilities.add("player_leave");
+        eventCapabilities.add("player_death");
+        eventCapabilities.add("binding_code");
+        eventCapabilities.add("player_login_check");
+        payload.add("event_capabilities", eventCapabilities);
         sendJson(socket, payload);
     }
 
@@ -294,6 +379,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         if (activeSocketClosed) {
             inboundBuffer.setLength(0);
             clearPendingScreenshots("AstrBot WebSocket 已断开。");
+            clearPendingLoginChecks("AstrBot WebSocket 已断开。");
             scheduleReconnect();
         }
         return CompletableFuture.completedFuture(null);
@@ -306,6 +392,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         if (activeSocketFailed) {
             inboundBuffer.setLength(0);
             clearPendingScreenshots("AstrBot WebSocket 出错。");
+            clearPendingLoginChecks("AstrBot WebSocket 出错。");
             scheduleReconnect();
         }
     }
@@ -329,6 +416,8 @@ public final class MineAstrBridge implements WebSocket.Listener {
             handleChat(payload);
         } else if ("query".equals(type)) {
             handleQuery(socket, payload);
+        } else if ("event_result".equals(type)) {
+            handleEventResult(socket, payload);
         } else if ("pong".equals(type)) {
             MineAstr.LOGGER.debug("MineAstr 已收到 AstrBot 的 pong。");
         } else if ("error".equals(type)) {
@@ -337,6 +426,46 @@ public final class MineAstrBridge implements WebSocket.Listener {
         } else {
             MineAstr.LOGGER.debug("MineAstr 已忽略不支持的 AstrBot 消息类型：{}", type);
         }
+    }
+
+    private void handleEventResult(WebSocket socket, JsonObject payload) {
+        String event = trimFlatContent(getString(payload, "event", ""), 64).toLowerCase(Locale.ROOT);
+        if (!"player_login_check".equals(event)) {
+            MineAstr.LOGGER.debug("MineAstr 已忽略未知事件响应：{}", event);
+            return;
+        }
+        String messageId = trimFlatContent(getString(payload, "message_id", ""), 64);
+        PendingLoginCheck pending = pendingLoginChecks.get(messageId);
+        if (pending == null || pending.socket != socket) {
+            MineAstr.LOGGER.warn("MineAstr 已忽略未知或来源不匹配的登录校验响应：{}", messageId);
+            return;
+        }
+        if (!getBoolean(payload, "ok", false)) {
+            pending.future.complete(loginCheckFallback("AstrBot 返回登录校验错误"));
+            return;
+        }
+
+        boolean allowed = getBoolean(payload, "allowed", true);
+        String message = trimContent(getString(payload, "message", ""), 1024);
+        if (!allowed && MineAstrConfig.GENERATE_BINDING_CODE_ON_REJECT.getAsBoolean()) {
+            String code = generateVerifyCode();
+            JsonObject codeEvent = eventEnvelope("binding_code");
+            codeEvent.addProperty("player_name", pending.playerName);
+            codeEvent.addProperty("code", code);
+            sendJson(socket, codeEvent);
+            String codeMessage = MineAstrConfig.LOGIN_CODE_MESSAGE.get().replace("{code}", code);
+            message = (message.isBlank() ? "[MineAstr] 该账号尚未绑定。" : message) + codeMessage;
+        }
+        pending.future.complete(new LoginCheckResult(allowed, message));
+    }
+
+    private static String generateVerifyCode() {
+        int length = MineAstrConfig.VERIFY_CODE_LENGTH.getAsInt();
+        StringBuilder code = new StringBuilder(length);
+        for (int index = 0; index < length; index++) {
+            code.append(VERIFY_CODE_RANDOM.nextInt(10));
+        }
+        return code.toString();
     }
 
     private static ScheduledExecutorService createReconnectExecutor() {
@@ -390,6 +519,9 @@ public final class MineAstrBridge implements WebSocket.Listener {
                     case "region_features" -> handleRegionQuery(socket, messageId, payload, currentServer);
                     case "command" -> handleCommandQuery(socket, messageId, payload, currentServer);
                     case "screenshot" -> handleScreenshotQuery(socket, messageId, payload, currentServer);
+                    case "performance" -> sendQueryResult(socket, messageId, query, buildPerformanceData(currentServer));
+                    case "notify_player" -> handleNotifyPlayerQuery(socket, messageId, payload, currentServer);
+                    case "binding" -> handleBindingQuery(socket, messageId, payload, currentServer);
                     default -> sendQueryError(socket, messageId, query, "不支持的查询类型：" + query);
                 }
             } catch (RuntimeException exc) {
@@ -450,7 +582,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         ServerLevel level;
         BlockPos fallbackCenter;
         if (player != null) {
-            level = player.serverLevel();
+            level = player.level();
             fallbackCenter = player.blockPosition();
         } else {
             level = findTargetLevel(currentServer, payload);
@@ -462,7 +594,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         }
 
         int x = getInt(payload, "x", fallbackCenter.getX(), -30_000_000, 30_000_000);
-        int y = getInt(payload, "y", fallbackCenter.getY(), level.getMinBuildHeight(), level.getMaxBuildHeight() - 1);
+        int y = getInt(payload, "y", fallbackCenter.getY(), level.getMinY(), level.getMaxY() - 1);
         int z = getInt(payload, "z", fallbackCenter.getZ(), -30_000_000, 30_000_000);
         int horizontalRadius = getInt(payload, "horizontal_radius", 8, 1, 24);
         int verticalRadius = getInt(payload, "vertical_radius", 6, 1, 16);
@@ -514,7 +646,8 @@ public final class MineAstrBridge implements WebSocket.Listener {
         CommandCapture capture = new CommandCapture();
         CommandSourceStack source = currentServer.createCommandSourceStack()
                 .withSource(capture)
-                .withPermission(MineAstrConfig.COMMAND_PERMISSION_LEVEL.getAsInt())
+                .withPermission(LevelBasedPermissionSet.forLevel(
+                        PermissionLevel.byId(MineAstrConfig.COMMAND_PERMISSION_LEVEL.getAsInt())))
                 .withCallback(capture::onResult);
         MineAstr.LOGGER.warn("MineAstr 正在执行受控 LLM 命令：requester={} command={}", requester.auditName(), command);
         currentServer.getCommands().performPrefixedCommand(source, command);
@@ -560,7 +693,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
             format = "jpeg";
         }
 
-        PendingScreenshot pending = new PendingScreenshot(socket, messageId, player.getUUID(), player.getGameProfile().getName(), maxBytes);
+        PendingScreenshot pending = new PendingScreenshot(socket, messageId, player.getUUID(), player.getGameProfile().name(), maxBytes);
         PendingScreenshot previous = pendingScreenshots.putIfAbsent(messageId, pending);
         if (previous != null) {
             pendingScreenshotByPlayer.remove(player.getUUID(), messageId);
@@ -569,7 +702,11 @@ public final class MineAstrBridge implements WebSocket.Listener {
         }
         pending.timeout = scheduleScreenshotTimeout(messageId);
         try {
-            PacketDistributor.sendToPlayer(player, new MineAstrPayloads.ScreenshotRequest(
+            if (!MineAstrNetwork.canSendScreenshotRequest(player)) {
+                failScreenshot(messageId, "目标客户端当前不能接收 MineAstr 截图请求。");
+                return;
+            }
+            MineAstrNetwork.sendScreenshotRequest(player, new MineAstrPayloads.ScreenshotRequest(
                     messageId,
                     reason,
                     maxWidth,
@@ -581,20 +718,217 @@ public final class MineAstrBridge implements WebSocket.Listener {
         }
     }
 
+    private JsonObject buildPerformanceData(MinecraftServer currentServer) {
+        double mspt = currentServer.getAverageTickTimeNanos() / 1_000_000.0;
+        double tps = mspt <= 0.0 ? 20.0 : Math.min(20.0, 1000.0 / mspt);
+        Runtime runtime = Runtime.getRuntime();
+        long usedBytes = runtime.totalMemory() - runtime.freeMemory();
+
+        JsonObject data = new JsonObject();
+        data.addProperty("tps", Math.round(tps * 100.0) / 100.0);
+        data.addProperty("mspt", Math.round(mspt * 100.0) / 100.0);
+        data.addProperty("memory_used_mb", usedBytes / (1024L * 1024L));
+        data.addProperty("memory_max_mb", runtime.maxMemory() / (1024L * 1024L));
+        var operatingSystem = ManagementFactory.getOperatingSystemMXBean();
+        if (operatingSystem instanceof com.sun.management.OperatingSystemMXBean extended) {
+            double cpuLoad = extended.getCpuLoad();
+            if (cpuLoad >= 0.0) {
+                data.addProperty("cpu_percent", Math.round(cpuLoad * 10_000.0) / 100.0);
+            }
+            double processCpuLoad = extended.getProcessCpuLoad();
+            if (processCpuLoad >= 0.0) {
+                data.addProperty("process_cpu_percent", Math.round(processCpuLoad * 10_000.0) / 100.0);
+            }
+        }
+        return data;
+    }
+
+    private void handleNotifyPlayerQuery(WebSocket socket, String messageId, JsonObject payload, MinecraftServer currentServer) {
+        if (!MineAstrConfig.ENABLE_PLAYER_NOTIFICATIONS.getAsBoolean()) {
+            sendQueryError(socket, messageId, "notify_player", "player_notifications_disabled");
+            return;
+        }
+        String requestedName = trimFlatContent(getString(payload, "player_name", ""), 64);
+        ServerPlayer player = findExactPlayer(currentServer, requestedName);
+        if (player == null) {
+            sendQueryError(socket, messageId, "notify_player", "player_not_online");
+            return;
+        }
+        String sender = trimFlatContent(getString(payload, "sender_name", "AstrBot"), 64);
+        String message = trimFlatContent(
+                getString(payload, "message", ""), MineAstrConfig.NOTIFICATION_MAX_LENGTH.getAsInt());
+        if (message.isBlank()) {
+            sendQueryError(socket, messageId, "notify_player", "empty_message");
+            return;
+        }
+
+        Component text = Component.literal("[提醒/" + sender + "] " + message);
+        player.sendSystemMessage(text);
+        if (MineAstrConfig.NOTIFY_ACTION_BAR.getAsBoolean()) {
+            player.displayClientMessage(text, true);
+        }
+        if (MineAstrConfig.NOTIFY_TITLE.getAsBoolean()) {
+            player.connection.send(new ClientboundSetTitleTextPacket(text));
+        }
+        if (MineAstrConfig.NOTIFY_SOUND.getAsBoolean()) {
+            player.level().playSound(null, player.blockPosition(), SoundEvents.NOTE_BLOCK_PLING.value(), SoundSource.PLAYERS, 1.0F, 1.0F);
+        }
+        MineAstr.LOGGER.info("MineAstr 已向玩家 {} 发送来自 {} 的定向提醒。", player.getGameProfile().name(), sender);
+
+        JsonObject data = new JsonObject();
+        data.addProperty("player_uuid", player.getUUID().toString());
+        data.addProperty("player_name", player.getGameProfile().name());
+        data.addProperty("notified", true);
+        sendQueryResult(socket, messageId, "notify_player", data);
+    }
+
+    private void handleBindingQuery(WebSocket socket, String messageId, JsonObject payload, MinecraftServer currentServer) {
+        if (!MineAstrConfig.ENABLE_BINDING_SYNC.getAsBoolean()) {
+            sendQueryError(socket, messageId, "binding", "binding_sync_disabled");
+            return;
+        }
+        String action = trimFlatContent(getString(payload, "action", ""), 16).toLowerCase(Locale.ROOT);
+        String playerName = trimFlatContent(getString(payload, "player_name", ""), 64);
+        String ownerKey = trimFlatContent(getString(payload, "owner_key", ""), 256);
+        String ownerDisplay = trimFlatContent(getString(payload, "owner_display", ""), 128);
+        if ("reset".equals(action)) {
+            boolean whitelistChanged = false;
+            if (MineAstrConfig.BINDING_SYNC_WHITELIST.getAsBoolean()) {
+                for (SyncedBinding binding : List.copyOf(syncedBindings.values())) {
+                    WhitelistSyncResult result = updateWhitelist(
+                            currentServer, binding.identity, false);
+                    if (!result.ok) {
+                        sendQueryError(socket, messageId, "binding",
+                                "whitelist_reset_failed:" + binding.playerName + ":" + result.error);
+                        return;
+                    }
+                    whitelistChanged |= result.changed;
+                }
+            }
+            syncedBindings.clear();
+            MineAstr.LOGGER.warn("MineAstr 绑定同步：action=reset whitelist={}", whitelistChanged);
+            JsonObject data = new JsonObject();
+            data.addProperty("action", action);
+            data.addProperty("cache_size", 0);
+            data.addProperty("whitelist_changed", whitelistChanged);
+            sendQueryResult(socket, messageId, "binding", data);
+            return;
+        }
+        if (!("bind".equals(action) || "unbind".equals(action))) {
+            sendQueryError(socket, messageId, "binding", "invalid_action");
+            return;
+        }
+        if (!isSafeBindingPlayerName(playerName) || ownerKey.isBlank()) {
+            sendQueryError(socket, messageId, "binding", "invalid_binding_identity");
+            return;
+        }
+
+        String normalizedPlayer = playerName.toLowerCase(Locale.ROOT);
+        SyncedBinding existing = syncedBindings.get(normalizedPlayer);
+        if ("unbind".equals(action) && existing != null && !existing.ownerKey.equals(ownerKey)) {
+            sendQueryError(socket, messageId, "binding", "binding_owner_mismatch");
+            return;
+        }
+        NameAndId identity;
+        if (existing != null) {
+            identity = existing.identity;
+        } else {
+            try {
+                identity = currentServer.services().nameToIdCache().get(playerName).orElse(null);
+            } catch (RuntimeException exc) {
+                MineAstr.LOGGER.warn("MineAstr 无法解析玩家身份：player={}", playerName, exc);
+                sendQueryError(socket, messageId, "binding", "player_identity_lookup_failed");
+                return;
+            }
+        }
+        if (identity == null) {
+            MineAstr.LOGGER.warn("MineAstr 无法解析玩家身份：player={} online_mode={}",
+                    playerName, currentServer.usesAuthentication());
+            sendQueryError(socket, messageId, "binding", "player_identity_not_found");
+            return;
+        }
+
+        WhitelistSyncResult whitelistResult = WhitelistSyncResult.skipped();
+        if (MineAstrConfig.BINDING_SYNC_WHITELIST.getAsBoolean()) {
+            whitelistResult = updateWhitelist(currentServer, identity, "bind".equals(action));
+            if (!whitelistResult.ok) {
+                MineAstr.LOGGER.warn(
+                        "MineAstr 原版白名单同步失败：action={} player={} uuid={} error={}",
+                        action, identity.name(), identity.id(), whitelistResult.error);
+                sendQueryError(socket, messageId, "binding", whitelistResult.error);
+                return;
+            }
+        }
+
+        if ("bind".equals(action)) {
+            syncedBindings.put(normalizedPlayer, new SyncedBinding(playerName, ownerKey, ownerDisplay, identity));
+        } else {
+            syncedBindings.remove(normalizedPlayer);
+        }
+
+        MineAstr.LOGGER.info(
+                "MineAstr 绑定同步成功：action={} player={} uuid={} owner={} whitelist_changed={} whitelist_verified={}",
+                action, identity.name(), identity.id(), ownerKey, whitelistResult.changed, whitelistResult.verified);
+
+        JsonObject data = new JsonObject();
+        data.addProperty("action", action);
+        data.addProperty("player_name", playerName);
+        data.addProperty("owner_key", ownerKey);
+        data.addProperty("cache_size", syncedBindings.size());
+        data.addProperty("player_uuid", identity.id().toString());
+        data.addProperty("whitelist_changed", whitelistResult.changed);
+        data.addProperty("whitelist_verified", whitelistResult.verified);
+        sendQueryResult(socket, messageId, "binding", data);
+    }
+
+    private static WhitelistSyncResult updateWhitelist(
+            MinecraftServer currentServer, NameAndId identity, boolean shouldBePresent) {
+        UserWhiteList whitelist = currentServer.getPlayerList().getWhiteList();
+        boolean wasPresent = whitelist.isWhiteListed(identity);
+        if (shouldBePresent && !wasPresent) {
+            whitelist.add(new UserWhiteListEntry(identity));
+        } else if (!shouldBePresent && wasPresent) {
+            whitelist.remove(identity);
+        }
+
+        boolean isPresent = whitelist.isWhiteListed(identity);
+        if (isPresent != shouldBePresent) {
+            return new WhitelistSyncResult(
+                    false, false, false, "whitelist_verification_failed");
+        }
+        try {
+            // StoredUserList already saves during add/remove, but explicitly saving
+            // here lets the bridge report an I/O failure instead of claiming success.
+            whitelist.save();
+        } catch (IOException exc) {
+            MineAstr.LOGGER.warn("MineAstr 保存原版白名单失败：{} {}", identity.name(), identity.id(), exc);
+            return new WhitelistSyncResult(
+                    false, wasPresent != isPresent, true, "whitelist_save_failed");
+        }
+        return new WhitelistSyncResult(true, wasPresent != isPresent, true, "");
+    }
+
+    private static boolean isSafeBindingPlayerName(String playerName) {
+        if (playerName == null || playerName.isEmpty() || playerName.length() > 64) {
+            return false;
+        }
+        return playerName.codePoints().noneMatch(Character::isISOControl);
+    }
+
     private JsonObject buildStatusData(MinecraftServer currentServer) {
         PlayerList playerList = currentServer.getPlayerList();
         JsonObject data = new JsonObject();
         data.addProperty("server_id", MineAstrConfig.SERVER_ID.get());
         data.addProperty("server_name", MineAstrConfig.SERVER_NAME.get());
         data.addProperty("mod_version", MineAstr.MOD_VERSION);
-        data.addProperty("minecraft_version", SharedConstants.getCurrentVersion().getName());
+        data.addProperty("minecraft_version", SharedConstants.getCurrentVersion().name());
         data.addProperty("dedicated", currentServer.isDedicatedServer());
         data.addProperty("player_count", playerList.getPlayerCount());
         data.addProperty("max_players", playerList.getMaxPlayers());
         data.addProperty("uptime_ms", Math.max(0L, System.currentTimeMillis() - startedAtMs));
-        BlockPos spawn = currentServer.overworld().getSharedSpawnPos();
+        BlockPos spawn = currentServer.overworld().getRespawnData().pos();
         JsonObject spawnData = new JsonObject();
-        spawnData.addProperty("dimension", Level.OVERWORLD.location().toString());
+        spawnData.addProperty("dimension", Level.OVERWORLD.identifier().toString());
         spawnData.addProperty("x", spawn.getX());
         spawnData.addProperty("y", spawn.getY());
         spawnData.addProperty("z", spawn.getZ());
@@ -602,9 +936,9 @@ public final class MineAstrBridge implements WebSocket.Listener {
         JsonArray names = new JsonArray();
         JsonArray screenshotCapableNames = new JsonArray();
         for (ServerPlayer player : playerList.getPlayers()) {
-            names.add(player.getGameProfile().getName());
+            names.add(player.getGameProfile().name());
             if (clientCapabilities.containsKey(player.getUUID())) {
-                screenshotCapableNames.add(player.getGameProfile().getName());
+                screenshotCapableNames.add(player.getGameProfile().name());
             }
         }
         data.add("online_player_names", names);
@@ -623,7 +957,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         for (ServerPlayer player : playerList.getPlayers()) {
             JsonObject playerData = new JsonObject();
             playerData.addProperty("uuid", player.getUUID().toString());
-            playerData.addProperty("name", player.getGameProfile().getName());
+            playerData.addProperty("name", player.getGameProfile().name());
             playerData.addProperty("display_name", player.getDisplayName().getString());
             playerData.addProperty("screenshot_supported", clientCapabilities.containsKey(player.getUUID()));
             players.add(playerData);
@@ -697,7 +1031,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
 
         JsonObject data = new JsonObject();
         data.addProperty("player_uuid", player.getUUID().toString());
-        data.addProperty("player_name", player.getGameProfile().getName());
+        data.addProperty("player_name", player.getGameProfile().name());
         data.addProperty("status", "ok");
         data.addProperty("mime_type", assembly.mimeType);
         data.addProperty("width", assembly.width);
@@ -740,6 +1074,17 @@ public final class MineAstrBridge implements WebSocket.Listener {
         payload.addProperty("message_id", messageId);
         payload.addProperty("query", query);
         payload.addProperty("ok", ok);
+        payload.addProperty("time_ms", System.currentTimeMillis());
+        payload.addProperty("server_id", MineAstrConfig.SERVER_ID.get());
+        payload.addProperty("server_name", MineAstrConfig.SERVER_NAME.get());
+        return payload;
+    }
+
+    private JsonObject eventEnvelope(String event) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("type", "event");
+        payload.addProperty("event", event);
+        payload.addProperty("message_id", UUID.randomUUID().toString());
         payload.addProperty("time_ms", System.currentTimeMillis());
         payload.addProperty("server_id", MineAstrConfig.SERVER_ID.get());
         payload.addProperty("server_name", MineAstrConfig.SERVER_NAME.get());
@@ -795,6 +1140,27 @@ public final class MineAstrBridge implements WebSocket.Listener {
         screenshotAssemblies.clear();
     }
 
+    private void clearPendingLoginChecks(String error) {
+        if (pendingLoginChecks.isEmpty()) {
+            return;
+        }
+        LoginCheckResult fallback = loginCheckFallback(error);
+        pendingLoginChecks.values().forEach(pending -> pending.future.complete(fallback));
+        pendingLoginChecks.clear();
+    }
+
+    private ServerPlayer findExactPlayer(MinecraftServer currentServer, String playerName) {
+        if (playerName == null || playerName.isBlank()) {
+            return null;
+        }
+        for (ServerPlayer player : currentServer.getPlayerList().getPlayers()) {
+            if (player.getGameProfile().name().equalsIgnoreCase(playerName)) {
+                return player;
+            }
+        }
+        return null;
+    }
+
     private ServerPlayer findTargetPlayer(MinecraftServer currentServer, JsonObject payload) {
         String playerUuid = getString(payload, "player_uuid", "").strip();
         String playerName = getString(payload, "player_name", "").strip();
@@ -809,11 +1175,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
             }
         }
         if (!playerName.isEmpty()) {
-            for (ServerPlayer player : playerList.getPlayers()) {
-                if (player.getGameProfile().getName().equalsIgnoreCase(playerName)) {
-                    return player;
-                }
-            }
+            return findExactPlayer(currentServer, playerName);
         }
         if (playerUuid.isEmpty() && playerName.isEmpty() && playerList.getPlayerCount() == 1) {
             return playerList.getPlayers().getFirst();
@@ -823,7 +1185,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
 
     private static ServerLevel findTargetLevel(MinecraftServer currentServer, JsonObject payload) {
         String dimensionText = trimFlatContent(getString(payload, "dimension", "minecraft:overworld"), 128);
-        ResourceLocation location = ResourceLocation.tryParse(dimensionText);
+        Identifier location = Identifier.tryParse(dimensionText);
         if (location == null) {
             return null;
         }
@@ -978,6 +1340,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         }
         if (activeSocketFailed) {
             clearPendingScreenshots(error);
+            clearPendingLoginChecks(error);
             if (reconnect) {
                 scheduleReconnect();
             }
@@ -1062,6 +1425,25 @@ public final class MineAstrBridge implements WebSocket.Listener {
         private void onResult(boolean success, int result) {
             this.success = success;
             this.result = result;
+        }
+    }
+
+    public record LoginCheckResult(boolean allowed, String message) {
+    }
+
+    private record PendingLoginCheck(
+            WebSocket socket,
+            String playerName,
+            CompletableFuture<LoginCheckResult> future) {
+    }
+
+    private record SyncedBinding(
+            String playerName, String ownerKey, String ownerDisplay, NameAndId identity) {
+    }
+
+    private record WhitelistSyncResult(boolean ok, boolean changed, boolean verified, String error) {
+        private static WhitelistSyncResult skipped() {
+            return new WhitelistSyncResult(true, false, false, "");
         }
     }
 

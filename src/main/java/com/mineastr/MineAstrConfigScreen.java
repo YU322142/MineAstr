@@ -49,9 +49,9 @@ public final class MineAstrConfigScreen extends Screen {
 
         CycleButton<MineAstrClientConfig.ScreenshotMode> modeButton = CycleButton
                 .<MineAstrClientConfig.ScreenshotMode>builder(
-                        mode -> Component.translatable("screen.mineastr.config.mode." + mode.name().toLowerCase()))
+                        mode -> Component.translatable("screen.mineastr.config.mode." + mode.name().toLowerCase()),
+                        screenshotMode)
                 .withValues(List.of(MineAstrClientConfig.ScreenshotMode.values()))
-                .withInitialValue(screenshotMode)
                 .create(controlLeft, row, controlWidth, 20, Component.empty(), (button, value) -> screenshotMode = value);
         addRenderableWidget(modeButton);
 

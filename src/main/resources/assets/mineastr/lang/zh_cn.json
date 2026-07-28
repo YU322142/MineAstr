@@ -1,4 +1,5 @@
 {
+  "key.mineastr.open_config": "打开 MineAstr 客户端设置",
   "commands.mineastr.status": "MineAstr 状态：%s",
   "commands.mineastr.status.disabled": "已禁用",
   "commands.mineastr.status.inactive": "未启动（本地世界桥接已关闭）",

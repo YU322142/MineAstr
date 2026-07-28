@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "mineastr",
+  "version": "${version}",
+  "name": "MineAstr",
+  "description": "Fabric 1.21.11 bridge between Minecraft, AstrBot and Discord with AQQBot-compatible binding and relay features.",
+  "authors": ["Hgit-1", "MineAstr contributors"],
+  "contact": {
+    "sources": "https://github.com/YU322142/MineAstr"
+  },
+  "license": "AGPL-3.0-or-later",
+  "icon": "logo.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.mineastr.MineAstr"],
+    "client": ["com.mineastr.MineAstrClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.18.1",
+    "minecraft": "1.21.11",
+    "java": ">=21",
+    "fabric-api": "0.141.4+1.21.11"
+  }
+}

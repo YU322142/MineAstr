@@ -1,4 +1,5 @@
 {
+  "key.mineastr.open_config": "Open MineAstr Client Settings",
   "commands.mineastr.status": "MineAstr status: %s",
   "commands.mineastr.status.disabled": "disabled",
   "commands.mineastr.status.inactive": "not started (local-world bridge is disabled)",

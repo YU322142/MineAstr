@@ -14,6 +14,15 @@ data/
 logs/
 *.log
 .env
+*.env
+config/mineastr-common.json
+config/mineastr-client.json
+server.properties
+whitelist.json
+ops.json
+banned-players.json
+banned-ips.json
+eula.txt
 /astrbot_plugin_mineastr.zip
 
 # Gradle / Java / NeoForge

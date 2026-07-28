@@ -11,7 +11,7 @@ public final class MineAstrCommands {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher, MineAstrBridge bridge) {
         dispatcher.register(Commands.literal("mineastr")
-                .requires(source -> source.hasPermission(2))
+                .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
                 .then(Commands.literal("status")
                         .executes(context -> status(context.getSource(), bridge)))
                 .then(Commands.literal("reconnect")
