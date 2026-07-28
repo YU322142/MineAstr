@@ -16,15 +16,17 @@ MineAstr 将 Minecraft 1.21.11 Fabric 服务器接入 AstrBot、QQ/OneBot 与 Di
 
 ## 当前版本
 
-- AstrBot 插件：`0.6.7`
+- AstrBot 插件：`0.6.8`
 - MineAstr Fabric Mod：`0.6.7`
 - Minecraft：`1.21.11`
 - Fabric API：`0.141.4+1.21.11`
 
 成品请从 [GitHub Releases](https://github.com/YU322142/MineAstr/releases) 下载：
 
-- `astrbot_plugin_mineastr-v0.6.7.zip`
+- `astrbot_plugin_mineastr-v0.6.8.zip`
 - `mineastr-fabric-0.6.7.jar`
+
+插件 v0.6.8 是配置兼容热修：将两个隐藏的旧版通知字段从 AstrBot 4.23.6 不支持的 `dict` Schema 改成完整 `object/items`，修复插件重载失败。Minecraft 协议和 Mod 功能没有变化，因此继续使用 v0.6.7 Fabric JAR。
 
 ## 连接方式
 
@@ -57,7 +59,7 @@ AstrBot 插件元数据的安装/更新源为本 Fork 的 [`astrbot-plugin`](htt
 
 ## 构建验证
 
-- AstrBot 插件：45 个自动化测试通过，覆盖配置迁移、QQ/Discord 自动化、分平台通知、死亡原因本地化和游戏内翻译协议。
+- AstrBot 插件：46 个自动化测试通过，覆盖配置迁移、AstrBot 4.23.6 Schema 类型兼容、QQ/Discord 自动化、分平台通知、死亡原因本地化和游戏内翻译协议。
 - Fabric Mod：Gradle `clean build` 通过。
 - 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证 Mixin 纯玩家名访问器加载、绑定写入 UUID、`whitelist_verified=true`、解绑移除、`平台ID:用户ID` 可信命令和正常关服保存。
 
