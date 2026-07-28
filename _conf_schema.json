@@ -87,7 +87,7 @@
   "need_bind_to_login": {
     "description": "未绑定禁止登录",
     "type": "bool",
-    "hint": "配套 Fabric 0.6.5 Mod 支持 player_login_check/event_result；还需在 Mod 侧开启 loginBindingCheckEnabled。",
+    "hint": "配套 Fabric 0.6.6 Mod 支持 player_login_check/event_result；还需在 Mod 侧开启 loginBindingCheckEnabled。",
     "default": false
   },
   "max_bind_count": {

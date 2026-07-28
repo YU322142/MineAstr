@@ -4,6 +4,15 @@ from pathlib import Path
 
 
 class ConfigSchemaTests(unittest.TestCase):
+    def test_metadata_updates_from_fork_plugin_branch(self):
+        metadata_path = Path(__file__).resolve().parents[1] / "metadata.yaml"
+        metadata = metadata_path.read_text(encoding="utf-8")
+        self.assertIn("author: YU322142", metadata)
+        self.assertIn(
+            'repo: "https://github.com/YU322142/MineAstr/tree/astrbot-plugin"',
+            metadata,
+        )
+
     def test_newline_delimited_fields_use_astrbot_textarea_type(self):
         schema_path = Path(__file__).resolve().parents[1] / "_conf_schema.json"
         schema = json.loads(schema_path.read_text(encoding="utf-8"))

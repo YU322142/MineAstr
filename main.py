@@ -22,6 +22,7 @@ from .aqqbot_compat import (
     format_template,
     normalize_owner_spec,
     parse_items,
+    sanitize_minecraft_login_name,
     strip_minecraft_colors,
     trim_message,
 )
@@ -120,7 +121,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.6.5",
+    "0.6.6",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -156,7 +157,19 @@ class MineAstrPlugin(Star):
 
     async def initialize(self):
         await self._binding_store.initialize()
+        migrated, conflicts = await self._binding_store.migrate_player_names(
+            sanitize_minecraft_login_name
+        )
+        if migrated:
+            logger.warning(
+                "MineAstr 已迁移 %d 条误带网络地址的旧绑定记录。", migrated
+            )
+        if conflicts:
+            logger.warning(
+                "MineAstr 有 %d 条旧绑定因纯玩家名已被占用而未自动迁移。", conflicts
+            )
         self._attach_adapter_listener()
+        await self._schedule_connected_server_reconcile()
         self._attach_qq_listeners()
         self._schedule_discord_listener_attach()
         logger.info(
@@ -807,6 +820,21 @@ class MineAstrPlugin(Star):
         self._binding_reconcile_tasks.add(task)
         task.add_done_callback(self._binding_reconcile_tasks.discard)
 
+    async def _schedule_connected_server_reconcile(self) -> None:
+        if not self._cfg_bool("sync_binding_to_server"):
+            return
+        adapter = self._minecraft_adapter()
+        manager = getattr(adapter, "connection_manager", None)
+        if manager is None or not hasattr(manager, "snapshot"):
+            return
+        try:
+            for metadata in await manager.snapshot():
+                self._schedule_binding_reconcile(
+                    str(metadata.get("server_id") or "")
+                )
+        except Exception as exc:
+            logger.warning("MineAstr 读取已连接服务器列表失败：%s", exc)
+
     async def _reconcile_bindings_to_server(self, server_id: str) -> None:
         # The hello handler must return before queries can be answered on that
         # WebSocket, so reconciliation intentionally runs in a separate task.
@@ -846,7 +874,10 @@ class MineAstrPlugin(Star):
         self, payload: dict[str, Any]
     ) -> dict[str, Any] | None:
         event_name = str(payload.get("event") or "").strip().lower()
-        player_name = str(payload.get("player_name") or "").strip()
+        reported_player_name = str(payload.get("player_name") or "").strip()
+        player_name = sanitize_minecraft_login_name(reported_player_name)
+        if player_name != reported_player_name:
+            logger.warning("MineAstr 已移除登录显示名中的网络地址后缀。")
 
         if event_name == "server_start":
             self._schedule_binding_reconcile(str(payload.get("server_id") or ""))

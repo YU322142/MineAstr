@@ -10,12 +10,26 @@ import asyncio
 import re
 import sqlite3
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 DEFAULT_BINDING_DATABASE = "data/mineastr/bindings.sqlite3"
+LEGACY_LOGIN_ENDPOINT_RE = re.compile(
+    r"^(?P<player>.+?) \(/(?:\[[^\]\s]+\]|(?:\d{1,3}\.){3}\d{1,3}):\d{1,5}\)$"
+)
+
+
+def sanitize_minecraft_login_name(value: str) -> str:
+    """Remove the address suffix added by the legacy Fabric login display API."""
+
+    player_name = str(value or "").strip()
+    match = LEGACY_LOGIN_ENDPOINT_RE.fullmatch(player_name)
+    if not match:
+        return player_name
+    sanitized = match.group("player").strip()
+    return sanitized or player_name
 
 
 class BindingError(RuntimeError):
@@ -70,6 +84,59 @@ class BindingStore:
 
     async def initialize(self) -> None:
         await asyncio.to_thread(self._initialize_sync)
+
+    async def migrate_player_names(
+        self, normalizer: Callable[[str], str]
+    ) -> tuple[int, int]:
+        """Normalize stored player names without exposing their old values."""
+
+        async with self._lock:
+            return await asyncio.to_thread(
+                self._migrate_player_names_sync, normalizer
+            )
+
+    def _migrate_player_names_sync(
+        self, normalizer: Callable[[str], str]
+    ) -> tuple[int, int]:
+        connection = self._connect()
+        migrated = 0
+        conflicts = 0
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute(
+                "SELECT rowid AS binding_rowid, player_name FROM bindings"
+            ).fetchall()
+            for row in rows:
+                old_name = str(row["player_name"])
+                new_name = str(normalizer(old_name) or "").strip()
+                if not new_name or new_name == old_name:
+                    continue
+                new_key = new_name.casefold()
+                existing = connection.execute(
+                    "SELECT rowid FROM bindings WHERE player_key = ?",
+                    (new_key,),
+                ).fetchone()
+                if existing is not None and int(existing["rowid"]) != int(
+                    row["binding_rowid"]
+                ):
+                    conflicts += 1
+                    continue
+                connection.execute(
+                    """
+                    UPDATE bindings
+                    SET player_key = ?, player_name = ?
+                    WHERE rowid = ?
+                    """,
+                    (new_key, new_name, int(row["binding_rowid"])),
+                )
+                migrated += 1
+            connection.commit()
+            return migrated, conflicts
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _initialize_sync(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

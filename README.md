@@ -40,7 +40,9 @@ AstrBot 对该会话的文本回复会回传给所有已连接的 Minecraft 服�
 
 ## 安装包兼容性
 
-在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.5.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。
+在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.6.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。
+
+插件元数据中的安装/更新源固定为 Fork 分支 `https://github.com/YU322142/MineAstr/tree/astrbot-plugin`，不会再让 AstrBot 回到原项目或下载仅用于项目导航的 `main` 分支。
 
 从源码自行打包时请使用 `python scripts/package_plugin.py`。该脚本会先写目录条目，并统一使用 `/` 路径分隔符；不要直接使用会省略目录条目的 Windows 压缩工具。
 
@@ -238,7 +240,7 @@ pip install -r requirements.txt
 - 截图功能需要目标玩家安装客户端 Mod；只安装服务端 Mod 时基础聊天和查询可用，但截图不可用。
 - 命令工具的最终权限完全由 Minecraft Mod 的 `mineastr-common.json` 决定。默认 `enableCommandTool = false`；不要为了省事把 `allowedCommandRules` 设为 `["*"]`。
 - AQQBot 兼容层的账号数据库在 AstrBot 侧；如果同时运行原 AQQBot，两套绑定数据不会自动合并，也不应同时负责登录白名单。
-- Fabric 0.6.5 Mod 支持 `performance`、玩家通知、验证码、登录拦截、按正版/离线模式解析 UUID 并核验的原版白名单同步、重连对账和游戏内玩家提醒；更老的 Mod 不支持完整扩展。
+- Fabric 0.6.6 Mod 支持 `performance`、玩家通知、验证码、登录拦截、纯登录玩家名读取、按正版/离线模式解析 UUID 并核验的原版白名单同步、重连对账和游戏内玩家提醒；更老的 Mod 不支持完整扩展。
 - 本插件不会获取 `$url` 远程过滤词库，避免让聊天消息触发服务端任意 URL 请求；请把词库转换为本地 `$filter` / `$regex` 规则。
 - Discord 自动化直接挂接 AstrBot 官方 Pycord 客户端。管理员权限仍受 Discord 角色层级限制；多服务器部署应填写 `discord_guild_ids`，否则离开任一可见服务器都会触发该 Discord 平台账号的全局解绑。
 
@@ -259,8 +261,9 @@ AI 输出不代表天然正确或安全。提交到仓库的内容仍需由维�
 - Discord 中 `/mc` 没有斜杠提示：在 AstrBot Discord 适配器中开启自动注册插件指令，重启/重载适配器；即使未注册为原生斜杠指令，按 AstrBot 唤醒规则发送文本 `/mc help` 仍可测试。
 - `/mc bind` 立即提示冷却：默认绑定冷却为 60 秒、解绑冷却为 86400 秒，与 AQQBot 默认值一致；测试阶段可临时调低相应配置。
 - `VERIFY_CODE` 一直提示验证码不存在：Minecraft 端必须实现 `binding_code` 事件；只更新 AstrBot 插件不会凭空产生验证码。
-- 验证码被识别但提示玩家名不符合规则：升级插件和 Fabric Mod 到 `0.6.5`。验证码模式会直接采用 Minecraft 服务端认证的登录名，不再使用只适合手填名称的正则；旧版会误拒带空格或平台字符的名称。
-- 绑定成功但原版白名单仍拒绝：升级插件和 Fabric Mod 到 `0.6.5`，并检查 Mod 日志是否出现 `whitelist_verified=true`。新版会按在线/离线认证模式解析 UUID、写入后核验；失败时绑定会按 `binding_sync_required` 设置回滚或明确提示，不再假报成功。
+- 验证码被识别但提示玩家名不符合规则：升级插件和 Fabric Mod 到 `0.6.6`。验证码模式会直接采用 Minecraft 服务端认证的登录名，不再使用只适合手填名称的正则；旧版会误拒带空格或平台字符的名称。
+- 游戏名后出现 `(/[IPv6]:端口)`：这是 0.6.5 Mod 误用了 Fabric 的登录日志显示名。0.6.6 Mod 会读取纯 `requestedUsername`，插件也会自动迁移已经错误保存的绑定并重新对账，无需手工修改 SQLite。
+- 绑定成功但原版白名单仍拒绝：升级插件和 Fabric Mod 到 `0.6.6`，并检查 Mod 日志是否出现 `whitelist_verified=true`。新版会按在线/离线认证模式解析 UUID、写入后核验；失败时绑定会按 `binding_sync_required` 设置回滚或明确提示，不再假报成功。
 - QQ 退群没有解绑：确认平台类型是 `aiocqhttp`、`qq_auto_unbind_on_leave=true`，群号在 `qq_group_ids` 中，并在启动日志查找“已为 QQ/OneBot 平台注册退群自动解绑监听”。
 - QQ 绑定后群名片未改变：开启 `qq_auto_group_card`，并确保 OneBot 机器人是该群管理员或群主。
 - `need_bind_to_login` 开启后仍能登录：配套 Fabric Mod 的 `loginBindingCheckEnabled` 也必须开启，并确认 Mod 已连接 AstrBot；`loginCheckFailOpen=true` 时断线/超时会放行。

@@ -1,6 +1,6 @@
 # MineAstr WebSocket 协议
 
-本文描述 AstrBot 插件 `v0.6.5` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
+本文描述 AstrBot 插件 `v0.6.6` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
 
 ## 连接与认证
 
@@ -19,13 +19,15 @@ Authorization: Bearer <token>
   "protocol": 1,
   "server_id": "survival",
   "server_name": "Survival Server",
-  "mod_version": "0.6.5"
+  "mod_version": "0.6.6"
 }
 ```
 
 服务端只信任该连接在 `hello` 中登记的 `server_id` / `server_name`。后续 `chat` 或 `event` 中伪造的同名字段会被覆盖。未发送 `hello` 就提交聊天、事件或查询结果会被拒绝。
 
 `server_id` 在同一个 AstrBot 实例中应保持唯一、稳定，长度不要超过 64 字符。
+
+所有 `player_name` 字段必须只包含 Minecraft/Floodgate 认证得到的原始玩家名，不得附加远端 IP、端口或其他日志上下文。旧 Mod 曾发送形如 `玩家名 (/地址:端口)` 的显示值；插件 0.6.6 会仅为兼容迁移而清理这种旧值。
 
 ## 既有消息
 
@@ -78,7 +80,7 @@ AstrBot 发出 `type=query`，Mod 必须复制 `message_id` 并返回 `type=quer
 }
 ```
 
-## v0.6.5 查询扩展
+## v0.6.6 查询扩展
 
 ### `performance`
 

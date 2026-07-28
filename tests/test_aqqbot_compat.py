@@ -10,6 +10,7 @@ from aqqbot_compat import (
     apply_aqqbot_filters,
     format_template,
     normalize_owner_spec,
+    sanitize_minecraft_login_name,
     strip_minecraft_colors,
 )
 
@@ -140,8 +141,38 @@ class BindingStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(state)
         self.assertIsNone(state.original_nickname)
 
+    async def test_migrates_legacy_login_display_name_without_address(self):
+        await self.store.bind(
+            owner_key="default:42",
+            platform_id="default",
+            user_id="42",
+            owner_display="Alice",
+            player_name="NekoYu_322142 (/[2001:db8::1]:4528)",
+            max_bind_count=1,
+        )
+        migrated, conflicts = await self.store.migrate_player_names(
+            sanitize_minecraft_login_name
+        )
+        self.assertEqual((migrated, conflicts), (1, 0))
+        record = await self.store.get_by_player("NekoYu_322142")
+        self.assertIsNotNone(record)
+        self.assertEqual(record.player_name, "NekoYu_322142")
+
 
 class CompatibilityHelperTests(unittest.TestCase):
+    def test_sanitizes_legacy_login_endpoint_suffix(self):
+        self.assertEqual(
+            sanitize_minecraft_login_name(
+                "NekoYu_322142 (/[2001:db8:0:1::1234]:4528)"
+            ),
+            "NekoYu_322142",
+        )
+        self.assertEqual(
+            sanitize_minecraft_login_name("Steve (/203.0.113.8:25565)"),
+            "Steve",
+        )
+        self.assertEqual(sanitize_minecraft_login_name("Normal_Name"), "Normal_Name")
+
     def test_local_filter_and_regex_rules(self):
         rules = "\n".join(
             [
