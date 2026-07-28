@@ -16,17 +16,17 @@ MineAstr 将 Minecraft 1.21.11 Fabric 服务器接入 AstrBot、QQ/OneBot 与 Di
 
 ## 当前版本
 
-- AstrBot 插件：`0.6.9`
-- MineAstr Fabric Mod：`0.6.9`
+- AstrBot 插件：`0.6.10`
+- MineAstr Fabric Mod：`0.6.10`
 - Minecraft：`1.21.11`
 - Fabric API：`0.141.4+1.21.11`
 
 成品请从 [GitHub Releases](https://github.com/YU322142/MineAstr/releases) 下载：
 
-- `astrbot_plugin_mineastr-v0.6.9.zip`
-- `mineastr-fabric-0.6.9.jar`
+- `astrbot_plugin_mineastr-v0.6.10.zip`
+- `mineastr-fabric-0.6.10.jar`
 
-v0.6.9 允许 QQ/OneBot 与 Discord 分别选择单个或多个通知语言，并为中英文分别填写多行自定义样式；游戏内与平台聊天自动翻译支持服主术语表，QQ/Discord 也可分别选择单语或多语译文。桥接会话中玩家 @机器人时，玩家消息和机器人的最终回复都可进入 MC。本版还可把 MineAstr 管理员与 AstrBot 全局管理员同步到 Mod 当前连接的临时命令可信集合；静态可信名单、命令工具总开关和允许命令规则仍独立生效。
+v0.6.10 修复了离线后端为正版启动器账号写入 Mojang UUID、导致白名单文件看似正确却仍被原版拒绝的问题。绑定同步现在按服务端认证模式选择 UUID、清理同名冲突项，并在原版白名单检查前使用本次连接的真实身份二次对账，因此也兼容 Velocity/BungeeCord、Floodgate 和混合认证。v0.6.9 的多语言通知、自定义样式、跨平台翻译、@机器人双向转发及管理员可信名单同步均保留。
 
 ## 连接方式
 
@@ -42,7 +42,7 @@ Minecraft MineAstr Mod -> ws://astrbot.example.com:8765/ws -> AstrBot
 
 ## 绑定与白名单
 
-`0.6.7` 会按服务器在线/离线认证模式解析玩家 UUID，直接写入并保存原版白名单，再读回核验。登录检查只使用认证得到的纯玩家名，不会把玩家 IP/端口写入绑定；插件启动时会自动迁移旧版错误记录并重新同步白名单。若解析、保存或核验失败，Mod 会向 AstrBot 返回失败，不再显示虚假的同步成功。
+`0.6.10` 会按服务器在线/离线认证模式解析玩家 UUID，清理同名但 UUID 不同的旧项，直接写入并保存原版白名单，再读回核验；原版开始 UUID 白名单检查前还会按本次连接真正使用的身份二次对账。登录检查只使用纯玩家名，不会把玩家 IP/端口写入绑定；插件启动时会自动迁移旧版错误记录并重新同步白名单。启动器使用正版账号并不代表 `online-mode=false` 的后端会使用 Mojang UUID。
 
 本版为 QQ/OneBot 与 Discord 分别提供逐行通知语言列表、总开关、服务器连接/断开、玩家进入/离开/死亡开关和按语言自定义样式；只写一行是单语，写多行会按顺序并列发送。死亡事件使用 Minecraft 结构化伤害类型生成中文/英文原因，不再出现“玩家名 因 玩家名 died”。未绑定登录、验证码与游戏内定向提醒支持客户端中英文；安装同版客户端 Mod 时会跟随客户端语言。
 
@@ -65,7 +65,7 @@ AstrBot 插件元数据的安装/更新源为本 Fork 的 [`astrbot-plugin`](htt
 
 - AstrBot 插件：53 个自动化测试通过，覆盖配置迁移、AstrBot 4.23.6 Schema 类型兼容、QQ/Discord 自动化、单/多语言分平台通知与聊天翻译、自定义术语表、@机器人双向转发、管理员同步、死亡原因本地化和游戏内翻译协议。
 - Fabric Mod：Gradle `clean build` 通过。
-- 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证 Mixin 纯玩家名访问器加载、绑定写入 UUID、`whitelist_verified=true`、解绑移除、Bot 管理员可信名单同步、`平台ID:用户ID` 可信命令和正常关服保存。
+- 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证 Mixin 加载、离线后端收到正版客户端 UUID 时改用服务端真实离线 UUID、`whitelist_verified=true`，并实际通过原版白名单登录校验；既有解绑、管理员同步、可信命令和正常关服流程保持有效。
 
 ## 许可与来源
 
