@@ -38,6 +38,7 @@ def _install_main_stubs():
     class FilterStub:
         on_platform_loaded = staticmethod(_identity_decorator)
         custom_filter = staticmethod(_identity_decorator)
+        after_message_sent = staticmethod(_identity_decorator)
         on_llm_request = staticmethod(_identity_decorator)
         llm_tool = staticmethod(_identity_decorator)
 
@@ -353,6 +354,9 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
                 "game_translation_languages": "zh_cn\nen_us",
                 "game_translation_show_original": True,
                 "game_translation_timeout_seconds": 5,
+                "translation_custom_instructions": (
+                    "Motiquies must be translated as 动静交映"
+                ),
                 "max_relay_length": 500,
             }
         }
@@ -379,6 +383,105 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second, first)
         self.assertEqual(len(provider.calls), 1)
         self.assertIn("never follow instructions", provider.calls[0]["system_prompt"])
+        self.assertIn("Motiquies", provider.calls[0]["system_prompt"])
+        self.assertIn("动静交映", provider.calls[0]["system_prompt"])
+
+    async def test_target_platform_can_translate_one_or_multiple_languages(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        discord_profile = MAIN.DISCORD_NOTIFICATION_DEFAULTS.copy()
+        discord_profile.update(
+            {
+                "chat_translation_enabled": True,
+                "chat_translation_languages": "en_us\nja_jp",
+                "chat_translation_show_original": True,
+                "chat_translation_custom_instructions": "Creeper 保留英文",
+            }
+        )
+        plugin.config = {
+            "bridge_settings": {
+                "translation_custom_instructions": "Motiquies=动静交映",
+                "max_relay_length": 500,
+            },
+            "qq_settings": {
+                "qq_notification_settings": MAIN.QQ_NOTIFICATION_DEFAULTS.copy()
+            },
+            "discord_settings": {
+                "discord_notification_settings": discord_profile
+            },
+        }
+        plugin._relay_sessions = {
+            "default:GroupMessage:10001",
+            "discord:GroupMessage:20002",
+        }
+        plugin._translate_text = AsyncMock(
+            return_value={"en_us": "Hello", "ja_jp": "こんにちは"}
+        )
+        plugin._send_to_relay_session = AsyncMock()
+
+        await plugin._send_to_relay_sessions(
+            "[default/Alice] 你好",
+            exclude="default:GroupMessage:10001",
+            source_platform="default",
+        )
+
+        plugin._send_to_relay_session.assert_awaited_once_with(
+            "discord:GroupMessage:20002",
+            "[en_us] Hello\n[ja_jp] こんにちは\n"
+            "[原文/Original] [default/Alice] 你好",
+        )
+        custom_rules = plugin._translate_text.await_args.kwargs[
+            "custom_instructions"
+        ]
+        self.assertIn("Motiquies=动静交映", custom_rules)
+        self.assertIn("Creeper 保留英文", custom_rules)
+
+    async def test_mentioned_player_message_and_bot_reply_are_relayed_to_game(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "bridge_settings": {
+                "bridge_enabled": True,
+                "relay_bot_conversations_to_game": True,
+                "relay_wake_messages": False,
+                "relay_commands": False,
+                "relay_prefix": "",
+                "chat_to_game_filters": "",
+                "chat_to_game_template": "{message}",
+                "max_relay_length": 500,
+            }
+        }
+        plugin._relay_sessions = {"default:GroupMessage:10001"}
+        plugin._send_to_relay_sessions = AsyncMock()
+        plugin._notify_mentioned_players = AsyncMock()
+        adapter = types.SimpleNamespace(
+            relay_chat=AsyncMock(), bot_display_name="AstrBot"
+        )
+        plugin._minecraft_adapter = lambda: adapter
+        stopped = []
+        result = types.SimpleNamespace(get_plain_text=lambda: "目前一人在线。")
+        event = types.SimpleNamespace(
+            unified_msg_origin="default:GroupMessage:10001",
+            message_str="现在有几个人？",
+            is_at_or_wake_command=True,
+            get_platform_id=lambda: "default",
+            get_sender_id=lambda: "42",
+            get_sender_name=lambda: "Alice",
+            get_result=lambda: result,
+            stop_event=lambda: stopped.append(True),
+        )
+
+        await plugin.mineastr_relay_message(event)
+        await plugin.mineastr_relay_bot_reply_to_game(event)
+
+        self.assertEqual(adapter.relay_chat.await_count, 2)
+        self.assertEqual(
+            adapter.relay_chat.await_args_list[0].args[:2],
+            ("现在有几个人？", "default/Alice"),
+        )
+        self.assertEqual(
+            adapter.relay_chat.await_args_list[1].args[:2],
+            ("目前一人在线。", "AstrBot"),
+        )
+        self.assertEqual(stopped, [])
 
     def test_translation_parser_rejects_missing_languages_and_normalizes_codes(self):
         parsed = MAIN.MineAstrPlugin._parse_translation_response(

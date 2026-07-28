@@ -69,7 +69,7 @@ Discord 不需要本插件自行登录 Discord；它复用 AstrBot 官方 Discor
 6. 执行 `/mc status` 和 `/mc list` 验证查询，再发送一条普通消息验证 Discord → Minecraft 转发。
 7. 把 `discord_guild_ids` 填为本服务器 Guild ID（建议生产环境明确填写），执行 `/mc discord_status` 检查成员 Intent、退群监听和服务器可见性。
 
-普通桥接消息会进入 Minecraft，但不会额外触发 LLM。`@机器人` 或 AstrBot 指令默认不转发进游戏，以免产生重复回复；可用 `relay_wake_messages`、`relay_commands` 调整。
+普通桥接消息会进入 Minecraft，但不会额外触发 LLM。v0.6.9 起默认开启 `relay_bot_conversations_to_game`：QQ/Discord 玩家 `@机器人` 的原消息会进入游戏并继续触发 AstrBot，最终纯文本回复也会进入游戏；工具调用前只有 Reply/At 的空中间消息不会转发。斜杠指令仍由 `relay_commands` 单独控制。
 
 ### MineAstr 指令
 
@@ -173,6 +173,8 @@ pip install -r requirements.txt
 | `game_translation_provider_id` | 空 | 留空使用当前会话文本模型，也可指定低成本翻译 Provider。 |
 | `game_translation_languages` | `zh_cn\nen_us` | 每行一个目标 Minecraft locale，最多 8 种，例如 `ja_jp`。 |
 | `game_translation_show_original` | `true` | 未安装同版客户端 Mod 时，译文下方是否默认附带原文。 |
+| `translation_custom_instructions` | 空 | 全局翻译附加提示词/术语表，支持多行专有名词固定译法；用于游戏内及平台翻译。 |
+| `relay_bot_conversations_to_game` | `true` | 把桥接会话中玩家 @机器人的消息及 AstrBot 最终纯文本回复同步到 MC。 |
 | `game_translation_timeout_seconds` | `20` | 翻译超时；超时直接发送原文，不阻塞后续聊天。 |
 | `binding_enabled` | `true` | 启用跨平台账号绑定。 |
 | `binding_database` | `data/mineastr/bindings.sqlite3` | SQLite 绑定数据库；修改后重载插件。 |
@@ -195,14 +197,16 @@ pip install -r requirements.txt
 | `notifications_enabled` | `true` | 启用服务器与玩家事件通知。 |
 | `notification_language` | `zh_CN` | 预设通知语言，可选 `zh_CN` / `en_US`；自定义模板保持原文。 |
 | `notify_*_enabled` | `true` | 服务器连接/断开、玩家进入/离开/死亡各自的独立通知开关。 |
-| `qq_notification_settings` | QQ 独立设置 | QQ/OneBot 的平台 ID、逐行语言列表、通知总开关、5 个事件开关和每种语言的自定义样式。 |
-| `discord_notification_settings` | Discord 独立设置 | Discord 的平台 ID、逐行语言列表、通知总开关、5 个事件开关和每种语言的自定义样式。 |
+| `qq_notification_settings` | QQ 独立设置 | QQ/OneBot 的平台 ID、聊天单/多语自动翻译、分平台术语表、逐行通知语言、事件开关和每种语言的通知样式。 |
+| `discord_notification_settings` | Discord 独立设置 | Discord 的平台 ID、聊天单/多语自动翻译、分平台术语表、逐行通知语言、事件开关和每种语言的通知样式。 |
 
 配置页按群服互联、绑定、QQ、Discord、管理员/远程指令和通知分成六个可折叠区域；账号、群号、会话和过滤规则均使用多行输入框。升级时旧版平铺配置会自动迁移一次，不会重置现有设置。v0.6.9 起，QQ 与 Discord 的“通知语言”都是逐行列表：只写一行就是单语，写 `zh_CN` 和 `en_US` 两行就会按该顺序同时发送；“分语言自定义样式”可为每种语言单独填写多行模板，留空则使用内置预设。旧版通用模板非空时为兼容旧配置，只发送该模板一次。事件模板支持 `{server}`、`{server_id}`、`{player}`、`{binding}` 等占位符，死亡事件另支持 `{reason}`、`{death_type}`、`{attacker}`、`{direct_entity}` 和 `{weapon}`。平台适配器的 `host`、`port`、`path`、`token` 仍应在 AstrBot 的 `minecraft` 平台配置页修改。
 
 未绑定登录提示由“未绑定登录拒绝消息开关”控制。登录校验发生在 Minecraft 玩家尚未绑定任何聊天平台时，因此这条提示无法判断应使用 QQ 还是 Discord 的平台配置：插件会附带客户端翻译键，安装同版 MineAstr 客户端 Mod 时由客户端按自身语言显示；未安装客户端 Mod 时回退到 AstrBot 的全局语言和模板。
 
 “启用游戏内消息自动翻译”处理的是聊天正文：QQ、Discord 和 AstrBot 回复进入游戏前会一次生成配置中各目标语言的译文，Mod 再按每位在线玩家的客户端 locale 分别选择，不会把同一种语言强制广播给所有人。玩家安装 v0.6.7 客户端 Mod 后可在 F8 设置中关闭译文或关闭原文；没有匹配译文、模型失败或超时时始终显示原文。翻译提示把聊天正文当作不可信数据，不执行其中的指令，但仍建议为此功能使用独立、低成本的 Provider。
+
+“全局翻译附加提示词/术语表”会作为服主可信规则加入系统提示词，例如每行写 `Motiquies 固定译为 动静交映`。QQ 与 Discord 平台设置中还可分别开启聊天自动翻译、填写一个或多个目标 locale、决定是否附带原文，并追加只对该平台生效的术语。Minecraft 消息发往 QQ/Discord、以及 QQ 与 Discord 之间转发的玩家消息都会按目标平台配置处理；翻译失败仍发送原文。MineAstr 保留不可覆盖的 JSON 输出约束，因此术语表不需要也不应要求模型改变响应格式。
 
 ## 机器人可调用工具
 

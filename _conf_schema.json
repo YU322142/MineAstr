@@ -27,8 +27,15 @@
       "relay_wake_messages": {
         "description": "同时转发唤醒机器人消息",
         "type": "bool",
-        "hint": "默认关闭，避免 @AstrBot 的对话同时刷入游戏。",
+        "hint": "旧版兼容开关；新版推荐使用下一项同步完整的人机对话。",
         "default": false
+      },
+      "relay_bot_conversations_to_game": {
+        "description": "把玩家 @机器人及机器人回复同步到游戏",
+        "type": "bool",
+        "hint": "开启后，桥接 QQ/Discord 中唤醒机器人的玩家消息会进入 MC，AstrBot 最终的纯文本回复也会进入 MC；不会转发只有 Reply/At 的空中间消息。",
+        "obvious_hint": true,
+        "default": true
       },
       "relay_commands": {
         "description": "把斜杠指令也转发进游戏聊天",
@@ -96,6 +103,13 @@
         "type": "int",
         "hint": "超时后不阻塞聊天，直接发送原文。允许 1–60 秒。",
         "default": 20
+      },
+      "translation_custom_instructions": {
+        "description": "全局翻译附加提示词 / 术语表",
+        "type": "text",
+        "hint": "可逐行写专有名词、固定译名和风格要求，例如：Motiquies 固定译为 动静交映。作为服主可信规则加入提示词；MineAstr 仍会强制模型输出语言 JSON。最多使用前 4000 字。",
+        "obvious_hint": true,
+        "default": ""
       }
     }
   },
@@ -210,9 +224,9 @@
         "default": "{players}"
       },
       "qq_notification_settings": {
-        "description": "QQ 通知语言、开关与模板",
+        "description": "QQ 平台翻译、通知语言、开关与样式",
         "type": "object",
-        "hint": "这里的设置只应用到下方平台 ID 对应的 QQ/OneBot 会话；每条通知可单独关闭，模板留空时使用所选语言预设。",
+        "hint": "这里的设置只应用到下方平台 ID 对应的 QQ/OneBot 会话；聊天翻译和每条事件通知可分别开关。",
         "obvious_hint": true,
         "items": {
           "platform_ids": {
@@ -227,6 +241,10 @@
             "hint": "单语只写一行；中英同时显示时写两行：zh_CN 和 en_US。输出顺序与这里一致。",
             "default": "zh_CN"
           },
+          "chat_translation_enabled": {"description": "QQ 平台消息自动翻译", "type": "bool", "hint": "翻译从 Minecraft 或 Discord 转发到 QQ 的聊天消息；会调用上方配置的翻译模型。", "default": false},
+          "chat_translation_languages": {"description": "QQ 聊天翻译目标语言（每行一个）", "type": "text", "hint": "使用 locale，例如 zh_cn、en_us、ja_jp；一行是单语，多行按顺序并列显示，最多 8 种。", "default": "zh_cn"},
+          "chat_translation_show_original": {"description": "QQ 翻译后显示原文", "type": "bool", "default": true},
+          "chat_translation_custom_instructions": {"description": "QQ 翻译附加提示词 / 术语表", "type": "text", "hint": "只应用到发往 QQ 的聊天译文，并与上方全局术语表合并。", "default": ""},
           "notifications_enabled": {"description": "QQ 事件通知总开关", "type": "bool", "default": true},
           "notify_server_start_enabled": {"description": "QQ：服务器连接通知", "type": "bool", "default": true},
           "notify_server_stop_enabled": {"description": "QQ：服务器断开通知", "type": "bool", "default": true},
@@ -311,9 +329,9 @@
         "default": "MineAstr Minecraft 账号绑定同步"
       },
       "discord_notification_settings": {
-        "description": "Discord 通知语言、开关与模板",
+        "description": "Discord 平台翻译、通知语言、开关与样式",
         "type": "object",
-        "hint": "这里的设置只应用到下方平台 ID 对应的 Discord 会话；每条通知可单独关闭，模板留空时使用所选语言预设。",
+        "hint": "这里的设置只应用到下方平台 ID 对应的 Discord 会话；聊天翻译和每条事件通知可分别开关。",
         "obvious_hint": true,
         "items": {
           "platform_ids": {
@@ -328,6 +346,10 @@
             "hint": "单语只写一行；中英同时显示时写两行：zh_CN 和 en_US。输出顺序与这里一致。",
             "default": "zh_CN"
           },
+          "chat_translation_enabled": {"description": "Discord 平台消息自动翻译", "type": "bool", "hint": "翻译从 Minecraft 或 QQ 转发到 Discord 的聊天消息；会调用上方配置的翻译模型。", "default": false},
+          "chat_translation_languages": {"description": "Discord 聊天翻译目标语言（每行一个）", "type": "text", "hint": "使用 locale，例如 zh_cn、en_us、ja_jp；一行是单语，多行按顺序并列显示，最多 8 种。", "default": "en_us"},
+          "chat_translation_show_original": {"description": "Discord 翻译后显示原文", "type": "bool", "default": true},
+          "chat_translation_custom_instructions": {"description": "Discord 翻译附加提示词 / 术语表", "type": "text", "hint": "只应用到发往 Discord 的聊天译文，并与上方全局术语表合并。", "default": ""},
           "notifications_enabled": {"description": "Discord 事件通知总开关", "type": "bool", "default": true},
           "notify_server_start_enabled": {"description": "Discord：服务器连接通知", "type": "bool", "default": true},
           "notify_server_stop_enabled": {"description": "Discord：服务器断开通知", "type": "bool", "default": true},
@@ -493,6 +515,7 @@
   "relay_sessions": {"type": "text", "default": "", "invisible": true},
   "relay_prefix": {"type": "string", "default": "", "invisible": true},
   "relay_wake_messages": {"type": "bool", "default": false, "invisible": true},
+  "relay_bot_conversations_to_game": {"type": "bool", "default": true, "invisible": true},
   "relay_commands": {"type": "bool", "default": false, "invisible": true},
   "chat_to_game_template": {"type": "string", "default": "{message}", "invisible": true},
   "game_to_chat_template": {"type": "string", "default": "[MC/{server}] {player}: {message}", "invisible": true},
@@ -504,6 +527,7 @@
   "game_translation_languages": {"type": "text", "default": "zh_cn\nen_us", "invisible": true},
   "game_translation_show_original": {"type": "bool", "default": true, "invisible": true},
   "game_translation_timeout_seconds": {"type": "int", "default": 20, "invisible": true},
+  "translation_custom_instructions": {"type": "text", "default": "", "invisible": true},
   "binding_enabled": {"type": "bool", "default": true, "invisible": true},
   "binding_database": {"type": "string", "default": "data/mineastr/bindings.sqlite3", "invisible": true},
   "verify_method": {"type": "string", "default": "GROUP_NAME", "invisible": true},
@@ -525,6 +549,10 @@
     "items": {
       "platform_ids": {"type": "text", "default": "default"},
       "language": {"type": "text", "default": "zh_CN"},
+      "chat_translation_enabled": {"type": "bool", "default": false},
+      "chat_translation_languages": {"type": "text", "default": "zh_cn"},
+      "chat_translation_show_original": {"type": "bool", "default": true},
+      "chat_translation_custom_instructions": {"type": "text", "default": ""},
       "notifications_enabled": {"type": "bool", "default": true},
       "notify_server_start_enabled": {"type": "bool", "default": true},
       "notify_server_stop_enabled": {"type": "bool", "default": true},
@@ -575,6 +603,10 @@
     "items": {
       "platform_ids": {"type": "text", "default": "discord"},
       "language": {"type": "text", "default": "zh_CN"},
+      "chat_translation_enabled": {"type": "bool", "default": false},
+      "chat_translation_languages": {"type": "text", "default": "en_us"},
+      "chat_translation_show_original": {"type": "bool", "default": true},
+      "chat_translation_custom_instructions": {"type": "text", "default": ""},
       "notifications_enabled": {"type": "bool", "default": true},
       "notify_server_start_enabled": {"type": "bool", "default": true},
       "notify_server_stop_enabled": {"type": "bool", "default": true},

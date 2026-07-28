@@ -59,6 +59,7 @@ class ConfigSchemaTests(unittest.TestCase):
             "chat_to_game_filters",
             "game_to_chat_filters",
             "game_translation_languages",
+            "translation_custom_instructions",
             "qq_group_ids",
             "discord_guild_ids",
             "bridge_admin_users",
@@ -194,6 +195,21 @@ class ConfigSchemaTests(unittest.TestCase):
         self.assertTrue(
             self._visible_field(schema, "game_translation_show_original")["default"]
         )
+        self.assertEqual(
+            self._visible_field(schema, "translation_custom_instructions")["type"],
+            "text",
+        )
+        self.assertTrue(
+            self._visible_field(schema, "relay_bot_conversations_to_game")[
+                "default"
+            ]
+        )
+        for key in ("qq_notification_settings", "discord_notification_settings"):
+            items = self._visible_field(schema, key)["items"]
+            self.assertEqual(items["chat_translation_languages"]["type"], "text")
+            self.assertEqual(
+                items["chat_translation_custom_instructions"]["type"], "text"
+            )
 
     def test_command_admin_sync_is_explicit_and_disabled_by_default(self):
         schema = self._schema()
