@@ -65,6 +65,37 @@
         "type": "int",
         "hint": "超出长度会截断；Discord 自身仍有 2000 字限制。",
         "default": 500
+      },
+      "game_translation_enabled": {
+        "description": "启用游戏内消息自动翻译",
+        "type": "bool",
+        "hint": "使用 AstrBot 文本模型把 QQ/Discord 消息和 AstrBot 回复翻译为各玩家客户端语言。会产生模型调用、延迟和费用，默认关闭。翻译失败时自动发送原文。",
+        "obvious_hint": true,
+        "default": false
+      },
+      "game_translation_provider_id": {
+        "description": "翻译模型 Provider ID",
+        "type": "string",
+        "hint": "留空使用消息会话当前选择的文本模型；也可填写 AstrBot 提供商 ID 固定使用低成本翻译模型。",
+        "default": ""
+      },
+      "game_translation_languages": {
+        "description": "游戏内翻译目标语言（每行一个）",
+        "type": "text",
+        "hint": "使用 Minecraft locale，例如 zh_cn、en_us、ja_jp。服务端会按每位玩家客户端上报的语言选择最接近的译文；最多 8 种。",
+        "default": "zh_cn\nen_us"
+      },
+      "game_translation_show_original": {
+        "description": "默认同时显示原文",
+        "type": "bool",
+        "hint": "未安装客户端 Mod 的玩家使用此默认值；安装 v0.6.7 客户端 Mod 后，玩家可在 F8 设置中自行选择翻译、翻译+原文或仅原文。",
+        "default": true
+      },
+      "game_translation_timeout_seconds": {
+        "description": "翻译等待超时（秒）",
+        "type": "int",
+        "hint": "超时后不阻塞聊天，直接发送原文。允许 1–60 秒。",
+        "default": 20
       }
     }
   },
@@ -401,6 +432,11 @@
   "chat_to_game_filters": {"type": "text", "default": "", "invisible": true},
   "game_to_chat_filters": {"type": "text", "default": "", "invisible": true},
   "max_relay_length": {"type": "int", "default": 500, "invisible": true},
+  "game_translation_enabled": {"type": "bool", "default": false, "invisible": true},
+  "game_translation_provider_id": {"type": "string", "default": "", "invisible": true},
+  "game_translation_languages": {"type": "text", "default": "zh_cn\nen_us", "invisible": true},
+  "game_translation_show_original": {"type": "bool", "default": true, "invisible": true},
+  "game_translation_timeout_seconds": {"type": "int", "default": 20, "invisible": true},
   "binding_enabled": {"type": "bool", "default": true, "invisible": true},
   "binding_database": {"type": "string", "default": "data/mineastr/bindings.sqlite3", "invisible": true},
   "verify_method": {"type": "string", "default": "GROUP_NAME", "invisible": true},

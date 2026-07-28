@@ -44,6 +44,7 @@ class ConfigSchemaTests(unittest.TestCase):
             "relay_sessions",
             "chat_to_game_filters",
             "game_to_chat_filters",
+            "game_translation_languages",
             "qq_group_ids",
             "discord_guild_ids",
             "bridge_admin_users",
@@ -141,6 +142,19 @@ class ConfigSchemaTests(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertTrue(self._visible_field(schema, key)["default"].startswith("[MC]"))
         self.assertEqual(self._visible_field(schema, "need_bind_to_login")["type"], "bool")
+
+    def test_game_translation_gui_exposes_client_language_and_original_controls(self):
+        schema = self._schema()
+        self.assertFalse(
+            self._visible_field(schema, "game_translation_enabled")["default"]
+        )
+        self.assertEqual(
+            self._visible_field(schema, "game_translation_languages")["type"],
+            "text",
+        )
+        self.assertTrue(
+            self._visible_field(schema, "game_translation_show_original")["default"]
+        )
 
 
 if __name__ == "__main__":

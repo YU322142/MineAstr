@@ -50,9 +50,18 @@ Authorization: Bearer <token>
   "type": "chat",
   "message_id": "uuid",
   "sender_name": "discord/Alice",
-  "content": "大家好"
+  "content": "大家好",
+  "translations": {
+    "en_us": "Hello everyone",
+    "ja_jp": "みなさん、こんにちは"
+  },
+  "show_original": true
 }
 ```
+
+`translations` 与 `show_original` 均为 v0.6.7 可选扩展。Mod 应按每位在线玩家的 `clientInformation().language()` 选择精确 locale，找不到时可回退到同语言族；仍找不到、译文无效或玩家关闭翻译时显示 `content`。安装同版客户端 Mod 的玩家可通过单独的 C2S 偏好包覆盖 `show_original` 并关闭译文；不要修改旧版客户端能力包的 codec，以免协议不匹配导致断线。
+
+AstrBot 插件只发送纯文本，不把译文解析为命令或 JSON 组件。目标语言数量、文本长度和模型等待时间都必须受限；翻译模型失败时不得丢弃原文。
 
 ### 查询
 

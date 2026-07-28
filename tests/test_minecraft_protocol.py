@@ -108,6 +108,8 @@ def _install_astrbot_stubs():
 _install_astrbot_stubs()
 
 from minecraft_adapter import MinecraftConnectionManager, MinecraftPlatformAdapter
+from astrbot.api.event import MessageChain
+from astrbot.api.message_components import Plain
 
 
 class FakeWebSocket:
@@ -163,6 +165,16 @@ class ConnectionManagerTests(unittest.IsolatedAsyncioTestCase):
         await manager.send_chat("all", "Discord/Alice")
         self.assertEqual(first.sent[-1]["content"], "all")
         self.assertEqual(second.sent[-1]["content"], "all")
+
+        await manager.send_chat(
+            "original",
+            "Discord/Alice",
+            translations={"zh-cn": "译文", "invalid locale!": "ignored"},
+            show_original=True,
+        )
+        translated = first.sent[-1]
+        self.assertEqual(translated["translations"], {"zh_cn": "译文"})
+        self.assertTrue(translated["show_original"])
 
 
 class AdapterEventTests(unittest.IsolatedAsyncioTestCase):
@@ -265,6 +277,40 @@ class AdapterEventTests(unittest.IsolatedAsyncioTestCase):
         event = adapter.committed_events[-1]
         self.assertEqual(event.message_obj.raw_message["server_id"], "trusted")
         self.assertEqual(event.message_obj.raw_message["server_name"], "Trusted Server")
+
+    async def test_minecraft_event_reply_uses_translation_handler(self):
+        adapter = MinecraftPlatformAdapter({}, {}, None)
+        websocket = FakeWebSocket()
+        await adapter.connection_manager.register(
+            websocket,
+            {"server_id": "trusted", "server_name": "Trusted Server"},
+        )
+        origins = []
+
+        async def translate(content, origin):
+            origins.append((content, origin))
+            return {
+                "translations": {"zh_cn": "回答"},
+                "show_original": True,
+            }
+
+        adapter.set_chat_translation_handler(translate)
+        await adapter._handle_chat(
+            websocket,
+            {
+                "type": "chat",
+                "player_uuid": "uuid",
+                "player_name": "Steve",
+                "content": "@AstrBot hello",
+            },
+        )
+        event = adapter.committed_events[-1]
+        await event.send(MessageChain([Plain("answer")]))
+
+        self.assertEqual(origins, [("answer", "minecraft")])
+        self.assertEqual(websocket.sent[-1]["content"], "answer")
+        self.assertEqual(websocket.sent[-1]["translations"], {"zh_cn": "回答"})
+        self.assertTrue(websocket.sent[-1]["show_original"])
 
 
 if __name__ == "__main__":

@@ -165,6 +165,20 @@ def _trim_sender_name(value: Any, fallback: str) -> str:
     return sender or fallback
 
 
+def _normalize_translations(value: Any, max_len: int) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    translations: dict[str, str] = {}
+    for raw_language, raw_text in value.items():
+        language = str(raw_language or "").strip().replace("-", "_").casefold()
+        if not re.fullmatch(r"[a-z0-9_]{2,16}", language):
+            continue
+        translated = _trim_outbound_content(raw_text, max_len)
+        if translated:
+            translations[language] = translated
+    return translations
+
+
 def _parse_aliases(value: Any) -> set[str]:
     aliases: set[str] = set()
     for item in str(value or "").split(","):
@@ -271,6 +285,9 @@ class MinecraftConnectionManager:
         content: str,
         sender_name: str | None = None,
         server_id: str | None = None,
+        *,
+        translations: dict[str, str] | None = None,
+        show_original: bool = False,
     ) -> None:
         content = _trim_outbound_content(content, self._outbound_max_message_length)
         if not content:
@@ -281,6 +298,12 @@ class MinecraftConnectionManager:
             "sender_name": _trim_sender_name(sender_name, self._bot_display_name),
             "content": content,
         }
+        localized = _normalize_translations(
+            translations, self._outbound_max_message_length
+        )
+        if localized:
+            payload["translations"] = localized
+            payload["show_original"] = bool(show_original)
         if server_id:
             ws, _ = await self._select_connection(server_id)
             await ws.send_str(json.dumps(payload, ensure_ascii=False))
@@ -450,15 +473,29 @@ class MinecraftPlatformEvent(AstrMessageEvent):
         session_id: str,
         connection_manager: MinecraftConnectionManager,
         bot_display_name: str,
+        translation_options: Callable[
+            [str, str], Awaitable[dict[str, Any]]
+        ] | None = None,
     ):
         super().__init__(message_str, message_obj, platform_meta, session_id)
         self._connection_manager = connection_manager
         self._bot_display_name = bot_display_name
+        self._translation_options = translation_options
+        self._translation_origin_fallback = session_id
 
     async def send(self, message: MessageChain):
         content = _plain_text_from_chain(message)
         if content:
-            await self._connection_manager.send_chat(content, self._bot_display_name)
+            options: dict[str, Any] = {}
+            if self._translation_options is not None:
+                origin = str(
+                    getattr(self, "unified_msg_origin", "")
+                    or self._translation_origin_fallback
+                )
+                options = await self._translation_options(content, origin)
+            await self._connection_manager.send_chat(
+                content, self._bot_display_name, **options
+            )
         await super().send(message)
 
 
@@ -521,6 +558,42 @@ class MinecraftPlatformAdapter(Platform):
                 Awaitable[dict[str, Any] | None] | dict[str, Any] | None,
             ]
         ] = []
+        self._chat_translation_handler: Callable[
+            [str, str], Awaitable[dict[str, Any]] | dict[str, Any]
+        ] | None = None
+
+    def set_chat_translation_handler(
+        self,
+        handler: Callable[
+            [str, str], Awaitable[dict[str, Any]] | dict[str, Any]
+        ] | None,
+    ) -> None:
+        self._chat_translation_handler = handler
+
+    async def _chat_translation_options(
+        self, content: str, origin: str
+    ) -> dict[str, Any]:
+        handler = self._chat_translation_handler
+        if handler is None:
+            return {}
+        try:
+            options = handler(content, origin)
+            if inspect.isawaitable(options):
+                options = await options
+            if not isinstance(options, dict):
+                return {}
+            translations = _normalize_translations(
+                options.get("translations"), self.outbound_max_message_length
+            )
+            if not translations:
+                return {}
+            return {
+                "translations": translations,
+                "show_original": bool(options.get("show_original", False)),
+            }
+        except Exception as exc:
+            logger.warning("MineAstr 游戏内翻译处理器失败，已发送原文：%s", exc)
+            return {}
 
     def add_bridge_event_listener(
         self,
@@ -619,15 +692,23 @@ class MinecraftPlatformAdapter(Platform):
         content = _plain_text_from_chain(message_chain)
         if not content:
             return
-        await self.connection_manager.send_chat(content, self.bot_display_name)
+        options = await self._chat_translation_options(content, str(session))
+        await self.connection_manager.send_chat(
+            content, self.bot_display_name, **options
+        )
 
     async def relay_chat(
         self,
         content: str,
         sender_name: str,
         server_id: str | None = None,
+        *,
+        origin: str = "",
     ) -> None:
-        await self.connection_manager.send_chat(content, sender_name, server_id)
+        options = await self._chat_translation_options(content, origin)
+        await self.connection_manager.send_chat(
+            content, sender_name, server_id, **options
+        )
 
     async def query_status(self, server_id: str | None = None) -> dict[str, Any]:
         if server_id:
@@ -1067,6 +1148,7 @@ class MinecraftPlatformAdapter(Platform):
             session_id=message.session_id,
             connection_manager=self.connection_manager,
             bot_display_name=self.bot_display_name,
+            translation_options=self._chat_translation_options,
         )
         self.commit_event(event)
 

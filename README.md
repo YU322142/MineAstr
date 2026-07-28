@@ -35,6 +35,7 @@ AstrBot 对该会话的文本回复会回传给所有已连接的 Minecraft 服�
 - QQ/OneBot 退群自动解绑和可选群名片修改；
 - Discord 成员退服自动解绑、绑定后自动改昵称、解绑后恢复原昵称；
 - Minecraft Mod 重连后对全部绑定自动对账，清除断线期间遗留的缓存。
+- 可选使用 AstrBot 文本模型把 QQ/Discord 消息和 AstrBot 回复翻译成每位玩家的客户端语言，并允许客户端选择是否同时显示原文。
 
 账号绑定保存在 `data/mineastr/bindings.sqlite3`。完整的功能差异和需要 Minecraft Mod 配合的项目见 [AQQBOT_MIGRATION.md](AQQBOT_MIGRATION.md)，扩展协议见 [PROTOCOL.md](PROTOCOL.md)。
 
@@ -168,6 +169,11 @@ pip install -r requirements.txt
 | `chat_to_game_template` | `{message}` | 聊天平台到游戏的正文模板；发送者标签由适配器另外携带。 |
 | `game_to_chat_template` | `[MC/{server}] {player}: {message}` | Minecraft 到 QQ/Discord 的模板。 |
 | `chat_to_game_filters` / `game_to_chat_filters` | 空 | AQQBot 本地过滤规则，每行一条。 |
+| `game_translation_enabled` | `false` | 使用 AstrBot 文本模型生成游戏内多语言译文；会增加模型调用、延迟和费用，失败时回退原文。 |
+| `game_translation_provider_id` | 空 | 留空使用当前会话文本模型，也可指定低成本翻译 Provider。 |
+| `game_translation_languages` | `zh_cn\nen_us` | 每行一个目标 Minecraft locale，最多 8 种，例如 `ja_jp`。 |
+| `game_translation_show_original` | `true` | 未安装同版客户端 Mod 时，译文下方是否默认附带原文。 |
+| `game_translation_timeout_seconds` | `20` | 翻译超时；超时直接发送原文，不阻塞后续聊天。 |
 | `binding_enabled` | `true` | 启用跨平台账号绑定。 |
 | `binding_database` | `data/mineastr/bindings.sqlite3` | SQLite 绑定数据库；修改后重载插件。 |
 | `verify_method` | `GROUP_NAME` | `VERIFY_CODE` 需要新版 Mod 上报验证码。 |
@@ -194,6 +200,8 @@ pip install -r requirements.txt
 `v0.6.7` 起配置页按群服互联、绑定、QQ、Discord、管理员/远程指令和通知分成六个可折叠区域；账号、群号、会话和过滤规则均使用多行输入框。升级时旧版平铺配置会自动迁移一次，不会重置现有设置。事件模板支持 `{server}`、`{server_id}`、`{player}`、`{binding}` 等占位符，死亡事件另支持 `{reason}`、`{death_type}`、`{attacker}`、`{direct_entity}` 和 `{weapon}`。平台适配器的 `host`、`port`、`path`、`token` 仍应在 AstrBot 的 `minecraft` 平台配置页修改。
 
 未绑定登录提示由“未绑定登录拒绝消息开关”控制。登录校验发生在 Minecraft 玩家尚未绑定任何聊天平台时，因此这条提示无法判断应使用 QQ 还是 Discord 的平台配置：插件会附带客户端翻译键，安装同版 MineAstr 客户端 Mod 时由客户端按自身语言显示；未安装客户端 Mod 时回退到 AstrBot 的全局语言和模板。
+
+“启用游戏内消息自动翻译”处理的是聊天正文：QQ、Discord 和 AstrBot 回复进入游戏前会一次生成配置中各目标语言的译文，Mod 再按每位在线玩家的客户端 locale 分别选择，不会把同一种语言强制广播给所有人。玩家安装 v0.6.7 客户端 Mod 后可在 F8 设置中关闭译文或关闭原文；没有匹配译文、模型失败或超时时始终显示原文。翻译提示把聊天正文当作不可信数据，不执行其中的指令，但仍建议为此功能使用独立、低成本的 Provider。
 
 ## 机器人可调用工具
 
