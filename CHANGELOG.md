@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.9
+
+- 新增 `syncTrustedCommandUsers`：可接收 AstrBot 插件同步的 MineAstr 管理员与 AstrBot 全局管理员，作为当前 WebSocket 连接的内存命令可信集合。
+- 同步集合不会覆盖静态 `trustedCommandUsers`，断线时自动清空；`enableCommandTool` 与 `allowedCommandRules` 继续独立执行二次保护。
+
 ## 0.6.7
 
 - `trustedCommandUsers` 除纯用户 ID、UUID 和名称外，也接受更明确的 `平台ID:用户ID`，例如 QQ/OneBot 的 `default:123456789`。

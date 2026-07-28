@@ -16,6 +16,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -77,6 +78,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
     private final ConcurrentMap<String, ScreenshotAssembly> screenshotAssemblies = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, PendingLoginCheck> pendingLoginChecks = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, SyncedBinding> syncedBindings = new ConcurrentHashMap<>();
+    private final Set<String> syncedTrustedCommandUsers = ConcurrentHashMap.newKeySet();
 
     private volatile MinecraftServer server;
     private volatile ScheduledExecutorService reconnectExecutor = createReconnectExecutor();
@@ -104,6 +106,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         clearScreenshotState("Minecraft 服务器正在停止。");
         clearPendingLoginChecks("Minecraft 服务器正在停止。");
         translationPreferences.clear();
+        syncedTrustedCommandUsers.clear();
         WebSocket socket = webSocket.getAndSet(null);
         if (socket != null) {
             socket.sendClose(WebSocket.NORMAL_CLOSURE, "server stopping");
@@ -371,6 +374,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         capabilities.add("performance");
         capabilities.add("notify_player");
         capabilities.add("binding");
+        capabilities.add("trusted_users");
         payload.add("query_capabilities", capabilities);
         JsonArray eventCapabilities = new JsonArray();
         eventCapabilities.add("player_join");
@@ -435,6 +439,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
             inboundBuffer.setLength(0);
             clearPendingScreenshots("AstrBot WebSocket 已断开。");
             clearPendingLoginChecks("AstrBot WebSocket 已断开。");
+            syncedTrustedCommandUsers.clear();
             scheduleReconnect();
         }
         return CompletableFuture.completedFuture(null);
@@ -448,6 +453,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
             inboundBuffer.setLength(0);
             clearPendingScreenshots("AstrBot WebSocket 出错。");
             clearPendingLoginChecks("AstrBot WebSocket 出错。");
+            syncedTrustedCommandUsers.clear();
             scheduleReconnect();
         }
     }
@@ -661,6 +667,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
                     case "performance" -> sendQueryResult(socket, messageId, query, buildPerformanceData(currentServer));
                     case "notify_player" -> handleNotifyPlayerQuery(socket, messageId, payload, currentServer);
                     case "binding" -> handleBindingQuery(socket, messageId, payload, currentServer);
+                    case "trusted_users" -> handleTrustedUsersQuery(socket, messageId, payload);
                     default -> sendQueryError(socket, messageId, query, "不支持的查询类型：" + query);
                 }
             } catch (RuntimeException exc) {
@@ -926,6 +933,61 @@ public final class MineAstrBridge implements WebSocket.Listener {
         data.addProperty("player_name", player.getGameProfile().name());
         data.addProperty("notified", true);
         sendQueryResult(socket, messageId, "notify_player", data);
+    }
+
+    private void handleTrustedUsersQuery(
+            WebSocket socket, String messageId, JsonObject payload) {
+        if (!MineAstrConfig.SYNC_TRUSTED_COMMAND_USERS.getAsBoolean()) {
+            sendQueryError(
+                    socket,
+                    messageId,
+                    "trusted_users",
+                    "trusted_user_sync_disabled");
+            return;
+        }
+        String action = trimFlatContent(
+                getString(payload, "action", ""), 16).toLowerCase(Locale.ROOT);
+        if (!"replace".equals(action)
+                || !payload.has("users")
+                || !payload.get("users").isJsonArray()) {
+            sendQueryError(
+                    socket, messageId, "trusted_users", "invalid_trusted_users_request");
+            return;
+        }
+        JsonArray users = payload.getAsJsonArray("users");
+        if (users.size() > 256) {
+            sendQueryError(
+                    socket, messageId, "trusted_users", "too_many_trusted_users");
+            return;
+        }
+        Set<String> replacement = new java.util.HashSet<>();
+        for (JsonElement element : users) {
+            if (!element.isJsonPrimitive()
+                    || !element.getAsJsonPrimitive().isString()) {
+                sendQueryError(
+                        socket, messageId, "trusted_users", "invalid_trusted_user");
+                return;
+            }
+            String identity = element.getAsString().strip().toLowerCase(Locale.ROOT);
+            if (!isSafeSyncedTrustedIdentity(identity)) {
+                sendQueryError(
+                        socket, messageId, "trusted_users", "invalid_trusted_user");
+                return;
+            }
+            replacement.add(identity);
+        }
+        syncedTrustedCommandUsers.clear();
+        syncedTrustedCommandUsers.addAll(replacement);
+        MineAstr.LOGGER.warn(
+                "MineAstr 已更新 AstrBot 同步命令可信名单：synced_count={} static_count={}",
+                replacement.size(),
+                MineAstrConfig.TRUSTED_COMMAND_USERS.get().size());
+        JsonObject data = new JsonObject();
+        data.addProperty("action", action);
+        data.addProperty("synced_count", replacement.size());
+        data.addProperty(
+                "static_count", MineAstrConfig.TRUSTED_COMMAND_USERS.get().size());
+        sendQueryResult(socket, messageId, "trusted_users", data);
     }
 
     private void handleBindingQuery(WebSocket socket, String messageId, JsonObject payload, MinecraftServer currentServer) {
@@ -1343,7 +1405,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         return payload.has("x") && payload.has("y") && payload.has("z");
     }
 
-    private static boolean isTrustedRequester(Requester requester) {
+    private boolean isTrustedRequester(Requester requester) {
         if (requester.identities().isEmpty()) {
             return false;
         }
@@ -1353,7 +1415,18 @@ public final class MineAstrBridge implements WebSocket.Listener {
                 return true;
             }
         }
+        for (String identity : requester.identities()) {
+            if (syncedTrustedCommandUsers.contains(identity)) {
+                return true;
+            }
+        }
         return false;
+    }
+
+    private static boolean isSafeSyncedTrustedIdentity(String identity) {
+        return !identity.isBlank()
+                && identity.length() <= 128
+                && identity.matches("[a-z0-9_.:@-]+");
     }
 
     private static boolean isAllowedCommand(String command) {

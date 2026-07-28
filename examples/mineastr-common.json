@@ -13,6 +13,7 @@
   "enableRegionTool": true,
   "regionMaxBlocks": 32768,
   "enableCommandTool": false,
+  "syncTrustedCommandUsers": false,
   "trustedCommandUsers": [],
   "allowedCommandRules": [
     "list",

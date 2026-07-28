@@ -6,9 +6,9 @@ MineAstr 是同一仓库中 AstrBot MineAstr 插件的 Minecraft 端，已适配
 - Fabric Loader `0.19.3`（最低 `0.18.1`）
 - Fabric API `0.141.4+1.21.11`
 - Java `21`
-- MineAstr `0.6.7`
+- MineAstr `0.6.9`
 
-同一个 `mineastr-fabric-0.6.7.jar` 可以放在独立服务端、客户端或两端。服务端只安装 Mod 即可使用聊天、事件、绑定、登录检查及查询；截图功能要求目标玩家客户端也安装该 JAR。
+同一个 `mineastr-fabric-0.6.9.jar` 可以放在独立服务端、客户端或两端。服务端只安装 Mod 即可使用聊天、事件、绑定、登录检查及查询；截图功能要求目标玩家客户端也安装该 JAR。
 
 ## 功能
 
@@ -31,13 +31,13 @@ MineAstr 是同一仓库中 AstrBot MineAstr 插件的 Minecraft 端，已适配
 .\gradlew.bat clean build
 ```
 
-产物位于 `build/libs/mineastr-fabric-0.6.7.jar`。
+产物位于 `build/libs/mineastr-fabric-0.6.9.jar`。
 
 ## 安装
 
 1. 为 Minecraft 1.21.11 安装 Fabric Loader。
 2. 把 `fabric-api-0.141.4+1.21.11.jar` 放入 `mods`。
-3. 把 `mineastr-fabric-0.6.7.jar` 放入 `mods`。
+3. 把 `mineastr-fabric-0.6.9.jar` 放入 `mods`。
 4. 启动一次，生成 `config/mineastr-common.json`。
 5. 把配置中的 `token` 改成与 AstrBot `minecraft` 平台适配器完全相同的随机字符串，然后重启。
 
@@ -65,6 +65,7 @@ MineAstr 是同一仓库中 AstrBot MineAstr 插件的 Minecraft 端，已适配
   "enableRegionTool": true,
   "regionMaxBlocks": 32768,
   "enableCommandTool": false,
+  "syncTrustedCommandUsers": false,
   "trustedCommandUsers": [],
   "allowedCommandRules": [
     "list",
@@ -117,7 +118,9 @@ Mod 每次连接或重连后，AstrBot 会先重置服务端绑定缓存，再�
 - `trustedCommandUsers`：可信 Minecraft UUID、玩家名、AstrBot 用户 ID 或 `平台ID:用户ID`；QQ/OneBot 例如 `default:123456789`；
 - `allowedCommandRules`：完整命令或带 `*` 的前缀规则，例如 `"say *"`。`"op *"` 会允许可信请求者授予任意玩家 OP，只应按需开启。
 
-不要使用单独的 `"*"`，除非你明确接受远程执行任意服务器命令的风险。所有成功执行都会写 WARN 审计日志。
+如果希望 Bot 管理员自动拥有服务端命令请求资格，请同时开启 AstrBot 插件的 `sync_command_admins_to_server` 和本文件的 `syncTrustedCommandUsers`。Mod 会在每次连接时接收 MineAstr `bridge_admin_users` 与 AstrBot 全局 `admins_id` 的并集；它只存在于当前连接的内存中，断线即清空，也不会覆盖上面的静态 `trustedCommandUsers`。
+
+管理员同步只解决“谁可以请求”，不解决“允许执行什么”。仍需开启 `enableCommandTool`，并在 `allowedCommandRules` 明确加入需要的命令；例如授予 OP 必须加入 `"op *"`。不要使用单独的 `"*"`，除非你明确接受远程执行任意服务器命令的风险。所有成功执行都会写 WARN 审计日志。
 
 ## 客户端配置
 
@@ -169,8 +172,8 @@ Mod 每次连接或重连后，AstrBot 会先重置服务端绑定缓存，再�
 - 一直重连：确认 AstrBot `minecraft` 平台已启用，端口和路径一致，防火墙允许连接。
 - 绑定没有进入 Mod：两端绑定同步开关都要启用。
 - 登录检查无效：两端登录检查开关都要启用；查看 Mod 是否已连接 AstrBot。
-- 游戏名后出现 `(/[IPv6]:端口)`：升级插件和 Mod 到 `0.6.7`；新版读取纯登录玩家名，插件会自动迁移旧绑定。
-- 绑定成功但仍提示不在白名单：必须同时使用 `0.6.7` 插件和 Mod，并在日志确认出现 `whitelist_verified=true`；正版模式下无法解析的非正版玩家名不会被假装同步成功。
+- 游戏名后出现 `(/[IPv6]:端口)`：升级插件和 Mod 到 `0.6.9`；新版读取纯登录玩家名，插件会自动迁移旧绑定。
+- 绑定成功但仍提示不在白名单：必须同时使用 `0.6.9` 插件和 Mod，并在日志确认出现 `whitelist_verified=true`；正版模式下无法解析的非正版玩家名不会被假装同步成功。
 - 截图提示不支持：目标玩家客户端也需要安装同一 MineAstr JAR 和 Fabric API。
 - F8 无反应：在“控制”中搜索 MineAstr，检查是否存在按键冲突。
 

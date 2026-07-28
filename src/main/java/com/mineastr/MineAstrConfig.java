@@ -23,6 +23,7 @@ public final class MineAstrConfig {
     public static final MineAstrConfigStore.IntValue REGION_MAX_BLOCKS = STORE.integer("regionMaxBlocks", 32768, 4096, 131072);
 
     public static final MineAstrConfigStore.BooleanValue ENABLE_COMMAND_TOOL = STORE.bool("enableCommandTool", false);
+    public static final MineAstrConfigStore.BooleanValue SYNC_TRUSTED_COMMAND_USERS = STORE.bool("syncTrustedCommandUsers", false);
     public static final MineAstrConfigStore.StringListValue TRUSTED_COMMAND_USERS = STORE.stringList("trustedCommandUsers", List.of());
     public static final MineAstrConfigStore.StringListValue ALLOWED_COMMAND_RULES = STORE.stringList(
             "allowedCommandRules", List.of("list", "seed", "time query day", "time query daytime", "time query gametime"));
