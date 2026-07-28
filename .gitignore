@@ -14,9 +14,14 @@ data/
 logs/
 *.log
 .env
+*.env
+*.sqlite3
+*.sqlite3-*
+*.db
+secrets.json
 /astrbot_plugin_mineastr.zip
 
-# Gradle / Java / NeoForge
+# Gradle / Java / Fabric
 .gradle/
 **/.gradle/
 build/
@@ -36,6 +41,16 @@ run/
 .eclipse/
 bin/
 *.iml
+
+# Minecraft server runtime
+config/mineastr-common.json
+config/mineastr-client.json
+server.properties
+whitelist.json
+ops.json
+banned-players.json
+banned-ips.json
+eula.txt
 
 # OS
 Thumbs.db
