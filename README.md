@@ -5,7 +5,7 @@
 > [!IMPORTANT]
 > **AI 制作声明：MineAstr 采用生成式 AI 参与架构设计、编码、UI、文档与测试。** AI 生成或修改的内容由项目维护者审阅、验证并承担最终维护责任。
 
-MineAstr 将 Minecraft 1.21.11 Fabric 服务器接入 AstrBot、QQ/OneBot 与 Discord，提供 AQQBot 兼容的账号绑定、跨平台聊天、退群解绑、群名片/昵称同步、通知、状态查询、受控命令和 LLM 工具。
+MineAstr 将 Minecraft 1.21.11 Fabric 服务器接入 AstrBot、QQ/OneBot 与 Discord，提供 AQQBot 兼容的账号绑定、跨平台聊天、退群解绑、群名片/昵称同步、通知、状态查询、受控命令、LLM 工具和按客户端语言显示的可选游戏内翻译。
 
 ## 项目分支
 
@@ -44,6 +44,8 @@ Minecraft MineAstr Mod -> ws://astrbot.example.com:8765/ws -> AstrBot
 
 本版还为 QQ/OneBot 与 Discord 分别提供独立的通知语言、总开关、服务器连接/断开、玩家进入/离开/死亡开关和模板；死亡事件使用 Minecraft 结构化伤害类型生成中文/英文原因，不再出现“玩家名 因 玩家名 died”。未绑定登录、验证码与游戏内定向提醒支持客户端中英文；安装同版客户端 Mod 时会跟随客户端语言。
 
+QQ/Discord 消息和 AstrBot 回复可选使用 AstrBot 文本模型生成多个 locale 的译文，Minecraft 服务端会按每位玩家的客户端语言分别显示。安装同版客户端 Mod 的玩家可在 F8 界面开关译文和原文；翻译默认关闭，失败或没有匹配语言时始终回退原文。
+
 AstrBot 插件元数据的安装/更新源为本 Fork 的 [`astrbot-plugin`](https://github.com/YU322142/MineAstr/tree/astrbot-plugin) 分支，不会回到上游仓库或下载索引用的 `main` 分支。
 
 需要“检查玩家已绑定、同步原版白名单、AstrBot 断线或超时仍放行”时：
@@ -55,7 +57,7 @@ AstrBot 插件元数据的安装/更新源为本 Fork 的 [`astrbot-plugin`](htt
 
 ## 构建验证
 
-- AstrBot 插件：41 个自动化测试通过，覆盖配置迁移、QQ/Discord 自动化、分平台通知和死亡原因本地化。
+- AstrBot 插件：45 个自动化测试通过，覆盖配置迁移、QQ/Discord 自动化、分平台通知、死亡原因本地化和游戏内翻译协议。
 - Fabric Mod：Gradle `clean build` 通过。
 - 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证 Mixin 纯玩家名访问器加载、绑定写入 UUID、`whitelist_verified=true`、解绑移除、`平台ID:用户ID` 可信命令和正常关服保存。
 
