@@ -220,7 +220,11 @@ class AdapterEventTests(unittest.IsolatedAsyncioTestCase):
 
         async def deny_login(payload):
             self.assertEqual(payload["server_id"], "survival")
-            return {"allowed": False, "message": "请先绑定"}
+            return {
+                "allowed": False,
+                "message": "请先绑定",
+                "message_key": "disconnect.mineastr.login.not_bound",
+            }
 
         adapter.add_bridge_event_listener(deny_login)
         await adapter._handle_bridge_event(
@@ -236,6 +240,9 @@ class AdapterEventTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response["type"], "event_result")
         self.assertEqual(response["message_id"], "login-1")
         self.assertFalse(response["allowed"])
+        self.assertEqual(
+            response["message_key"], "disconnect.mineastr.login.not_bound"
+        )
 
     async def test_chat_uses_registered_server_identity(self):
         adapter = MinecraftPlatformAdapter({}, {}, None)

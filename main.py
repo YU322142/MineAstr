@@ -61,6 +61,153 @@ _ACTIVE_RELAY_SESSIONS: set[str] = set()
 DEFAULT_PLAYER_NAME_REGEX = r"^\S{1,64}$"
 LEGACY_PLAYER_NAME_REGEX = r"^[A-Za-z0-9_]{3,16}$"
 
+NOTIFICATION_PRESETS: dict[str, dict[str, str]] = {
+    "zh_CN": {
+        "notify_server_start": "[MC] {server} 已连接。",
+        "notify_server_stop": "[MC] {server} 已断开。",
+        "notify_player_join": "[MC] {player}{binding} 进入了服务器。",
+        "notify_player_leave": "[MC] {player}{binding} 离开了服务器。",
+        "notify_player_death": "[MC] {player}{binding} 因 {reason} 在游戏内死亡。",
+        "login_reject_message": "[MC] 该游戏账号尚未在聊天平台绑定，请先使用 /mc bind <游戏名>。",
+    },
+    "en_US": {
+        "notify_server_start": "[MC] {server} connected.",
+        "notify_server_stop": "[MC] {server} disconnected.",
+        "notify_player_join": "[MC] {player}{binding} joined the server.",
+        "notify_player_leave": "[MC] {player}{binding} left the server.",
+        "notify_player_death": "[MC] {player}{binding} died in-game: {reason}.",
+        "login_reject_message": "[MC] This game account is not bound. Use /mc bind <player name> on QQ/Discord first.",
+    },
+}
+LEGACY_NOTIFICATION_DEFAULTS = {
+    "notify_server_start": "[MineAstr] {server} 已连接。",
+    "notify_server_stop": "[MineAstr] {server} 已断开。",
+    "notify_player_join": "[MineAstr] {player}{binding} 进入了服务器。",
+    "notify_player_leave": "[MineAstr] {player}{binding} 离开了服务器。",
+    "notify_player_death": "[MineAstr] {player}{binding} 因 {reason} 死亡。",
+    "login_reject_message": "[MineAstr] 该游戏账号尚未在聊天平台绑定，请先使用 /mc bind <游戏名>。",
+}
+NOTIFICATION_EVENT_CONFIG = {
+    "server_start": ("notify_server_start_enabled", "notify_server_start"),
+    "server_stop": ("notify_server_stop_enabled", "notify_server_stop"),
+    "player_join": ("notify_player_join_enabled", "notify_player_join"),
+    "player_leave": ("notify_player_leave_enabled", "notify_player_leave"),
+    "player_death": ("notify_player_death_enabled", "notify_player_death"),
+}
+
+QQ_NOTIFICATION_DEFAULTS: dict[str, Any] = {
+    "platform_ids": "default",
+    "language": "zh_CN",
+    "notifications_enabled": True,
+    "notify_server_start_enabled": True,
+    "notify_server_stop_enabled": True,
+    "notify_player_join_enabled": True,
+    "notify_player_leave_enabled": True,
+    "notify_player_death_enabled": True,
+    "notify_server_start": "",
+    "notify_server_stop": "",
+    "notify_player_join": "",
+    "notify_player_leave": "",
+    "notify_player_death": "",
+}
+DISCORD_NOTIFICATION_DEFAULTS: dict[str, Any] = {
+    **QQ_NOTIFICATION_DEFAULTS,
+    "platform_ids": "discord",
+}
+
+DAMAGE_REASON_PRESETS: dict[str, dict[str, str]] = {
+    "zh_CN": {
+        "inFire": "身处火焰中",
+        "lightningBolt": "被闪电击中",
+        "onFire": "被烧死",
+        "lava": "试图在熔岩里游泳",
+        "hotFloor": "踩到了危险的岩浆块",
+        "inWall": "在墙里窒息",
+        "cramming": "因实体挤压窒息",
+        "drown": "溺水",
+        "starve": "饥饿",
+        "cactus": "被仙人掌刺伤",
+        "fall": "从高处坠落",
+        "flyIntoWall": "飞行时撞上墙壁",
+        "outOfWorld": "掉出了世界",
+        "generic": "未知伤害",
+        "genericKill": "被命令杀死",
+        "magic": "魔法伤害",
+        "wither": "凋零效果",
+        "dragonBreath": "末影龙吐息",
+        "dryout": "脱水",
+        "sweetBerryBush": "被甜浆果丛刺伤",
+        "freeze": "冻伤",
+        "stalagmite": "掉在石笋上",
+        "fallingBlock": "被坠落的方块砸中",
+        "anvil": "被坠落的铁砧砸中",
+        "fallingStalactite": "被坠落的钟乳石砸中",
+        "sting": "被 {attacker} 蜇伤",
+        "mob": "被 {attacker} 杀死",
+        "player": "被 {attacker} 杀死",
+        "spear": "被 {attacker} 用长矛杀死",
+        "arrow": "被 {attacker} 射杀",
+        "trident": "被 {attacker} 用三叉戟杀死",
+        "fireworks": "被烟花火箭炸死",
+        "fireball": "被 {attacker} 的火球烧死",
+        "witherSkull": "被 {attacker} 的凋灵之首杀死",
+        "thrown": "被 {attacker} 投掷的物体击中",
+        "indirectMagic": "被 {attacker} 的魔法杀死",
+        "thorns": "试图伤害 {attacker} 时被反伤",
+        "explosion": "爆炸",
+        "explosion.player": "被 {attacker} 引发的爆炸炸死",
+        "sonic_boom": "被 {attacker} 的音波尖啸杀死",
+        "badRespawnPoint": "遭遇了故意的游戏设计",
+        "outsideBorder": "越过了世界边界",
+        "mace_smash": "被 {attacker} 用重锤击杀",
+    },
+    "en_US": {
+        "inFire": "went up in flames",
+        "lightningBolt": "was struck by lightning",
+        "onFire": "burned to death",
+        "lava": "tried to swim in lava",
+        "hotFloor": "discovered the floor was lava",
+        "inWall": "suffocated in a wall",
+        "cramming": "was squashed too much",
+        "drown": "drowned",
+        "starve": "starved to death",
+        "cactus": "was pricked to death",
+        "fall": "fell from a high place",
+        "flyIntoWall": "experienced kinetic energy",
+        "outOfWorld": "fell out of the world",
+        "generic": "died from unknown damage",
+        "genericKill": "was killed by a command",
+        "magic": "was killed by magic",
+        "wither": "withered away",
+        "dragonBreath": "was roasted in dragon breath",
+        "dryout": "died from dehydration",
+        "sweetBerryBush": "was poked to death by a sweet berry bush",
+        "freeze": "froze to death",
+        "stalagmite": "was impaled on a stalagmite",
+        "fallingBlock": "was squashed by a falling block",
+        "anvil": "was squashed by a falling anvil",
+        "fallingStalactite": "was skewered by a falling stalactite",
+        "sting": "was stung to death by {attacker}",
+        "mob": "was slain by {attacker}",
+        "player": "was slain by {attacker}",
+        "spear": "was speared by {attacker}",
+        "arrow": "was shot by {attacker}",
+        "trident": "was impaled by {attacker}",
+        "fireworks": "went off with a bang",
+        "fireball": "was fireballed by {attacker}",
+        "witherSkull": "was shot by a skull from {attacker}",
+        "thrown": "was pummeled by {attacker}",
+        "indirectMagic": "was killed by {attacker} using magic",
+        "thorns": "was killed trying to hurt {attacker}",
+        "explosion": "blew up",
+        "explosion.player": "was blown up by {attacker}",
+        "sonic_boom": "was obliterated by a sonic shriek from {attacker}",
+        "badRespawnPoint": "was killed by intentional game design",
+        "outsideBorder": "left the confines of the world",
+        "mace_smash": "was smashed by {attacker}",
+    },
+}
+
 AQQBOT_DEFAULT_CONFIG: dict[str, Any] = {
     "bridge_enabled": True,
     "relay_sessions": "",
@@ -87,23 +234,102 @@ AQQBOT_DEFAULT_CONFIG: dict[str, Any] = {
     "qq_auto_group_card": True,
     "qq_group_ids": "",
     "qq_group_card_template": "{players}",
+    "qq_notification_settings": QQ_NOTIFICATION_DEFAULTS.copy(),
     "discord_auto_unbind_on_leave": True,
     "discord_auto_nickname": True,
     "discord_restore_nickname_on_unbind": True,
     "discord_guild_ids": "",
     "discord_nickname_template": "{players}",
     "discord_nickname_reason": "MineAstr Minecraft 账号绑定同步",
+    "discord_notification_settings": DISCORD_NOTIFICATION_DEFAULTS.copy(),
     "remote_command_enabled": False,
     "remote_command_admin_only": True,
     "bridge_admin_users": "",
     "player_mention_enabled": True,
     "notifications_enabled": True,
-    "notify_server_start": "[MineAstr] {server} 已连接。",
-    "notify_server_stop": "[MineAstr] {server} 已断开。",
-    "notify_player_join": "[MineAstr] {player}{binding} 进入了服务器。",
-    "notify_player_leave": "[MineAstr] {player}{binding} 离开了服务器。",
-    "notify_player_death": "[MineAstr] {player}{binding} 因 {reason} 死亡。",
-    "login_reject_message": "[MineAstr] 该游戏账号尚未在聊天平台绑定，请先使用 /mc bind <游戏名>。",
+    "notification_language": "zh_CN",
+    "notify_server_start_enabled": True,
+    "notify_server_stop_enabled": True,
+    "notify_player_join_enabled": True,
+    "notify_player_leave_enabled": True,
+    "notify_player_death_enabled": True,
+    "notify_server_start": NOTIFICATION_PRESETS["zh_CN"]["notify_server_start"],
+    "notify_server_stop": NOTIFICATION_PRESETS["zh_CN"]["notify_server_stop"],
+    "notify_player_join": NOTIFICATION_PRESETS["zh_CN"]["notify_player_join"],
+    "notify_player_leave": NOTIFICATION_PRESETS["zh_CN"]["notify_player_leave"],
+    "notify_player_death": NOTIFICATION_PRESETS["zh_CN"]["notify_player_death"],
+    "login_reject_message": NOTIFICATION_PRESETS["zh_CN"]["login_reject_message"],
+}
+
+CONFIG_LAYOUT_VERSION = 1
+CONFIG_GROUP_KEYS: dict[str, tuple[str, ...]] = {
+    "bridge_settings": (
+        "bridge_enabled",
+        "relay_sessions",
+        "relay_prefix",
+        "relay_wake_messages",
+        "relay_commands",
+        "chat_to_game_template",
+        "game_to_chat_template",
+        "chat_to_game_filters",
+        "game_to_chat_filters",
+        "max_relay_length",
+    ),
+    "binding_settings": (
+        "binding_enabled",
+        "binding_database",
+        "verify_method",
+        "verify_code_expire_seconds",
+        "need_bind_to_login",
+        "max_bind_count",
+        "player_name_regex",
+        "bind_cooldown_seconds",
+        "unbind_cooldown_seconds",
+        "sync_binding_to_server",
+        "binding_sync_required",
+        "login_reject_message",
+    ),
+    "qq_settings": (
+        "qq_auto_unbind_on_leave",
+        "qq_auto_group_card",
+        "qq_group_ids",
+        "qq_group_card_template",
+        "qq_notification_settings",
+    ),
+    "discord_settings": (
+        "discord_auto_unbind_on_leave",
+        "discord_auto_nickname",
+        "discord_restore_nickname_on_unbind",
+        "discord_guild_ids",
+        "discord_nickname_template",
+        "discord_nickname_reason",
+        "discord_notification_settings",
+    ),
+    "admin_command_settings": (
+        "bridge_admin_users",
+        "remote_command_enabled",
+        "remote_command_admin_only",
+    ),
+    "notification_settings": (
+        "player_mention_enabled",
+        "notifications_enabled",
+        "notification_language",
+        "notify_server_start_enabled",
+        "notify_server_stop_enabled",
+        "notify_player_join_enabled",
+        "notify_player_leave_enabled",
+        "notify_player_death_enabled",
+        "notify_server_start",
+        "notify_server_stop",
+        "notify_player_join",
+        "notify_player_leave",
+        "notify_player_death",
+    ),
+}
+CONFIG_KEY_GROUP = {
+    key: group
+    for group, keys in CONFIG_GROUP_KEYS.items()
+    for key in keys
 }
 
 
@@ -121,21 +347,25 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.6.6",
+    "0.6.7",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
         super().__init__(context)
         self.config = config if config is not None else {}
         try:
-            config_changed = False
-            if str(self.config.get("player_name_regex", "")) == LEGACY_PLAYER_NAME_REGEX:
-                self.config["player_name_regex"] = DEFAULT_PLAYER_NAME_REGEX
+            config_changed = self._migrate_grouped_config()
+            if str(self._cfg("player_name_regex")) == LEGACY_PLAYER_NAME_REGEX:
+                self._set_cfg("player_name_regex", DEFAULT_PLAYER_NAME_REGEX)
                 config_changed = True
                 logger.info("MineAstr 已把旧版正版玩家名规则迁移为 AQQBot 兼容规则。")
-            if str(self.config.get("discord_nickname_template", "")) == "{player}":
-                self.config["discord_nickname_template"] = "{players}"
+            if str(self._cfg("discord_nickname_template")) == "{player}":
+                self._set_cfg("discord_nickname_template", "{players}")
                 config_changed = True
+            for key, legacy_default in LEGACY_NOTIFICATION_DEFAULTS.items():
+                if str(self._cfg(key)) == legacy_default:
+                    self._set_cfg(key, NOTIFICATION_PRESETS["zh_CN"][key])
+                    config_changed = True
             if config_changed:
                 save_config = getattr(self.config, "save_config", None)
                 if callable(save_config):
@@ -204,11 +434,55 @@ class MineAstrPlugin(Star):
         logger.info("MineAstr 插件已终止。")
 
     def _cfg(self, key: str) -> Any:
+        default = AQQBOT_DEFAULT_CONFIG[key]
         try:
-            value = self.config.get(key, AQQBOT_DEFAULT_CONFIG[key])
+            group_name = CONFIG_KEY_GROUP.get(key)
+            group = self.config.get(group_name) if group_name else None
+            if isinstance(group, dict) and key in group:
+                value = group.get(key, default)
+            else:
+                value = self.config.get(key, default)
         except (AttributeError, KeyError):
-            value = AQQBOT_DEFAULT_CONFIG[key]
-        return AQQBOT_DEFAULT_CONFIG[key] if value is None else value
+            value = default
+        return default if value is None else value
+
+    def _set_cfg(self, key: str, value: Any) -> None:
+        group_name = CONFIG_KEY_GROUP.get(key)
+        try:
+            group = self.config.get(group_name) if group_name else None
+            if isinstance(group, dict):
+                group[key] = value
+            else:
+                self.config[key] = value
+        except (AttributeError, TypeError):
+            return
+
+    def _migrate_grouped_config(self) -> bool:
+        """Move the legacy flat GUI values into the grouped AstrBot schema once."""
+
+        try:
+            if not any(
+                isinstance(self.config.get(group_name), dict)
+                for group_name in CONFIG_GROUP_KEYS
+            ):
+                return False
+            if (
+                int(self.config.get("config_layout_version", 0) or 0)
+                >= CONFIG_LAYOUT_VERSION
+            ):
+                return False
+            for group_name, keys in CONFIG_GROUP_KEYS.items():
+                group = self.config.get(group_name)
+                if not isinstance(group, dict):
+                    group = {}
+                    self.config[group_name] = group
+                for key in keys:
+                    group[key] = self.config.get(key, AQQBOT_DEFAULT_CONFIG[key])
+            self.config["config_layout_version"] = CONFIG_LAYOUT_VERSION
+            logger.info("MineAstr 已把旧版平铺配置迁移到新版分组 GUI。")
+            return True
+        except (AttributeError, TypeError, ValueError):
+            return False
 
     def _cfg_bool(self, key: str) -> bool:
         value = self._cfg(key)
@@ -233,10 +507,7 @@ class MineAstrPlugin(Star):
             save_config()
 
     def _set_relay_sessions(self, sessions: set[str]) -> None:
-        try:
-            self.config["relay_sessions"] = "\n".join(sorted(sessions))
-        except (TypeError, AttributeError):
-            return
+        self._set_cfg("relay_sessions", "\n".join(sorted(sessions)))
         self._save_plugin_config()
         self._refresh_relay_sessions()
 
@@ -775,20 +1046,149 @@ class MineAstrPlugin(Star):
         return parts[2].strip() if len(parts) >= 3 else ""
 
     async def _send_to_relay_sessions(self, content: str, *, exclude: str = "") -> None:
-        message = trim_message(content, self._cfg_int("max_relay_length"))
-        if not message:
-            return
         for session in sorted(self._relay_sessions):
             if session == exclude:
                 continue
-            try:
-                sent = await self.context.send_message(
-                    session, MessageChain([Plain(message)])
+            await self._send_to_relay_session(session, content)
+
+    async def _send_to_relay_session(self, session: str, content: str) -> None:
+        message = trim_message(content, self._cfg_int("max_relay_length"))
+        if not message:
+            return
+        try:
+            sent = await self.context.send_message(
+                session, MessageChain([Plain(message)])
+            )
+            if not sent:
+                logger.warning("MineAstr 找不到桥接会话：%s", session)
+        except Exception as exc:
+            logger.warning("MineAstr 向桥接会话 %s 发送消息失败：%s", session, exc)
+
+    @staticmethod
+    def _session_platform_id(session: str) -> str:
+        return str(session or "").split(":", 1)[0].strip().casefold()
+
+    @staticmethod
+    def _normalize_notification_language(value: Any) -> str:
+        normalized = str(value or "zh_CN").strip().replace("-", "_")
+        for language in NOTIFICATION_PRESETS:
+            if language.casefold() == normalized.casefold():
+                return language
+        return "zh_CN"
+
+    def _platform_notification_profile(
+        self, platform_id: str
+    ) -> dict[str, Any] | None:
+        target = platform_id.strip().casefold()
+        for key in ("qq_notification_settings", "discord_notification_settings"):
+            profile = self._cfg(key)
+            if not isinstance(profile, dict):
+                continue
+            configured_ids = {
+                item.casefold()
+                for item in parse_items(profile.get("platform_ids"))
+            }
+            if target and target in configured_ids:
+                return profile
+        return None
+
+    @staticmethod
+    def _uses_notification_preset(key: str, configured: Any) -> bool:
+        custom = str(configured or "").strip()
+        known_defaults = {
+            presets[key] for presets in NOTIFICATION_PRESETS.values()
+        }
+        legacy = LEGACY_NOTIFICATION_DEFAULTS.get(key)
+        if legacy:
+            known_defaults.add(legacy)
+        return not custom or custom in known_defaults
+
+    @staticmethod
+    def _localized_template(key: str, language: str, configured: Any) -> str:
+        language = MineAstrPlugin._normalize_notification_language(language)
+        selected = NOTIFICATION_PRESETS[language][key]
+        custom = str(configured or "").strip()
+        return (
+            selected
+            if MineAstrPlugin._uses_notification_preset(key, configured)
+            else custom
+        )
+
+    @staticmethod
+    def _death_reason(
+        payload: dict[str, Any], player_name: str, language: str
+    ) -> str:
+        raw = str(
+            payload.get("reason") or payload.get("death_message") or ""
+        ).strip()
+        if player_name and raw.casefold().startswith(player_name.casefold()):
+            suffix = raw[len(player_name) :]
+            if not suffix or suffix[0].isspace():
+                raw = suffix.strip()
+        language = MineAstrPlugin._normalize_notification_language(language)
+        damage_type = str(payload.get("death_type") or "").strip()
+        attacker = str(
+            payload.get("attacker")
+            or payload.get("direct_entity")
+            or ("未知实体" if language == "zh_CN" else "unknown entity")
+        ).strip()
+        template = DAMAGE_REASON_PRESETS.get(language, {}).get(damage_type)
+        if template:
+            return template.format(attacker=attacker)
+        if language == "zh_CN":
+            english_patterns = (
+                (r"^died$", "未知原因"),
+                (r"^drowned$", "溺水"),
+                (r"^starved to death$", "饥饿"),
+                (r"^fell from a high place$", "从高处坠落"),
+                (r"^hit the ground too hard$", "重重摔在地上"),
+                (r"^burned to death$", "被烧死"),
+                (r"^tried to swim in lava$", "试图在熔岩里游泳"),
+                (r"^was slain by (.+)$", r"被 \1 杀死"),
+                (r"^was shot by (.+)$", r"被 \1 射杀"),
+                (r"^was blown up by (.+)$", r"被 \1 炸死"),
+            )
+            for pattern, replacement in english_patterns:
+                if re.fullmatch(pattern, raw, flags=re.IGNORECASE):
+                    return re.sub(pattern, replacement, raw, flags=re.IGNORECASE)
+            return raw or "未知原因"
+        return raw or damage_type or "unknown cause"
+
+    async def _send_event_to_relay_sessions(
+        self,
+        event_name: str,
+        values: dict[str, str],
+        payload: dict[str, Any],
+    ) -> None:
+        enabled_key, template_key = NOTIFICATION_EVENT_CONFIG[event_name]
+        for session in sorted(self._relay_sessions):
+            platform_id = self._session_platform_id(session)
+            profile = self._platform_notification_profile(platform_id)
+            if profile is not None and profile.get("notifications_enabled") is False:
+                continue
+            enabled = self._cfg_bool(enabled_key)
+            if profile is not None and isinstance(profile.get(enabled_key), bool):
+                enabled = bool(profile[enabled_key])
+            if not enabled:
+                continue
+            language = self._normalize_notification_language(
+                (profile.get("language") if profile is not None else None)
+                or self._cfg("notification_language")
+            )
+            configured_template = self._cfg(template_key)
+            if profile is not None and str(profile.get(template_key) or "").strip():
+                configured_template = profile[template_key]
+            template = self._localized_template(
+                template_key, language, configured_template
+            )
+            localized_values = dict(values)
+            if event_name == "player_death":
+                localized_values["reason"] = self._death_reason(
+                    payload, values.get("player", ""), language
                 )
-                if not sent:
-                    logger.warning("MineAstr 找不到桥接会话：%s", session)
-            except Exception as exc:
-                logger.warning("MineAstr 向桥接会话 %s 发送消息失败：%s", session, exc)
+            await self._send_to_relay_session(
+                session, format_template(template, localized_values)
+            )
 
     async def _sync_binding_to_server(self, action: str, record: Any) -> dict[str, Any]:
         if not self._cfg_bool("sync_binding_to_server"):
@@ -919,22 +1319,31 @@ class MineAstrPlugin(Star):
                 binding is not None,
                 binding is not None,
             )
+            language = self._normalize_notification_language(
+                self._cfg("notification_language")
+            )
+            reject_message = self._localized_template(
+                "login_reject_message",
+                language,
+                self._cfg("login_reject_message"),
+            )
+            message_key = (
+                "disconnect.mineastr.login.not_bound"
+                if self._uses_notification_preset(
+                    "login_reject_message", self._cfg("login_reject_message")
+                )
+                else ""
+            )
             return {
                 "allowed": binding is not None,
-                "message": "" if binding else str(self._cfg("login_reject_message")),
+                "message": "" if binding else reject_message,
+                "message_key": "" if binding else message_key,
                 "owner_key": binding.owner_key if binding else "",
             }
 
         if not self._cfg_bool("notifications_enabled"):
             return None
-        template_key = {
-            "server_start": "notify_server_start",
-            "server_stop": "notify_server_stop",
-            "player_join": "notify_player_join",
-            "player_leave": "notify_player_leave",
-            "player_death": "notify_player_death",
-        }.get(event_name)
-        if not template_key:
+        if event_name not in NOTIFICATION_EVENT_CONFIG:
             return None
 
         binding = (
@@ -956,12 +1365,15 @@ class MineAstrPlugin(Star):
             "owner": binding.owner_key if binding else "",
             "user_id": binding.user_id if binding else "-1",
             "reason": str(
-                payload.get("reason") or payload.get("death_message") or "未知原因"
+                payload.get("reason") or payload.get("death_message") or ""
             ),
+            "death_message": str(payload.get("death_message") or ""),
+            "death_type": str(payload.get("death_type") or ""),
+            "attacker": str(payload.get("attacker") or ""),
+            "direct_entity": str(payload.get("direct_entity") or ""),
+            "weapon": str(payload.get("weapon") or ""),
         }
-        await self._send_to_relay_sessions(
-            format_template(str(self._cfg(template_key)), values)
-        )
+        await self._send_event_to_relay_sessions(event_name, values, payload)
         return None
 
     async def _notify_mentioned_players(

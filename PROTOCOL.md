@@ -1,6 +1,6 @@
 # MineAstr WebSocket 协议
 
-本文描述 AstrBot 插件 `v0.6.6` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
+本文描述 AstrBot 插件 `v0.6.7` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
 
 ## 连接与认证
 
@@ -19,7 +19,7 @@ Authorization: Bearer <token>
   "protocol": 1,
   "server_id": "survival",
   "server_name": "Survival Server",
-  "mod_version": "0.6.6"
+  "mod_version": "0.6.7"
 }
 ```
 
@@ -157,11 +157,30 @@ Mod 应只允许通知在线的准确玩家名，并在服务端配置中决定�
 | --- | --- | --- |
 | `player_join` | `player_name`、建议 `player_uuid` | 向桥接会话发送进入通知 |
 | `player_leave` | `player_name`、建议 `player_uuid` | 向桥接会话发送离开通知 |
-| `player_death` | `player_name`、`reason` 或 `death_message` | 发送死亡通知 |
+| `player_death` | `player_name`、`death_message`；建议 `death_type` | 发送死亡通知；可选 `attacker`、`direct_entity`、`weapon` 用于本地化原因 |
 | `binding_code` | `player_name`、`code` | `VERIFY_CODE` 绑定；验证码由 Mod 在登录尝试时生成 |
 | `player_login_check` | `message_id`、`player_name` | 登录前检查玩家名是否已经绑定 |
 
 WebSocket 成功 `hello` 和断开会由 AstrBot 自动转成 `server_start` / `server_stop` 通知，Mod 不需要重复上报。
+
+1.21.11 Mod 的结构化死亡事件示例：
+
+```json
+{
+  "type": "event",
+  "event": "player_death",
+  "player_uuid": "minecraft-player-uuid",
+  "player_name": "Steve",
+  "death_message": "Steve was slain by Zombie",
+  "reason": "Steve was slain by Zombie",
+  "death_type": "mob",
+  "attacker": "Zombie",
+  "direct_entity": "Zombie",
+  "weapon": "Iron Sword"
+}
+```
+
+`death_type` 使用 Minecraft `DamageSource.getMsgId()` 的稳定消息 ID。AstrBot 优先用它生成中文/英文原因；旧 Mod 只有完整 `death_message` 时，插件仍会移除开头重复的玩家名并兼容常见英文死亡句式。
 
 ### 登录检查响应
 
@@ -186,10 +205,13 @@ AstrBot 返回：
   "message_id": "login-attempt-uuid",
   "ok": true,
   "allowed": false,
-  "message": "[MineAstr] 该游戏账号尚未在聊天平台绑定，请先使用 /mc bind <游戏名>。",
+  "message": "[MC] 该游戏账号尚未在聊天平台绑定，请先使用 /mc bind <游戏名>。",
+  "message_key": "disconnect.mineastr.login.not_bound",
   "owner_key": ""
 }
 ```
+
+`message_key` 是可选客户端翻译键。0.6.7 Mod 会用 `Component.translatableWithFallback` 断开连接：安装同版客户端 Mod 时跟随玩家客户端语言；未安装时显示 `message` 回退文本。用户在 AstrBot 中自定义登录拒绝模板后，插件只发送自定义 `message`，不会用预设翻译覆盖它。验证码使用 `disconnect.mineastr.login.binding_code` 以同样方式本地化。
 
 实现要求：
 

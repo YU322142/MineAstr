@@ -4,6 +4,31 @@ from pathlib import Path
 
 
 class ConfigSchemaTests(unittest.TestCase):
+    GROUP_NAMES = (
+        "bridge_settings",
+        "binding_settings",
+        "qq_settings",
+        "discord_settings",
+        "admin_command_settings",
+        "notification_settings",
+    )
+
+    @classmethod
+    def _schema(cls):
+        schema_path = Path(__file__).resolve().parents[1] / "_conf_schema.json"
+        return json.loads(schema_path.read_text(encoding="utf-8"))
+
+    @classmethod
+    def _visible_field(cls, schema, key):
+        matches = [
+            schema[group_name]["items"][key]
+            for group_name in cls.GROUP_NAMES
+            if key in schema[group_name]["items"]
+        ]
+        if len(matches) != 1:
+            raise AssertionError(f"expected one grouped GUI field for {key}: {matches}")
+        return matches[0]
+
     def test_metadata_updates_from_fork_plugin_branch(self):
         metadata_path = Path(__file__).resolve().parents[1] / "metadata.yaml"
         metadata = metadata_path.read_text(encoding="utf-8")
@@ -14,8 +39,7 @@ class ConfigSchemaTests(unittest.TestCase):
         )
 
     def test_newline_delimited_fields_use_astrbot_textarea_type(self):
-        schema_path = Path(__file__).resolve().parents[1] / "_conf_schema.json"
-        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        schema = self._schema()
         for key in (
             "relay_sessions",
             "chat_to_game_filters",
@@ -25,11 +49,15 @@ class ConfigSchemaTests(unittest.TestCase):
             "bridge_admin_users",
         ):
             with self.subTest(key=key):
-                self.assertEqual(schema[key]["type"], "text")
+                self.assertEqual(self._visible_field(schema, key)["type"], "text")
 
     def test_platform_adapter_settings_are_not_duplicated_in_plugin_page(self):
-        schema_path = Path(__file__).resolve().parents[1] / "_conf_schema.json"
-        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        schema = self._schema()
+        grouped_keys = {
+            key
+            for group_name in self.GROUP_NAMES
+            for key in schema[group_name]["items"]
+        }
         for key in (
             "host",
             "port",
@@ -47,12 +75,72 @@ class ConfigSchemaTests(unittest.TestCase):
             "screenshot_timeout_seconds",
         ):
             with self.subTest(key=key):
-                self.assertNotIn(key, schema)
+                self.assertNotIn(key, grouped_keys)
 
     def test_default_player_name_rule_is_aqqbot_compatible(self):
-        schema_path = Path(__file__).resolve().parents[1] / "_conf_schema.json"
-        schema = json.loads(schema_path.read_text(encoding="utf-8"))
-        self.assertEqual(schema["player_name_regex"]["default"], r"^\S{1,64}$")
+        schema = self._schema()
+        field = self._visible_field(schema, "player_name_regex")
+        self.assertEqual(field["default"], r"^\S{1,64}$")
+
+    def test_gui_is_grouped_and_legacy_values_remain_hidden_for_migration(self):
+        schema = self._schema()
+        for group_name in self.GROUP_NAMES:
+            with self.subTest(group=group_name):
+                self.assertEqual(schema[group_name]["type"], "object")
+                self.assertTrue(schema[group_name]["items"])
+        for key in (
+            "relay_sessions",
+            "verify_method",
+            "qq_group_ids",
+            "discord_guild_ids",
+            "bridge_admin_users",
+            "remote_command_enabled",
+        ):
+            with self.subTest(legacy_key=key):
+                self.assertTrue(schema[key]["invisible"])
+                self._visible_field(schema, key)
+
+    def test_notification_gui_has_language_event_switches_and_platform_profiles(self):
+        schema = self._schema()
+        language = self._visible_field(schema, "notification_language")
+        self.assertEqual(language["options"], ["zh_CN", "en_US"])
+        for key in (
+            "notify_server_start_enabled",
+            "notify_server_stop_enabled",
+            "notify_player_join_enabled",
+            "notify_player_leave_enabled",
+            "notify_player_death_enabled",
+        ):
+            with self.subTest(key=key):
+                self.assertEqual(self._visible_field(schema, key)["type"], "bool")
+
+        for key, expected_id in (
+            ("qq_notification_settings", "default"),
+            ("discord_notification_settings", "discord"),
+        ):
+            with self.subTest(key=key):
+                settings = self._visible_field(schema, key)
+                self.assertEqual(settings["type"], "object")
+                self.assertEqual(
+                    settings["items"]["platform_ids"]["default"], expected_id
+                )
+                self.assertIn("language", settings["items"])
+                self.assertIn("notifications_enabled", settings["items"])
+                self.assertIn("notify_player_death_enabled", settings["items"])
+
+    def test_notification_defaults_use_mc_prefix_and_login_has_a_switch(self):
+        schema = self._schema()
+        for key in (
+            "notify_server_start",
+            "notify_server_stop",
+            "notify_player_join",
+            "notify_player_leave",
+            "notify_player_death",
+            "login_reject_message",
+        ):
+            with self.subTest(key=key):
+                self.assertTrue(self._visible_field(schema, key)["default"].startswith("[MC]"))
+        self.assertEqual(self._visible_field(schema, "need_bind_to_login")["type"], "bool")
 
 
 if __name__ == "__main__":

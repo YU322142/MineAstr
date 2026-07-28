@@ -4,6 +4,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 
 def _identity_decorator(*args, **kwargs):
@@ -97,6 +98,174 @@ def _load_main_module():
 
 
 MAIN = _load_main_module()
+
+
+class ConfigLayoutTests(unittest.TestCase):
+    def test_every_runtime_setting_has_one_gui_group(self):
+        grouped = [
+            key
+            for keys in MAIN.CONFIG_GROUP_KEYS.values()
+            for key in keys
+        ]
+        self.assertEqual(len(grouped), len(set(grouped)))
+        self.assertEqual(set(grouped), set(MAIN.AQQBOT_DEFAULT_CONFIG))
+
+    def test_legacy_flat_values_migrate_to_grouped_gui_once(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            group_name: {
+                key: MAIN.AQQBOT_DEFAULT_CONFIG[key]
+                for key in keys
+            }
+            for group_name, keys in MAIN.CONFIG_GROUP_KEYS.items()
+        }
+        plugin.config.update(
+            {
+                "config_layout_version": 0,
+                "bridge_admin_users": "default:42",
+                "remote_command_enabled": True,
+                "qq_group_ids": "10001\n10002",
+            }
+        )
+
+        self.assertTrue(plugin._migrate_grouped_config())
+        self.assertEqual(plugin.config["config_layout_version"], 1)
+        self.assertEqual(
+            plugin.config["admin_command_settings"]["bridge_admin_users"],
+            "default:42",
+        )
+        self.assertTrue(
+            plugin.config["admin_command_settings"]["remote_command_enabled"]
+        )
+        self.assertEqual(
+            plugin.config["qq_settings"]["qq_group_ids"], "10001\n10002"
+        )
+        self.assertFalse(plugin._migrate_grouped_config())
+
+    def test_grouped_values_take_precedence_and_are_updated_in_place(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "bridge_admin_users": "old-flat-value",
+            "admin_command_settings": {"bridge_admin_users": "default:42"},
+        }
+        self.assertEqual(plugin._cfg("bridge_admin_users"), "default:42")
+        plugin._set_cfg("bridge_admin_users", "discord:99")
+        self.assertEqual(
+            plugin.config["admin_command_settings"]["bridge_admin_users"],
+            "discord:99",
+        )
+
+
+class NotificationLocalizationTests(unittest.IsolatedAsyncioTestCase):
+    def _plugin(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "notification_settings": {
+                key: value
+                for key, value in MAIN.AQQBOT_DEFAULT_CONFIG.items()
+                if key in MAIN.CONFIG_GROUP_KEYS["notification_settings"]
+            },
+            "qq_settings": {
+                "qq_notification_settings": MAIN.QQ_NOTIFICATION_DEFAULTS.copy()
+            },
+            "discord_settings": {
+                "discord_notification_settings": (
+                    MAIN.DISCORD_NOTIFICATION_DEFAULTS.copy()
+                )
+            },
+        }
+        plugin._relay_sessions = {
+            "default:GroupMessage:10001",
+            "discord:GroupMessage:20002",
+        }
+        plugin._send_to_relay_session = AsyncMock()
+        return plugin
+
+    def test_death_reason_removes_player_name_and_localizes_damage_type(self):
+        payload = {
+            "reason": "NekoYu_322142 died",
+            "death_type": "genericKill",
+        }
+        self.assertEqual(
+            MAIN.MineAstrPlugin._death_reason(
+                payload, "NekoYu_322142", "zh_CN"
+            ),
+            "被命令杀死",
+        )
+        self.assertEqual(
+            MAIN.MineAstrPlugin._death_reason(
+                {"reason": "NekoYu_322142 was slain by Zombie"},
+                "NekoYu_322142",
+                "en_US",
+            ),
+            "was slain by Zombie",
+        )
+
+    def test_login_default_uses_client_translation_key_but_custom_text_does_not(self):
+        self.assertTrue(
+            MAIN.MineAstrPlugin._uses_notification_preset(
+                "login_reject_message",
+                MAIN.NOTIFICATION_PRESETS["zh_CN"]["login_reject_message"],
+            )
+        )
+        self.assertFalse(
+            MAIN.MineAstrPlugin._uses_notification_preset(
+                "login_reject_message", "Custom server-specific message"
+            )
+        )
+
+    async def test_platform_profile_changes_language_and_switches(self):
+        plugin = self._plugin()
+        discord_settings = plugin.config["discord_settings"][
+            "discord_notification_settings"
+        ]
+        discord_settings["language"] = "en_US"
+        discord_settings["notifications_enabled"] = True
+        discord_settings["notify_player_death_enabled"] = True
+        values = {
+            "server": "Test",
+            "server_id": "test",
+            "player": "NekoYu_322142",
+            "player_uuid": "uuid",
+            "binding": "（Alice）",
+            "owner": "default:42",
+            "user_id": "42",
+            "reason": "NekoYu_322142 died",
+            "death_message": "NekoYu_322142 died",
+            "death_type": "genericKill",
+            "attacker": "",
+            "direct_entity": "",
+            "weapon": "",
+        }
+        payload = {"reason": values["reason"], "death_type": "genericKill"}
+
+        await plugin._send_event_to_relay_sessions(
+            "player_death", values, payload
+        )
+
+        calls = {
+            call.args[0]: call.args[1]
+            for call in plugin._send_to_relay_session.await_args_list
+        }
+        self.assertEqual(
+            calls["default:GroupMessage:10001"],
+            "[MC] NekoYu_322142（Alice） 因 被命令杀死 在游戏内死亡。",
+        )
+        self.assertEqual(
+            calls["discord:GroupMessage:20002"],
+            "[MC] NekoYu_322142（Alice） died in-game: was killed by a command.",
+        )
+
+        plugin._send_to_relay_session.reset_mock()
+        discord_settings["notify_player_death_enabled"] = False
+        await plugin._send_event_to_relay_sessions(
+            "player_death", values, payload
+        )
+        plugin._send_to_relay_session.assert_awaited_once()
+        self.assertEqual(
+            plugin._send_to_relay_session.await_args.args[0],
+            "default:GroupMessage:10001",
+        )
 
 
 class FakeGuild:

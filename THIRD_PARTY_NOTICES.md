@@ -2,7 +2,7 @@
 
 ## AQQBot
 
-The MineAstr `v0.6.6` account-binding and chat-bridge feature set was designed by studying the public behaviour and source structure of:
+The MineAstr `v0.6.7` account-binding and chat-bridge feature set was designed by studying the public behaviour and source structure of:
 
 - Project: AQQBot
 - Upstream: <https://github.com/alazeprt/AQQBot>

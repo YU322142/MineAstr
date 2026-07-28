@@ -40,7 +40,7 @@ AstrBot 对该会话的文本回复会回传给所有已连接的 Minecraft 服�
 
 ## 安装包兼容性
 
-在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.6.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。
+在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.7.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。
 
 插件元数据中的安装/更新源固定为 Fork 分支 `https://github.com/YU322142/MineAstr/tree/astrbot-plugin`，不会再让 AstrBot 回到原项目或下载仅用于项目导航的 `main` 分支。
 
@@ -186,8 +186,14 @@ pip install -r requirements.txt
 | `remote_command_enabled` | `false` | 高风险开关；Minecraft 端仍须进行可信用户和命令白名单检查。 |
 | `bridge_admin_users` | 空 | 每行一个 `platform_id:user_id`；也接受单独 user ID。 |
 | `notifications_enabled` | `true` | 启用服务器与玩家事件通知。 |
+| `notification_language` | `zh_CN` | 预设通知语言，可选 `zh_CN` / `en_US`；自定义模板保持原文。 |
+| `notify_*_enabled` | `true` | 服务器连接/断开、玩家进入/离开/死亡各自的独立通知开关。 |
+| `qq_notification_settings` | QQ 独立设置 | QQ/OneBot 的平台 ID、语言、通知总开关、5 个事件开关和对应模板。 |
+| `discord_notification_settings` | Discord 独立设置 | Discord 的平台 ID、语言、通知总开关、5 个事件开关和对应模板。 |
 
-`_conf_schema.json` 中还有冷却时间、玩家名正则、通知模板和最大长度等完整配置。平台适配器的 `host`、`port`、`path`、`token` 仍应在 AstrBot 的 `minecraft` 平台配置页修改。
+`v0.6.7` 起配置页按群服互联、绑定、QQ、Discord、管理员/远程指令和通知分成六个可折叠区域；账号、群号、会话和过滤规则均使用多行输入框。升级时旧版平铺配置会自动迁移一次，不会重置现有设置。事件模板支持 `{server}`、`{server_id}`、`{player}`、`{binding}` 等占位符，死亡事件另支持 `{reason}`、`{death_type}`、`{attacker}`、`{direct_entity}` 和 `{weapon}`。平台适配器的 `host`、`port`、`path`、`token` 仍应在 AstrBot 的 `minecraft` 平台配置页修改。
+
+未绑定登录提示由“未绑定登录拒绝消息开关”控制。登录校验发生在 Minecraft 玩家尚未绑定任何聊天平台时，因此这条提示无法判断应使用 QQ 还是 Discord 的平台配置：插件会附带客户端翻译键，安装同版 MineAstr 客户端 Mod 时由客户端按自身语言显示；未安装客户端 Mod 时回退到 AstrBot 的全局语言和模板。
 
 ## 机器人可调用工具
 
@@ -240,7 +246,7 @@ pip install -r requirements.txt
 - 截图功能需要目标玩家安装客户端 Mod；只安装服务端 Mod 时基础聊天和查询可用，但截图不可用。
 - 命令工具的最终权限完全由 Minecraft Mod 的 `mineastr-common.json` 决定。默认 `enableCommandTool = false`；不要为了省事把 `allowedCommandRules` 设为 `["*"]`。
 - AQQBot 兼容层的账号数据库在 AstrBot 侧；如果同时运行原 AQQBot，两套绑定数据不会自动合并，也不应同时负责登录白名单。
-- Fabric 0.6.6 Mod 支持 `performance`、玩家通知、验证码、登录拦截、纯登录玩家名读取、按正版/离线模式解析 UUID 并核验的原版白名单同步、重连对账和游戏内玩家提醒；更老的 Mod 不支持完整扩展。
+- Fabric 0.6.7 Mod 支持 `performance`、玩家通知、验证码、登录拦截、纯登录玩家名读取、按正版/离线模式解析 UUID 并核验的原版白名单同步、重连对账、游戏内玩家提醒及 `平台ID:用户ID` 命令可信身份；更老的 Mod 不支持完整扩展。
 - 本插件不会获取 `$url` 远程过滤词库，避免让聊天消息触发服务端任意 URL 请求；请把词库转换为本地 `$filter` / `$regex` 规则。
 - Discord 自动化直接挂接 AstrBot 官方 Pycord 客户端。管理员权限仍受 Discord 角色层级限制；多服务器部署应填写 `discord_guild_ids`，否则离开任一可见服务器都会触发该 Discord 平台账号的全局解绑。
 
@@ -261,14 +267,15 @@ AI 输出不代表天然正确或安全。提交到仓库的内容仍需由维�
 - Discord 中 `/mc` 没有斜杠提示：在 AstrBot Discord 适配器中开启自动注册插件指令，重启/重载适配器；即使未注册为原生斜杠指令，按 AstrBot 唤醒规则发送文本 `/mc help` 仍可测试。
 - `/mc bind` 立即提示冷却：默认绑定冷却为 60 秒、解绑冷却为 86400 秒，与 AQQBot 默认值一致；测试阶段可临时调低相应配置。
 - `VERIFY_CODE` 一直提示验证码不存在：Minecraft 端必须实现 `binding_code` 事件；只更新 AstrBot 插件不会凭空产生验证码。
-- 验证码被识别但提示玩家名不符合规则：升级插件和 Fabric Mod 到 `0.6.6`。验证码模式会直接采用 Minecraft 服务端认证的登录名，不再使用只适合手填名称的正则；旧版会误拒带空格或平台字符的名称。
+- 验证码被识别但提示玩家名不符合规则：升级插件和 Fabric Mod 到 `0.6.7`。验证码模式会直接采用 Minecraft 服务端认证的登录名，不再使用只适合手填名称的正则；旧版会误拒带空格或平台字符的名称。
 - 游戏名后出现 `(/[IPv6]:端口)`：这是 0.6.5 Mod 误用了 Fabric 的登录日志显示名。0.6.6 Mod 会读取纯 `requestedUsername`，插件也会自动迁移已经错误保存的绑定并重新对账，无需手工修改 SQLite。
-- 绑定成功但原版白名单仍拒绝：升级插件和 Fabric Mod 到 `0.6.6`，并检查 Mod 日志是否出现 `whitelist_verified=true`。新版会按在线/离线认证模式解析 UUID、写入后核验；失败时绑定会按 `binding_sync_required` 设置回滚或明确提示，不再假报成功。
+- 死亡通知显示成“玩家名 因 玩家名 died”：同时升级插件和 Fabric Mod 到 `0.6.7`。新版 Mod 会上报结构化伤害类型，插件会移除重复玩家名并生成中文/英文死亡原因。
+- 绑定成功但原版白名单仍拒绝：升级插件和 Fabric Mod 到 `0.6.7`，并检查 Mod 日志是否出现 `whitelist_verified=true`。新版会按在线/离线认证模式解析 UUID、写入后核验；失败时绑定会按 `binding_sync_required` 设置回滚或明确提示，不再假报成功。
 - QQ 退群没有解绑：确认平台类型是 `aiocqhttp`、`qq_auto_unbind_on_leave=true`，群号在 `qq_group_ids` 中，并在启动日志查找“已为 QQ/OneBot 平台注册退群自动解绑监听”。
 - QQ 绑定后群名片未改变：开启 `qq_auto_group_card`，并确保 OneBot 机器人是该群管理员或群主。
 - `need_bind_to_login` 开启后仍能登录：配套 Fabric Mod 的 `loginBindingCheckEnabled` 也必须开启，并确认 Mod 已连接 AstrBot；`loginCheckFailOpen=true` 时断线/超时会放行。
 - 机器人不会主动查询服务器数据：确认当前模型支持工具调用，并确认 MineAstr 的 LLM 工具没有被禁用。
-- 命令工具返回禁用、不可信或白名单外：检查 Mod 侧 `enableCommandTool`、`trustedCommandUsers` 和 `allowedCommandRules`，并查看服务端 WARN 审计日志。
+- 命令工具返回禁用、不可信或白名单外：检查 Mod 侧 `enableCommandTool`、`trustedCommandUsers` 和 `allowedCommandRules`。QQ 可把日志中的请求者写成纯用户 ID，0.6.7 Mod 也支持 `default:用户ID`；执行 `op 玩家名` 还需显式允许 `op *`。
 - `/mc discord_status` 显示退群监听未注册：确认 AstrBot Discord 适配器已经在线并重载 MineAstr；若适配器因 4014 断开，请在 Developer Portal 开启 `Server Members Intent`。
 - 绑定成功但昵称未改变：确认机器人拥有 `Manage Nicknames`，且机器人角色高于目标成员；机器人不能修改服务器所有者或同级/更高角色成员。
 - 截图工具返回未安装客户端 Mod：目标玩家需要在自己的 Fabric 1.21.11 客户端 `mods` 目录安装 MineAstr 和 Fabric API 0.141.4。
