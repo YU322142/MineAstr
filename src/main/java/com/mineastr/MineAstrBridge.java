@@ -71,6 +71,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
             .build();
     private final StringBuilder inboundBuffer = new StringBuilder();
     private final ConcurrentMap<UUID, ClientCapability> clientCapabilities = new ConcurrentHashMap<>();
+    private final ConcurrentMap<UUID, TranslationPreference> translationPreferences = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, PendingScreenshot> pendingScreenshots = new ConcurrentHashMap<>();
     private final ConcurrentMap<UUID, String> pendingScreenshotByPlayer = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, ScreenshotAssembly> screenshotAssemblies = new ConcurrentHashMap<>();
@@ -102,6 +103,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         cancelReconnect();
         clearScreenshotState("Minecraft 服务器正在停止。");
         clearPendingLoginChecks("Minecraft 服务器正在停止。");
+        translationPreferences.clear();
         WebSocket socket = webSocket.getAndSet(null);
         if (socket != null) {
             socket.sendClose(WebSocket.NORMAL_CLOSURE, "server stopping");
@@ -278,6 +280,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
 
     public void unregisterClientCapability(ServerPlayer player) {
         clientCapabilities.remove(player.getUUID());
+        translationPreferences.remove(player.getUUID());
         pendingScreenshots.values().removeIf(pending -> {
             if (!pending.playerUuid.equals(player.getUUID())) {
                 return false;
@@ -288,6 +291,18 @@ public final class MineAstrBridge implements WebSocket.Listener {
             screenshotAssemblies.remove(pending.messageId);
             return true;
         });
+    }
+
+    public void registerTranslationPreference(
+            ServerPlayer player, boolean translationsEnabled, boolean showOriginal) {
+        translationPreferences.put(
+                player.getUUID(),
+                new TranslationPreference(translationsEnabled, showOriginal));
+        MineAstr.LOGGER.debug(
+                "MineAstr 已记录玩家 {} 的翻译显示偏好：enabled={} show_original={}",
+                player.getGameProfile().name(),
+                translationsEnabled,
+                showOriginal);
     }
 
     private void connectNow() {
@@ -552,8 +567,76 @@ public final class MineAstrBridge implements WebSocket.Listener {
         if (currentServer == null) {
             return;
         }
-        String rendered = "[" + senderName + "] " + content;
-        currentServer.execute(() -> currentServer.getPlayerList().broadcastSystemMessage(Component.literal(rendered), false));
+        JsonObject translations = new JsonObject();
+        if (payload.has("translations") && payload.get("translations").isJsonObject()) {
+            for (var entry : payload.getAsJsonObject("translations").entrySet()) {
+                String language = entry.getKey().strip().replace('-', '_').toLowerCase(Locale.ROOT);
+                if (!language.matches("[a-z0-9_]{2,16}") || !entry.getValue().isJsonPrimitive()
+                        || !entry.getValue().getAsJsonPrimitive().isString()) {
+                    continue;
+                }
+                String translated = trimFlatContent(entry.getValue().getAsString(), MAX_BROADCAST_CONTENT_LENGTH);
+                if (!translated.isBlank()) {
+                    translations.addProperty(language, translated);
+                }
+            }
+        }
+        boolean defaultShowOriginal = getBoolean(payload, "show_original", false);
+        String finalSenderName = senderName;
+        currentServer.execute(() -> {
+            MineAstr.LOGGER.info("[{}] {}", finalSenderName, content);
+            for (ServerPlayer player : currentServer.getPlayerList().getPlayers()) {
+                player.sendSystemMessage(renderTranslatedChat(
+                        player,
+                        finalSenderName,
+                        content,
+                        translations,
+                        defaultShowOriginal));
+            }
+        });
+    }
+
+    private Component renderTranslatedChat(
+            ServerPlayer player,
+            String senderName,
+            String original,
+            JsonObject translations,
+            boolean defaultShowOriginal) {
+        TranslationPreference preference = translationPreferences.get(player.getUUID());
+        if (preference != null && !preference.translationsEnabled) {
+            return Component.literal("[" + senderName + "] " + original);
+        }
+        String language = player.clientInformation().language().strip().replace('-', '_').toLowerCase(Locale.ROOT);
+        String translated = selectTranslation(translations, language);
+        if (translated.isBlank() || translated.equals(original)) {
+            return Component.literal("[" + senderName + "] " + original);
+        }
+        var component = Component.literal("[" + senderName + "] " + translated);
+        boolean showOriginal = preference == null ? defaultShowOriginal : preference.showOriginal;
+        if (showOriginal) {
+            String fallback = language.startsWith("zh_") ? "[原文] " : "[Original] ";
+            component.append("\n");
+            component.append(Component.translatableWithFallback(
+                    "message.mineastr.original_prefix", fallback));
+            component.append(Component.literal(original));
+        }
+        return component;
+    }
+
+    private static String selectTranslation(JsonObject translations, String language) {
+        if (translations.has(language) && translations.get(language).isJsonPrimitive()) {
+            return translations.get(language).getAsString();
+        }
+        int separator = language.indexOf('_');
+        String family = separator > 0 ? language.substring(0, separator) : language;
+        for (var entry : translations.entrySet()) {
+            String candidate = entry.getKey();
+            if ((candidate.equals(family) || candidate.startsWith(family + "_"))
+                    && entry.getValue().isJsonPrimitive()) {
+                return entry.getValue().getAsString();
+            }
+        }
+        return "";
     }
 
     private void handleQuery(WebSocket socket, JsonObject payload) {
@@ -1529,6 +1612,9 @@ public final class MineAstrBridge implements WebSocket.Listener {
     }
 
     private record ClientCapability(String modVersion, long seenAtMs) {
+    }
+
+    private record TranslationPreference(boolean translationsEnabled, boolean showOriginal) {
     }
 
     private static final class PendingScreenshot {

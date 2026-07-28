@@ -12,13 +12,15 @@ import net.minecraft.util.Mth;
 
 public final class MineAstrConfigScreen extends Screen {
     private static final int PANEL_WIDTH = 430;
-    private static final int PANEL_HEIGHT = 224;
+    private static final int PANEL_HEIGHT = 280;
     private static final int ACCENT = 0xFF72E6C1;
     private static final int TEXT = 0xFFF3F7FF;
     private static final int MUTED = 0xFFA8B4C8;
 
     private final Screen parent;
     private MineAstrClientConfig.ScreenshotMode screenshotMode;
+    private boolean gameTranslationsEnabled;
+    private boolean showOriginalTranslatedMessages;
     private int maxWidth;
     private int maxHeight;
     private double jpegQuality;
@@ -32,6 +34,8 @@ public final class MineAstrConfigScreen extends Screen {
 
     private void loadValues() {
         screenshotMode = MineAstrClientConfig.SCREENSHOT_MODE.get();
+        gameTranslationsEnabled = MineAstrClientConfig.GAME_TRANSLATIONS_ENABLED.getAsBoolean();
+        showOriginalTranslatedMessages = MineAstrClientConfig.SHOW_ORIGINAL_TRANSLATED_MESSAGES.getAsBoolean();
         maxWidth = MineAstrClientConfig.SCREENSHOT_MAX_WIDTH.getAsInt();
         maxHeight = MineAstrClientConfig.SCREENSHOT_MAX_HEIGHT.getAsInt();
         jpegQuality = MineAstrClientConfig.SCREENSHOT_JPEG_QUALITY.getAsDouble();
@@ -55,6 +59,14 @@ public final class MineAstrConfigScreen extends Screen {
                 .create(controlLeft, row, controlWidth, 20, Component.empty(), (button, value) -> screenshotMode = value);
         addRenderableWidget(modeButton);
 
+        row += 28;
+        addRenderableWidget(CycleButton.onOffBuilder(gameTranslationsEnabled)
+                .create(controlLeft, row, controlWidth, 20, Component.empty(),
+                        (button, value) -> gameTranslationsEnabled = value));
+        row += 28;
+        addRenderableWidget(CycleButton.onOffBuilder(showOriginalTranslatedMessages)
+                .create(controlLeft, row, controlWidth, 20, Component.empty(),
+                        (button, value) -> showOriginalTranslatedMessages = value));
         row += 28;
         addRenderableWidget(new ValueSlider(
                 controlLeft, row, controlWidth,
@@ -95,6 +107,8 @@ public final class MineAstrConfigScreen extends Screen {
 
     private void resetDefaults() {
         screenshotMode = MineAstrClientConfig.SCREENSHOT_MODE.getDefault();
+        gameTranslationsEnabled = MineAstrClientConfig.GAME_TRANSLATIONS_ENABLED.getDefault();
+        showOriginalTranslatedMessages = MineAstrClientConfig.SHOW_ORIGINAL_TRANSLATED_MESSAGES.getDefault();
         maxWidth = MineAstrClientConfig.SCREENSHOT_MAX_WIDTH.getDefault();
         maxHeight = MineAstrClientConfig.SCREENSHOT_MAX_HEIGHT.getDefault();
         jpegQuality = MineAstrClientConfig.SCREENSHOT_JPEG_QUALITY.getDefault();
@@ -103,11 +117,14 @@ public final class MineAstrConfigScreen extends Screen {
 
     private void saveAndClose() {
         MineAstrClientConfig.SCREENSHOT_MODE.set(screenshotMode);
+        MineAstrClientConfig.GAME_TRANSLATIONS_ENABLED.set(gameTranslationsEnabled);
+        MineAstrClientConfig.SHOW_ORIGINAL_TRANSLATED_MESSAGES.set(showOriginalTranslatedMessages);
         MineAstrClientConfig.SCREENSHOT_MAX_WIDTH.set(maxWidth);
         MineAstrClientConfig.SCREENSHOT_MAX_HEIGHT.set(maxHeight);
         MineAstrClientConfig.SCREENSHOT_JPEG_QUALITY.set(jpegQuality);
         MineAstrClientConfig.SCREENSHOT_MAX_BYTES.set(maxBytes);
         MineAstrClientConfig.SPEC.save();
+        MineAstrClient.sendTranslationPreferences();
         onClose();
     }
 
@@ -140,6 +157,8 @@ public final class MineAstrConfigScreen extends Screen {
         int labelY = top + 54;
         String[] labels = {
                 "screen.mineastr.config.mode.label",
+                "screen.mineastr.config.translation.label",
+                "screen.mineastr.config.translation_original.label",
                 "screen.mineastr.config.width.label",
                 "screen.mineastr.config.height.label",
                 "screen.mineastr.config.quality.label",

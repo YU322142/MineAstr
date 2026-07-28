@@ -51,8 +51,10 @@ public final class MineAstrClient implements ClientModInitializer {
         MineAstrClientConfig.load();
         ClientPlayNetworking.registerGlobalReceiver(MineAstrPayloads.ScreenshotRequest.TYPE, (request, context) ->
                 context.client().execute(() -> handleScreenshotRequestOnClientThread(context.client(), request)));
-        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) ->
-                sendPayloadToServer(new MineAstrPayloads.ClientHello(MineAstr.MOD_VERSION, true)));
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            sendPayloadToServer(new MineAstrPayloads.ClientHello(MineAstr.MOD_VERSION, true));
+            sendTranslationPreferences();
+        });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> pendingPromptRequestId = null);
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (OPEN_CONFIG_KEY.consumeClick()) {
@@ -85,7 +87,10 @@ public final class MineAstrClient implements ClientModInitializer {
             } else {
                 bridge.start(integratedServer);
             }
-            minecraft.execute(() -> sendPayloadToServer(new MineAstrPayloads.ClientHello(MineAstr.MOD_VERSION, true)));
+            minecraft.execute(() -> {
+                sendPayloadToServer(new MineAstrPayloads.ClientHello(MineAstr.MOD_VERSION, true));
+                sendTranslationPreferences();
+            });
         });
     }
 
@@ -274,6 +279,12 @@ public final class MineAstrClient implements ClientModInitializer {
 
     private static void sendError(String requestId, String code, String message) {
         sendPayloadToServer(new MineAstrPayloads.ScreenshotError(requestId, code, trimError(message)));
+    }
+
+    public static void sendTranslationPreferences() {
+        sendPayloadToServer(new MineAstrPayloads.TranslationPreferences(
+                MineAstrClientConfig.GAME_TRANSLATIONS_ENABLED.getAsBoolean(),
+                MineAstrClientConfig.SHOW_ORIGINAL_TRANSLATED_MESSAGES.getAsBoolean()));
     }
 
     private static void sendPayloadToServer(CustomPacketPayload payload) {

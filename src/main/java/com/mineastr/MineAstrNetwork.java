@@ -10,6 +10,9 @@ public final class MineAstrNetwork {
 
     public static void initializeServerNetworking() {
         PayloadTypeRegistry.playC2S().register(MineAstrPayloads.ClientHello.TYPE, MineAstrPayloads.ClientHello.CODEC);
+        PayloadTypeRegistry.playC2S().register(
+                MineAstrPayloads.TranslationPreferences.TYPE,
+                MineAstrPayloads.TranslationPreferences.CODEC);
         PayloadTypeRegistry.playC2S().register(MineAstrPayloads.ScreenshotChunk.TYPE, MineAstrPayloads.ScreenshotChunk.CODEC);
         PayloadTypeRegistry.playC2S().register(MineAstrPayloads.ScreenshotError.TYPE, MineAstrPayloads.ScreenshotError.CODEC);
         PayloadTypeRegistry.playS2C().register(MineAstrPayloads.ScreenshotRequest.TYPE, MineAstrPayloads.ScreenshotRequest.CODEC);
@@ -17,6 +20,9 @@ public final class MineAstrNetwork {
         ServerPlayNetworking.registerGlobalReceiver(MineAstrPayloads.ClientHello.TYPE, (payload, context) ->
                 context.server().execute(() -> MineAstr.bridge().registerClientCapability(
                         context.player(), payload.screenshotSupported(), payload.modVersion())));
+        ServerPlayNetworking.registerGlobalReceiver(MineAstrPayloads.TranslationPreferences.TYPE, (payload, context) ->
+                context.server().execute(() -> MineAstr.bridge().registerTranslationPreference(
+                        context.player(), payload.translationsEnabled(), payload.showOriginal())));
         ServerPlayNetworking.registerGlobalReceiver(MineAstrPayloads.ScreenshotChunk.TYPE, (payload, context) ->
                 context.server().execute(() -> MineAstr.bridge().receiveScreenshotChunk(context.player(), payload)));
         ServerPlayNetworking.registerGlobalReceiver(MineAstrPayloads.ScreenshotError.TYPE, (payload, context) ->

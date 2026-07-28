@@ -13,6 +13,7 @@ MineAstr 是同一仓库中 AstrBot MineAstr 插件的 Minecraft 端，已适配
 ## 功能
 
 - Minecraft 与 AstrBot/Discord 双向聊天；
+- 按每位玩家客户端 locale 显示 QQ/Discord/AstrBot 消息译文，并可选择同时显示原文；
 - 服务器状态、在线玩家、TPS/MSPT、CPU、内存查询；
 - 玩家状态、背包、附近实体与已加载区域结构分析；
 - 玩家加入、离开、死亡事件；死亡事件包含原版 `death_type`、攻击者、直接伤害实体和武器，供 AstrBot 本地化原因；
@@ -41,6 +42,8 @@ MineAstr 是同一仓库中 AstrBot MineAstr 插件的 Minecraft 端，已适配
 5. 把配置中的 `token` 改成与 AstrBot `minecraft` 平台适配器完全相同的随机字符串，然后重启。
 
 客户端需要截图或单人世界桥接时也安装相同的 MineAstr 和 Fabric API JAR。进入游戏后按 `F8` 打开 MineAstr 客户端设置；按键可在 Minecraft 控制设置中修改。
+
+游戏内自动翻译由 AstrBot 插件配置并调用文本模型生成，Mod 本身不连接翻译服务。服务端会按每位玩家客户端上报的 locale 选择对应译文；没有译文或翻译失败时显示原文。
 
 ## 服务端配置
 
@@ -123,6 +126,8 @@ Mod 每次连接或重连后，AstrBot 会先重置服务端绑定缓存，再�
 ```json
 {
   "localWorldServerEnabled": false,
+  "gameTranslationsEnabled": true,
+  "showOriginalTranslatedMessages": true,
   "screenshotMode": "ASK",
   "screenshotMaxWidth": 240,
   "screenshotMaxHeight": 135,
@@ -130,6 +135,11 @@ Mod 每次连接或重连后，AstrBot 会先重置服务端绑定缓存，再�
   "screenshotMaxBytes": 131072
 }
 ```
+
+- `gameTranslationsEnabled`：显示服务器提供的客户端语言译文；关闭后只显示原文。
+- `showOriginalTranslatedMessages`：有译文时在下一行附带原文。
+
+这两个选项也可在 F8 设置界面修改，并在加入服务器时上报。没有安装客户端 Mod 的玩家仍会按 Minecraft 原生上报的 locale 收到译文，是否附带原文使用 AstrBot 插件的默认配置。
 
 `screenshotMode` 可选：
 
@@ -149,7 +159,7 @@ Mod 每次连接或重连后，AstrBot 会先重置服务端绑定缓存，再�
 ## 服务端与客户端安装边界
 
 - 仅服务端安装：聊天、事件、查询、绑定、登录检查可用；玩家无需安装 Mod。
-- 服务端和客户端都安装：额外支持截图。
+- 服务端和客户端都安装：额外支持截图，以及玩家自己的译文/原文显示偏好。
 - 仅客户端安装：可选单人世界集成服务器桥接；多人服务器端没有安装时无法提供桥接。
 
 ## 故障排查

@@ -1,5 +1,7 @@
 {
   "localWorldServerEnabled": false,
+  "gameTranslationsEnabled": true,
+  "showOriginalTranslatedMessages": true,
   "screenshotMode": "ASK",
   "screenshotMaxWidth": 240,
   "screenshotMaxHeight": 135,

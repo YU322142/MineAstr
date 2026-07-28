@@ -38,6 +38,28 @@ public final class MineAstrPayloads {
         }
     }
 
+    public record TranslationPreferences(boolean translationsEnabled, boolean showOriginal)
+            implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<TranslationPreferences> TYPE =
+                MineAstrPayloads.type("translation_preferences");
+        public static final StreamCodec<RegistryFriendlyByteBuf, TranslationPreferences> CODEC =
+                StreamCodec.ofMember(TranslationPreferences::write, TranslationPreferences::read);
+
+        private static TranslationPreferences read(RegistryFriendlyByteBuf buffer) {
+            return new TranslationPreferences(buffer.readBoolean(), buffer.readBoolean());
+        }
+
+        private void write(RegistryFriendlyByteBuf buffer) {
+            buffer.writeBoolean(translationsEnabled);
+            buffer.writeBoolean(showOriginal);
+        }
+
+        @Override
+        public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
     public record ScreenshotRequest(
             String requestId,
             String reason,

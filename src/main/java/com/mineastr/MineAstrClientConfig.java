@@ -10,6 +10,10 @@ public final class MineAstrClientConfig {
     private static final MineAstrConfigStore STORE = new MineAstrConfigStore("mineastr-client.json");
 
     public static final MineAstrConfigStore.BooleanValue LOCAL_WORLD_SERVER_ENABLED = STORE.bool("localWorldServerEnabled", false);
+    public static final MineAstrConfigStore.BooleanValue GAME_TRANSLATIONS_ENABLED =
+            STORE.bool("gameTranslationsEnabled", true);
+    public static final MineAstrConfigStore.BooleanValue SHOW_ORIGINAL_TRANSLATED_MESSAGES =
+            STORE.bool("showOriginalTranslatedMessages", true);
     public static final MineAstrConfigStore.EnumValue<ScreenshotMode> SCREENSHOT_MODE =
             STORE.enumValue("screenshotMode", ScreenshotMode.ASK, ScreenshotMode.class);
     public static final MineAstrConfigStore.IntValue SCREENSHOT_MAX_WIDTH = STORE.integer("screenshotMaxWidth", 240, 64, 1024);
