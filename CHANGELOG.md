@@ -7,6 +7,7 @@
 - 增加登录绑定校验审计日志，能直接确认数据库命中和放行结果。
 - 配套 Fabric Mod 改为按在线/离线认证模式解析 UUID，直接写入、保存并核验原版白名单；同步失败不再假报成功。
 - 修复 Windows ZIP 缺少首个目录条目时 AstrBot 4.23.6 上传安装报 `NotADirectoryError`；新增跨平台打包脚本和 CI 校验。
+- WebSocket 客户端连接日志不再输出远端 IP 地址。
 - 固定支持 Minecraft 1.21.11、Fabric API 0.141.4+1.21.11 和 Java 21。
 
 ## 0.6.4 及更早

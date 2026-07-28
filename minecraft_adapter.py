@@ -889,7 +889,7 @@ class MinecraftPlatformAdapter(Platform):
             heartbeat=30, max_msg_size=self.websocket_max_message_bytes
         )
         await ws.prepare(request)
-        logger.info("MineAstr WebSocket 客户端已连接：%s", request.remote)
+        logger.info("MineAstr WebSocket 客户端已连接。")
 
         try:
             async for msg in ws:
