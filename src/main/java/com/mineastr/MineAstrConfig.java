@@ -3,6 +3,8 @@ package com.mineastr;
 import java.util.List;
 
 public final class MineAstrConfig {
+    public static final String DEFAULT_LOGIN_CODE_MESSAGE =
+            "\n绑定验证码：{code}\n请在 Discord/聊天平台使用 /mc bind {code}";
     private static final MineAstrConfigStore STORE = new MineAstrConfigStore("mineastr-common.json");
 
     public static final MineAstrConfigStore.BooleanValue ENABLED = STORE.bool("enabled", true);
@@ -41,7 +43,7 @@ public final class MineAstrConfig {
     public static final MineAstrConfigStore.BooleanValue GENERATE_BINDING_CODE_ON_REJECT = STORE.bool("generateBindingCodeOnReject", true);
     public static final MineAstrConfigStore.IntValue VERIFY_CODE_LENGTH = STORE.integer("verifyCodeLength", 6, 4, 12);
     public static final MineAstrConfigStore.StringValue LOGIN_CODE_MESSAGE = STORE.string(
-            "loginCodeMessage", "\n绑定验证码：{code}\n请在 Discord/聊天平台使用 /mc bind {code}", 512);
+            "loginCodeMessage", DEFAULT_LOGIN_CODE_MESSAGE, 512);
 
     static final Spec SPEC = new Spec();
 

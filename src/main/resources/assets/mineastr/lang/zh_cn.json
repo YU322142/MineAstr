@@ -1,5 +1,10 @@
 {
   "key.mineastr.open_config": "打开 MineAstr 客户端设置",
+  "disconnect.mineastr.login.not_bound": "[MC] 该游戏账号尚未在聊天平台绑定，请先使用 /mc bind <游戏名>。",
+  "disconnect.mineastr.login.unavailable": "[MC] 无法连接 AstrBot 完成账号绑定校验，请稍后重试。",
+  "disconnect.mineastr.login.identity_unavailable": "[MC] 无法读取登录玩家身份，请稍后重试。",
+  "disconnect.mineastr.login.binding_code": "\n绑定验证码：%s\n请在 QQ/Discord 使用 /mc bind %s",
+  "message.mineastr.player_notification": "[提醒/%s] %s",
   "commands.mineastr.status": "MineAstr 状态：%s",
   "commands.mineastr.status.disabled": "已禁用",
   "commands.mineastr.status.inactive": "未启动（本地世界桥接已关闭）",

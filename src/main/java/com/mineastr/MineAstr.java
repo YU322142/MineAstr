@@ -16,7 +16,7 @@ import org.slf4j.Logger;
 
 public final class MineAstr implements ModInitializer {
     public static final String MODID = "mineastr";
-    public static final String MOD_VERSION = "0.6.6";
+    public static final String MOD_VERSION = "0.6.7";
     public static final Logger LOGGER = LogUtils.getLogger();
 
     private static final MineAstrBridge BRIDGE = new MineAstrBridge();
@@ -55,7 +55,7 @@ public final class MineAstr implements ModInitializer {
 
         ServerLivingEntityEvents.AFTER_DEATH.register((entity, damageSource) -> {
             if (entity instanceof ServerPlayer player) {
-                BRIDGE.forwardPlayerDeath(player, player.getCombatTracker().getDeathMessage().getString());
+                BRIDGE.forwardPlayerDeath(player, damageSource);
             }
         });
 
@@ -67,15 +67,16 @@ public final class MineAstr implements ModInitializer {
             if (playerName == null || playerName.isBlank()) {
                 LOGGER.warn("MineAstr 无法读取登录玩家的原始游戏名。");
                 if (!MineAstrConfig.LOGIN_CHECK_FAIL_OPEN.getAsBoolean()) {
-                    handler.disconnect(net.minecraft.network.chat.Component.literal(
-                            "[MineAstr] 无法读取登录玩家身份，请稍后重试。"));
+                    handler.disconnect(net.minecraft.network.chat.Component.translatableWithFallback(
+                            "disconnect.mineastr.login.identity_unavailable",
+                            "[MC] 无法读取登录玩家身份，请稍后重试。"));
                 }
                 return;
             }
             synchronizer.waitFor(BRIDGE.checkPlayerLogin(playerName)
                     .thenAccept(result -> {
                         if (!result.allowed()) {
-                            handler.disconnect(net.minecraft.network.chat.Component.literal(result.message()));
+                            handler.disconnect(result.component());
                         }
                     }));
         });

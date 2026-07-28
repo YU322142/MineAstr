@@ -48,6 +48,7 @@ import net.minecraft.server.permissions.LevelBasedPermissionSet;
 import net.minecraft.server.permissions.PermissionLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.level.Level;
 
 public final class MineAstrBridge implements WebSocket.Listener {
@@ -175,8 +176,43 @@ public final class MineAstrBridge implements WebSocket.Listener {
         sendPlayerEvent("player_leave", player, null);
     }
 
-    public void forwardPlayerDeath(ServerPlayer player, String deathMessage) {
-        sendPlayerEvent("player_death", player, trimFlatContent(deathMessage, MAX_EVENT_TEXT_LENGTH));
+    public void forwardPlayerDeath(ServerPlayer player, DamageSource damageSource) {
+        WebSocket socket = webSocket.get();
+        if (socket == null || socket.isOutputClosed()) {
+            return;
+        }
+        JsonObject payload = eventEnvelope("player_death");
+        payload.addProperty("player_uuid", player.getUUID().toString());
+        payload.addProperty("player_name", player.getGameProfile().name());
+
+        String deathMessage = trimFlatContent(
+                player.getCombatTracker().getDeathMessage().getString(),
+                MAX_EVENT_TEXT_LENGTH);
+        if (!deathMessage.isBlank()) {
+            payload.addProperty("death_message", deathMessage);
+            payload.addProperty("reason", deathMessage);
+        }
+        String deathType = trimFlatContent(damageSource.getMsgId(), 128);
+        if (!deathType.isBlank()) {
+            payload.addProperty("death_type", deathType);
+        }
+        if (damageSource.getEntity() != null) {
+            payload.addProperty(
+                    "attacker",
+                    trimFlatContent(damageSource.getEntity().getDisplayName().getString(), MAX_EVENT_TEXT_LENGTH));
+        }
+        if (damageSource.getDirectEntity() != null) {
+            payload.addProperty(
+                    "direct_entity",
+                    trimFlatContent(damageSource.getDirectEntity().getDisplayName().getString(), MAX_EVENT_TEXT_LENGTH));
+        }
+        var weapon = damageSource.getWeaponItem();
+        if (weapon != null && !weapon.isEmpty()) {
+            payload.addProperty(
+                    "weapon",
+                    trimFlatContent(weapon.getDisplayName().getString(), MAX_EVENT_TEXT_LENGTH));
+        }
+        sendJson(socket, payload);
     }
 
     private void sendPlayerEvent(String event, ServerPlayer player, String deathMessage) {
@@ -196,7 +232,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
 
     public CompletableFuture<LoginCheckResult> checkPlayerLogin(String playerName) {
         if (!MineAstrConfig.LOGIN_BINDING_CHECK_ENABLED.getAsBoolean()) {
-            return CompletableFuture.completedFuture(new LoginCheckResult(true, ""));
+            return CompletableFuture.completedFuture(new LoginCheckResult(true, "", "", ""));
         }
         WebSocket socket = webSocket.get();
         if (socket == null || socket.isOutputClosed()) {
@@ -224,7 +260,11 @@ public final class MineAstrBridge implements WebSocket.Listener {
     private LoginCheckResult loginCheckFallback(String reason) {
         boolean allowed = MineAstrConfig.LOGIN_CHECK_FAIL_OPEN.getAsBoolean();
         MineAstr.LOGGER.warn("MineAstr 登录绑定校验失败：{}；策略={}", reason, allowed ? "fail-open" : "fail-closed");
-        return new LoginCheckResult(allowed, allowed ? "" : "[MineAstr] 无法连接 AstrBot 完成账号绑定校验，请稍后重试。");
+        return new LoginCheckResult(
+                allowed,
+                allowed ? "" : "[MC] 无法连接 AstrBot 完成账号绑定校验，请稍后重试。",
+                allowed ? "" : "disconnect.mineastr.login.unavailable",
+                "");
     }
 
     public void registerClientCapability(ServerPlayer player, boolean screenshotSupported, String clientModVersion) {
@@ -447,6 +487,11 @@ public final class MineAstrBridge implements WebSocket.Listener {
 
         boolean allowed = getBoolean(payload, "allowed", true);
         String message = trimContent(getString(payload, "message", ""), 1024);
+        String messageKey = trimFlatContent(getString(payload, "message_key", ""), 128);
+        if (!allowed && messageKey.isBlank() && isKnownUnboundMessage(message)) {
+            messageKey = "disconnect.mineastr.login.not_bound";
+        }
+        String localizedCode = "";
         if (!allowed && MineAstrConfig.GENERATE_BINDING_CODE_ON_REJECT.getAsBoolean()) {
             String code = generateVerifyCode();
             JsonObject codeEvent = eventEnvelope("binding_code");
@@ -454,9 +499,20 @@ public final class MineAstrBridge implements WebSocket.Listener {
             codeEvent.addProperty("code", code);
             sendJson(socket, codeEvent);
             String codeMessage = MineAstrConfig.LOGIN_CODE_MESSAGE.get().replace("{code}", code);
-            message = (message.isBlank() ? "[MineAstr] 该账号尚未绑定。" : message) + codeMessage;
+            message = message.isBlank() ? "[MC] 该账号尚未绑定。" : message;
+            if (MineAstrConfig.DEFAULT_LOGIN_CODE_MESSAGE.equals(MineAstrConfig.LOGIN_CODE_MESSAGE.get())) {
+                localizedCode = code;
+            } else {
+                message += codeMessage;
+            }
         }
-        pending.future.complete(new LoginCheckResult(allowed, message));
+        pending.future.complete(new LoginCheckResult(allowed, message, messageKey, localizedCode));
+    }
+
+    private static boolean isKnownUnboundMessage(String message) {
+        return "[MC] 该游戏账号尚未在聊天平台绑定，请先使用 /mc bind <游戏名>。".equals(message)
+                || "[MineAstr] 该游戏账号尚未在聊天平台绑定，请先使用 /mc bind <游戏名>。".equals(message)
+                || "[MC] This game account is not bound. Use /mc bind <player name> on QQ/Discord first.".equals(message);
     }
 
     private static String generateVerifyCode() {
@@ -762,7 +818,14 @@ public final class MineAstrBridge implements WebSocket.Listener {
             return;
         }
 
-        Component text = Component.literal("[提醒/" + sender + "] " + message);
+        String fallback = player.clientInformation().language().toLowerCase(Locale.ROOT).startsWith("zh_")
+                ? "[提醒/" + sender + "] " + message
+                : "[Notice/" + sender + "] " + message;
+        Component text = Component.translatableWithFallback(
+                "message.mineastr.player_notification",
+                fallback,
+                sender,
+                message);
         player.sendSystemMessage(text);
         if (MineAstrConfig.NOTIFY_ACTION_BAR.getAsBoolean()) {
             player.displayClientMessage(text, true);
@@ -1378,10 +1441,14 @@ public final class MineAstrBridge implements WebSocket.Listener {
     private record Requester(List<String> identities, String auditName) {
         private static Requester from(JsonObject payload) {
             List<String> identities = new ArrayList<>();
+            String requesterId = trimFlatContent(getString(payload, "requester_id", ""), 128);
             addIdentity(identities, getString(payload, "requester_uuid", ""));
-            addIdentity(identities, getString(payload, "requester_id", ""));
+            addIdentity(identities, requesterId);
             addIdentity(identities, getString(payload, "requester_name", ""));
             String platform = trimFlatContent(getString(payload, "requester_platform", "unknown"), 64);
+            if (!requesterId.isEmpty() && !platform.isEmpty() && !"unknown".equalsIgnoreCase(platform)) {
+                addIdentity(identities, platform + ":" + requesterId);
+            }
             String best = identities.isEmpty() ? "unknown@" + platform : identities.getFirst() + "@" + platform;
             return new Requester(List.copyOf(identities), best);
         }
@@ -1428,7 +1495,21 @@ public final class MineAstrBridge implements WebSocket.Listener {
         }
     }
 
-    public record LoginCheckResult(boolean allowed, String message) {
+    public record LoginCheckResult(boolean allowed, String message, String messageKey, String code) {
+        public Component component() {
+            var component = messageKey == null || messageKey.isBlank()
+                    ? Component.literal(message == null ? "" : message)
+                    : Component.translatableWithFallback(messageKey, message == null ? "" : message);
+            if (code != null && !code.isBlank()) {
+                String fallback = MineAstrConfig.DEFAULT_LOGIN_CODE_MESSAGE.replace("{code}", code);
+                component.append(Component.translatableWithFallback(
+                        "disconnect.mineastr.login.binding_code",
+                        fallback,
+                        code,
+                        code));
+            }
+            return component;
+        }
     }
 
     private record PendingLoginCheck(

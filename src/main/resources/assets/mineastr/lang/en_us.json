@@ -1,5 +1,10 @@
 {
   "key.mineastr.open_config": "Open MineAstr Client Settings",
+  "disconnect.mineastr.login.not_bound": "[MC] This game account is not bound. Use /mc bind <player name> on QQ/Discord first.",
+  "disconnect.mineastr.login.unavailable": "[MC] AstrBot is unavailable for account binding verification. Please try again later.",
+  "disconnect.mineastr.login.identity_unavailable": "[MC] The login player identity could not be read. Please try again later.",
+  "disconnect.mineastr.login.binding_code": "\nBinding code: %s\nUse /mc bind %s on QQ/Discord",
+  "message.mineastr.player_notification": "[Notice/%s] %s",
   "commands.mineastr.status": "MineAstr status: %s",
   "commands.mineastr.status.disabled": "disabled",
   "commands.mineastr.status.inactive": "not started (local-world bridge is disabled)",

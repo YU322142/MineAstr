@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.7
+
+- `trustedCommandUsers` 除纯用户 ID、UUID 和名称外，也接受更明确的 `平台ID:用户ID`，例如 QQ/OneBot 的 `default:123456789`。
+- 文档明确说明 AstrBot/MineAstr 管理员与 Mod 命令可信名单是独立的两层安全校验；`op *` 仅应按需授权。
+- 玩家死亡事件新增 Minecraft `death_type`、攻击者、直接伤害实体和武器字段，AstrBot 可据此生成不重复玩家名的中文/英文死亡原因。
+- 未绑定登录拒绝、验证码和游戏内定向提醒支持中英文客户端本地化；安装同版客户端 Mod 时自动跟随客户端语言，未安装时使用安全回退文本。
+
 ## 0.6.6
 
 - 登录绑定检查改为通过 Mixin Accessor 读取原始 `requestedUsername`，不再使用会拼接 IP 和端口的 `getUserName()` 日志显示值。
