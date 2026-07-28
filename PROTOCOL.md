@@ -1,6 +1,6 @@
 # MineAstr WebSocket 协议
 
-本文描述 AstrBot 插件 `v0.6.7` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
+本文描述 AstrBot 插件 `v0.6.8` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
 
 ## 连接与认证
 

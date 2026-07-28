@@ -4,6 +4,17 @@ from pathlib import Path
 
 
 class ConfigSchemaTests(unittest.TestCase):
+    SUPPORTED_TYPES = {
+        "int",
+        "float",
+        "bool",
+        "string",
+        "text",
+        "list",
+        "file",
+        "object",
+        "template_list",
+    }
     GROUP_NAMES = (
         "bridge_settings",
         "binding_settings",
@@ -100,6 +111,21 @@ class ConfigSchemaTests(unittest.TestCase):
             with self.subTest(legacy_key=key):
                 self.assertTrue(schema[key]["invisible"])
                 self._visible_field(schema, key)
+
+    def test_every_schema_type_is_supported_by_astrbot(self):
+        def check_fields(fields, path=""):
+            for key, field in fields.items():
+                field_path = f"{path}.{key}" if path else key
+                self.assertIn(
+                    field["type"],
+                    self.SUPPORTED_TYPES,
+                    f"{field_path} uses unsupported type {field['type']}",
+                )
+                if field["type"] == "object":
+                    self.assertIn("items", field, f"{field_path} is missing items")
+                    check_fields(field["items"], field_path)
+
+        check_fields(self._schema())
 
     def test_notification_gui_has_language_event_switches_and_platform_profiles(self):
         schema = self._schema()

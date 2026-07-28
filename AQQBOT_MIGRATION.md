@@ -6,7 +6,7 @@ MineAstr 的实现边界与 AQQBot 不同：AQQBot 是直接运行在 Bukkit/Fab
 
 ## 功能对照
 
-| AQQBot 功能 | MineAstr v0.6.7 | 说明 |
+| AQQBot 功能 | MineAstr v0.6.8 | 说明 |
 | --- | --- | --- |
 | QQ 与游戏双向聊天 | 已实现并扩展 | `relay_sessions` 支持 QQ、Discord 及其他能主动发消息的 AstrBot 平台，可桥接多个会话。 |
 | 最大转发长度 | 已实现 | `max_relay_length`，同时受平台和 Minecraft 适配器自身上限约束。 |
