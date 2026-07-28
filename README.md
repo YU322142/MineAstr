@@ -1,6 +1,7 @@
 # MineAstr AstrBot 插件
 
 [![AI Assisted](https://img.shields.io/badge/AI-OpenAI%20Codex%20Assisted-10A37F?style=for-the-badge&logo=openai&logoColor=white)](#ai-制作声明)
+[![Plugin tests](https://github.com/YU322142/MineAstr/actions/workflows/test.yml/badge.svg?branch=astrbot-plugin)](https://github.com/YU322142/MineAstr/actions/workflows/test.yml)
 
 > [!IMPORTANT]
 > **AI 制作声明：本插件采用生成式 AI 参与协议设计、编码、文档编写与测试。** AI 生成或修改的内容由项目维护者审阅、验证并承担最终维护责任。
