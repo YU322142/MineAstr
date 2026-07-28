@@ -16,17 +16,17 @@ MineAstr 将 Minecraft 1.21.11 Fabric 服务器接入 AstrBot、QQ/OneBot 与 Di
 
 ## 当前版本
 
-- AstrBot 插件：`0.6.8`
-- MineAstr Fabric Mod：`0.6.7`
+- AstrBot 插件：`0.6.9`
+- MineAstr Fabric Mod：`0.6.9`
 - Minecraft：`1.21.11`
 - Fabric API：`0.141.4+1.21.11`
 
 成品请从 [GitHub Releases](https://github.com/YU322142/MineAstr/releases) 下载：
 
-- `astrbot_plugin_mineastr-v0.6.8.zip`
-- `mineastr-fabric-0.6.7.jar`
+- `astrbot_plugin_mineastr-v0.6.9.zip`
+- `mineastr-fabric-0.6.9.jar`
 
-插件 v0.6.8 是配置兼容热修：将两个隐藏的旧版通知字段从 AstrBot 4.23.6 不支持的 `dict` Schema 改成完整 `object/items`，修复插件重载失败。Minecraft 协议和 Mod 功能没有变化，因此继续使用 v0.6.7 Fabric JAR。
+v0.6.9 允许 QQ/OneBot 与 Discord 分别选择单个或多个通知语言，并为中英文分别填写多行自定义样式；还可把 MineAstr 管理员与 AstrBot 全局管理员同步到 Mod 当前连接的临时命令可信集合。静态可信名单、命令工具总开关和允许命令规则仍独立生效。
 
 ## 连接方式
 
@@ -44,7 +44,7 @@ Minecraft MineAstr Mod -> ws://astrbot.example.com:8765/ws -> AstrBot
 
 `0.6.7` 会按服务器在线/离线认证模式解析玩家 UUID，直接写入并保存原版白名单，再读回核验。登录检查只使用认证得到的纯玩家名，不会把玩家 IP/端口写入绑定；插件启动时会自动迁移旧版错误记录并重新同步白名单。若解析、保存或核验失败，Mod 会向 AstrBot 返回失败，不再显示虚假的同步成功。
 
-本版还为 QQ/OneBot 与 Discord 分别提供独立的通知语言、总开关、服务器连接/断开、玩家进入/离开/死亡开关和模板；死亡事件使用 Minecraft 结构化伤害类型生成中文/英文原因，不再出现“玩家名 因 玩家名 died”。未绑定登录、验证码与游戏内定向提醒支持客户端中英文；安装同版客户端 Mod 时会跟随客户端语言。
+本版为 QQ/OneBot 与 Discord 分别提供逐行通知语言列表、总开关、服务器连接/断开、玩家进入/离开/死亡开关和按语言自定义样式；只写一行是单语，写多行会按顺序并列发送。死亡事件使用 Minecraft 结构化伤害类型生成中文/英文原因，不再出现“玩家名 因 玩家名 died”。未绑定登录、验证码与游戏内定向提醒支持客户端中英文；安装同版客户端 Mod 时会跟随客户端语言。
 
 QQ/Discord 消息和 AstrBot 回复可选使用 AstrBot 文本模型生成多个 locale 的译文，Minecraft 服务端会按每位玩家的客户端语言分别显示。安装同版客户端 Mod 的玩家可在 F8 界面开关译文和原文；翻译默认关闭，失败或没有匹配语言时始终回退原文。
 
@@ -57,11 +57,13 @@ AstrBot 插件元数据的安装/更新源为本 Fork 的 [`astrbot-plugin`](htt
 
 完整安装和权限说明请查看两个工程分支的 README。
 
+需要让 Bot 管理员请求受控服务器命令时，同时开启插件 `sync_command_admins_to_server=true` 和 Mod `syncTrustedCommandUsers=true`。这不会自动放开命令；Mod 仍要求 `enableCommandTool=true`，并且命令命中 `allowedCommandRules`（例如 `op *`）。
+
 ## 构建验证
 
-- AstrBot 插件：46 个自动化测试通过，覆盖配置迁移、AstrBot 4.23.6 Schema 类型兼容、QQ/Discord 自动化、分平台通知、死亡原因本地化和游戏内翻译协议。
+- AstrBot 插件：51 个自动化测试通过，覆盖配置迁移、AstrBot 4.23.6 Schema 类型兼容、QQ/Discord 自动化、单/多语言分平台通知、自定义样式、管理员同步、死亡原因本地化和游戏内翻译协议。
 - Fabric Mod：Gradle `clean build` 通过。
-- 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证 Mixin 纯玩家名访问器加载、绑定写入 UUID、`whitelist_verified=true`、解绑移除、`平台ID:用户ID` 可信命令和正常关服保存。
+- 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证 Mixin 纯玩家名访问器加载、绑定写入 UUID、`whitelist_verified=true`、解绑移除、Bot 管理员可信名单同步、`平台ID:用户ID` 可信命令和正常关服保存。
 
 ## 许可与来源
 
