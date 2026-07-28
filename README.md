@@ -38,6 +38,12 @@ AstrBot 对该会话的文本回复会回传给所有已连接的 Minecraft 服�
 
 账号绑定保存在 `data/mineastr/bindings.sqlite3`。完整的功能差异和需要 Minecraft Mod 配合的项目见 [AQQBOT_MIGRATION.md](AQQBOT_MIGRATION.md)，扩展协议见 [PROTOCOL.md](PROTOCOL.md)。
 
+## 安装包兼容性
+
+在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.5.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。
+
+从源码自行打包时请使用 `python scripts/package_plugin.py`。该脚本会先写目录条目，并统一使用 `/` 路径分隔符；不要直接使用会省略目录条目的 Windows 压缩工具。
+
 ## QQ / OneBot v11 支持
 
 QQ 复用 AstrBot 的 `aiocqhttp` 平台适配器，不需要 MineAstr 再登录一个 OneBot 客户端。QQ 群中的 `/mc bind`、验证码绑定、解绑、查询、桥接及管理员指令使用该适配器的唯一 ID 保存账号；`v0.6.3` 还直接监听 OneBot `notice.group_decrease`，并可调用 `set_group_card`。

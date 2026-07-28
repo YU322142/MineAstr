@@ -21,6 +21,7 @@ logs/
 secrets.json
 config.json
 /astrbot_plugin_mineastr.zip
+dist/
 
 # Gradle / Java / NeoForge
 .gradle/
