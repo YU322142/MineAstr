@@ -41,7 +41,7 @@ AstrBot 对该会话的文本回复会回传给所有已连接的 Minecraft 服�
 
 ## 安装包兼容性
 
-在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.12.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
+在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.13.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
 
 插件元数据中的安装/更新源固定为 Fork 分支 `https://github.com/YU322142/MineAstr/tree/astrbot-plugin`，不会再让 AstrBot 回到原项目或下载仅用于项目导航的 `main` 分支。
 
@@ -84,8 +84,9 @@ Discord 不需要本插件自行登录 Discord；它复用 AstrBot 官方 Discor
 | `/mc who <玩家名>` | 查询玩家绑定的平台与显示名 | 所有人 |
 | `/mc discord_status` | 检查 Discord 自动解绑、昵称、Intent 与监听状态 | MineAstr 管理员 |
 | `/mc command <命令>` | 公开白名单命令立即执行；其他命令创建待审批申请 | 默认关闭；所有人可提交 |
-| `/mc approve <审批 ID>` | 批准并执行 Mod 保存的白名单外原始命令 | MineAstr / AstrBot 管理员 |
-| `/mc reject <审批 ID>` | 拒绝待审批命令 | MineAstr / AstrBot 管理员 |
+| `/mc approve` | 校验当前用户为管理员后显示待审批编号列表 | MineAstr / AstrBot 管理员 |
+| `/mc approve <序号或审批 ID>` | 批准并执行 Mod 保存的白名单外原始命令 | MineAstr / AstrBot 管理员 |
+| `/mc reject [序号或审批 ID]` | 查看列表或拒绝待审批命令 | MineAstr / AstrBot 管理员 |
 | `/mc approvals` | 查看各已连接服务器的待审批命令 | MineAstr / AstrBot 管理员 |
 | `/mc say <消息>` | 主动广播到 Minecraft | MineAstr 管理员 |
 | `/mc bridge_add` / `bridge_remove` | 添加/移除当前 QQ 群或 Discord 频道 | MineAstr 管理员 |
@@ -214,7 +215,7 @@ pip install -r requirements.txt
 
 ## 机器人可调用工具
 
-插件会注册八个 AstrBot LLM 工具。只要当前模型提供商支持 function calling / tools，并且 AstrBot 中没有禁用这些工具，机器人在对话中可以主动查询 Minecraft 数据后再回答。
+插件会注册九个 AstrBot LLM 工具。只要当前模型提供商支持 function calling / tools，并且 AstrBot 中没有禁用这些工具，机器人在对话中可以主动查询 Minecraft 数据后再回答。
 
 | 工具 | 用途 |
 | --- | --- |
@@ -225,6 +226,7 @@ pip install -r requirements.txt
 | `mineastr_get_nearby_entities` | 查询玩家附近实体的种类、数量、距离和生命摘要。 |
 | `mineastr_analyze_region` | 分析已加载区域的方块材料、建筑部件、表面高度和粗略三维形状。 |
 | `mineastr_run_server_command` | 提交真实请求者明确要求的精确命令；公开白名单内执行，其他命令仅返回待审批 ID。 |
+| `mineastr_manage_command_approvals` | 为当前真实管理员列出、批准或拒绝待审批命令；每次调用都重新检查管理员身份。 |
 | `mineastr_request_screenshot` | 请求指定玩家客户端发送低清晰度截图，并把截图保存到 AstrBot 工作目录。 |
 
 使用示例：
@@ -240,7 +242,7 @@ pip install -r requirements.txt
 - “我背包里还有多少火把？”会调用 `mineastr_get_player_inventory`。
 - “附近有什么怪？”会调用 `mineastr_get_nearby_entities`。
 - “分析一下这栋房子的材料和结构”会调用 `mineastr_analyze_region`；区域工具只扫描已加载区块，不读取箱子内容、告示牌文字或方块实体 NBT。
-- “帮我执行 `/time query daytime`”可以调用 `mineastr_run_server_command`；若命中 Mod 的 `allowedCommandRules` 会立即执行，否则只创建申请，管理员必须另发 `/mc approve <审批 ID>` 才会执行。
+- “帮我执行 `/time query daytime`”可以调用 `mineastr_run_server_command`；若命中 Mod 的 `allowedCommandRules` 会立即执行，否则只创建申请。管理员可发送 `/mc approve` 查看列表，再发送 `/mc approve <序号>`，也可明确要求机器人调用 `mineastr_manage_command_approvals` 审批。
 
 截图示例：
 
@@ -292,7 +294,7 @@ AI 输出不代表天然正确或安全。提交到仓库的内容仍需由维�
 - QQ 绑定后群名片未改变：开启 `qq_auto_group_card`，并确保 OneBot 机器人是该群管理员或群主。
 - `need_bind_to_login` 开启后仍能登录：配套 Fabric Mod 的 `loginBindingCheckEnabled` 也必须开启，并确认 Mod 已连接 AstrBot；`loginCheckFailOpen=true` 时断线/超时会放行。
 - 机器人不会主动查询服务器数据：确认当前模型支持工具调用，并确认 MineAstr 的 LLM 工具没有被禁用。
-- 命令工具返回禁用：检查 Mod 侧 `enableCommandTool`。公开查询应加入 `allowedCommandRules`；`op` 等高权限命令不应加入公开规则，提交后由 Bot 管理员使用 `/mc approve <审批 ID>` 批准。若审批者仍提示不可信，请确认插件 `sync_command_admins_to_server` 与 Mod `syncTrustedCommandUsers` 均开启，或把该管理员写入静态 `trustedCommandUsers`。
+- 命令工具返回禁用：检查 Mod 侧 `enableCommandTool`。公开查询应加入 `allowedCommandRules`；`op` 等高权限命令不应加入公开规则。Bot 管理员先使用 `/mc approve` 查看列表，再按序号批准。若日志出现 `invalid_trusted_user`，请升级至 v0.6.13；插件会过滤 Mod 不接受的管理员身份格式，并在审批前同步当前真实管理员身份。仍提示不可信时，确认插件 `sync_command_admins_to_server` 与 Mod `syncTrustedCommandUsers` 均开启，或把该管理员写入静态 `trustedCommandUsers`。
 - `/mc discord_status` 显示退群监听未注册：确认 AstrBot Discord 适配器已经在线并重载 MineAstr；若适配器因 4014 断开，请在 Developer Portal 开启 `Server Members Intent`。
 - 绑定成功但昵称未改变：确认机器人拥有 `Manage Nicknames`，且机器人角色高于目标成员；机器人不能修改服务器所有者或同级/更高角色成员。
 - 截图工具返回未安装客户端 Mod：目标玩家需要在自己的 Fabric 1.21.11 客户端 `mods` 目录安装 MineAstr 和 Fabric API 0.141.4。

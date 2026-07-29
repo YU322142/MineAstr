@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.13
+
+- `/mc approve` 与 `/mc reject` 不带参数时先校验管理员身份并显示带序号的待审批列表；可按序号或完整审批 ID 操作。
+- 新增 `mineastr_manage_command_approvals` LLM 工具；每次列出、批准或拒绝都会重新校验当前真实用户的 AstrBot/MineAstr 管理员身份。
+- 审批仍只引用 Mod 保存的审批 ID，不会让 Bot 重新提交或改写高权限命令。
+- 管理员同步会过滤不符合 Mod 身份语法的条目，并在审批前同步当前管理员的用户 ID 与平台限定 ID，修复单个无效条目导致整批 `invalid_trusted_user` 的问题。
+
+## 0.6.12
+
+- 同一条源消息会合并 Minecraft 客户端与所有 QQ/Discord 接收频道需要的目标语言，只调用一次翻译模型，再按各接收端语言、模板和原文开关分发。
+- 翻译模型、提示词和术语表改为统一设置；旧的分平台与 Discord 频道提示词在升级时自动合并。
+- 保留每个 QQ/Discord 接收端独立的翻译开关、单语/多语目标列表及 Discord 不限数量频道配置。
+
 ## 0.6.11
 
 - WebSocket 鉴权改为 fail-closed：Token 留空或仍为 `change-me` 时拒绝全部连接，并使用 `hmac.compare_digest` 常数时间比较；接收单包增加 2 MiB 硬上限。

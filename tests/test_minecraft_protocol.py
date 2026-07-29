@@ -278,7 +278,13 @@ class AdapterEventTests(unittest.IsolatedAsyncioTestCase):
         task = asyncio.create_task(
             adapter.replace_trusted_command_users(
                 "survival",
-                ["default:42", "discord:99", "bad value", "default:42"],
+                [
+                    "default:42",
+                    "discord:99",
+                    "bad value",
+                    "bad/value",
+                    "default:42",
+                ],
             )
         )
         await asyncio.sleep(0)

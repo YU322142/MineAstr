@@ -198,7 +198,7 @@ class ConfigLayoutTests(unittest.TestCase):
         plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
         plugin.config = {
             "admin_command_settings": {
-                "bridge_admin_users": "default:42\n42\nbad value",
+                "bridge_admin_users": "default:42\n42\nbad value\nbad/value",
                 "sync_command_admins_to_server": True,
             }
         }
@@ -767,6 +767,16 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
 
 
 class CommandApprovalTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def _event(*, admin: bool = True):
+        return types.SimpleNamespace(
+            is_admin=lambda: admin,
+            message_obj=types.SimpleNamespace(raw_message={}),
+            get_sender_id=lambda: "42",
+            get_sender_name=lambda: "Admin",
+            get_platform_id=lambda: "default",
+        )
+
     async def test_admin_approval_syncs_admins_and_never_resubmits_command_text(self):
         plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
         plugin.config = {
@@ -795,19 +805,15 @@ class CommandApprovalTests(unittest.IsolatedAsyncioTestCase):
             )
         )
         plugin._minecraft_adapter = lambda: adapter
-        event = types.SimpleNamespace(
-            is_admin=lambda: True,
-            message_obj=types.SimpleNamespace(raw_message={}),
-            get_sender_id=lambda: "42",
-            get_sender_name=lambda: "Admin",
-            get_platform_id=lambda: "default",
-        )
+        event = self._event()
 
         result = await plugin._command_approval_action(
             event, "approve", approval_id
         )
 
-        plugin._sync_command_admins_now.assert_awaited_once_with("survival")
+        plugin._sync_command_admins_now.assert_awaited_once_with(
+            "survival", ["42", "default:42"]
+        )
         call = adapter.run_server_command.await_args
         self.assertEqual(call.args, ("survival",))
         self.assertEqual(call.kwargs["action"], "approve")
@@ -815,6 +821,86 @@ class CommandApprovalTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("command", call.kwargs)
         self.assertIn("Made Steve", result)
         self.assertNotIn(approval_id, plugin._pending_command_approvals)
+
+    async def test_approve_without_id_lists_then_number_approves(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "admin_command_settings": {
+                "remote_command_enabled": True,
+                "sync_command_admins_to_server": True,
+                "bridge_admin_users": "",
+            }
+        }
+        approval_id = "00000000-0000-0000-0000-000000000001"
+        plugin._pending_command_approvals = {}
+        plugin._sync_command_admins_now = AsyncMock(return_value={"ok": True})
+        adapter = types.SimpleNamespace(
+            run_server_command=AsyncMock(
+                side_effect=[
+                    {
+                        "ok": True,
+                        "data": {
+                            "status": "pending_list",
+                            "approvals": [
+                                {
+                                    "approval_id": approval_id,
+                                    "server_id": "survival",
+                                    "server_name": "Survival",
+                                    "command": "weather clear",
+                                    "requester": "1724167373@default",
+                                }
+                            ],
+                        },
+                    },
+                    {
+                        "ok": True,
+                        "server_id": "survival",
+                        "data": {
+                            "status": "executed",
+                            "command": "weather clear",
+                            "success": True,
+                            "output": ["Set the weather to clear"],
+                        },
+                    },
+                ]
+            )
+        )
+        plugin._minecraft_adapter = lambda: adapter
+
+        listing = await plugin._command_approval_action(
+            self._event(), "approve", ""
+        )
+        approved = await plugin._command_approval_action(
+            self._event(), "approve", "1"
+        )
+
+        self.assertIn("1. [Survival] /weather clear", listing)
+        self.assertIn("/mc approve <序号>", listing)
+        self.assertIn("已执行：/weather clear", approved)
+        first_call, second_call = adapter.run_server_command.await_args_list
+        self.assertEqual(first_call.kwargs["action"], "list")
+        self.assertEqual(first_call.kwargs["approval_id"], "")
+        self.assertEqual(second_call.args, ("survival",))
+        self.assertEqual(second_call.kwargs["action"], "approve")
+        self.assertEqual(second_call.kwargs["approval_id"], approval_id)
+
+    async def test_non_admin_cannot_list_or_use_approval_tool(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "admin_command_settings": {
+                "remote_command_enabled": True,
+                "bridge_admin_users": "",
+            }
+        }
+        adapter = types.SimpleNamespace(run_server_command=AsyncMock())
+        plugin._minecraft_adapter = lambda: adapter
+
+        result = await plugin.mineastr_manage_command_approvals(
+            self._event(admin=False), "list", ""
+        )
+
+        self.assertEqual(result, "你没有权限审批服务器命令。")
+        adapter.run_server_command.assert_not_awaited()
 
     async def test_screenshot_cooldown_is_atomic_for_concurrent_requests(self):
         plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)

@@ -1044,6 +1044,7 @@ class MinecraftPlatformAdapter(Platform):
                 not value
                 or len(value) > 128
                 or any(character.isspace() or ord(character) < 32 for character in value)
+                or not re.fullmatch(r"[a-z0-9_.:@-]+", value, re.IGNORECASE)
                 or folded in seen
             ):
                 continue

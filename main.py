@@ -48,8 +48,10 @@ MINEASTR_TOOL_HINT = (
     "玩家询问自己生命、位置、状态、背包物品或附近生物时，优先调用对应的 MineAstr 实时工具。"
     "需要理解房屋、基地或红石装置的方块构成和粗略空间形状时，可调用 mineastr_analyze_region；它不等同于截图。"
     "mineastr_run_server_command 只负责提交用户明确要求的精确指令：公开白名单内会立即执行，"
-    "其他指令只会生成待审批 ID，必须由真实管理员另行使用 /mc approve 明确批准；"
-    "绝不能自行编造请求者身份、替管理员批准或声称待审批指令已经执行。"
+    "其他指令只会生成待审批项；真实管理员可使用 /mc approve 或 "
+    "mineastr_manage_command_approvals 查看并明确批准；"
+    "只有当前对话用户确实是管理员且明确要求批准/拒绝具体列表项时才能调用审批操作，"
+    "绝不能自行编造请求者身份、替非管理员批准或声称待审批指令已经执行。"
 )
 MINEASTR_EXTERNAL_HINT_KEYWORDS = (
     "minecraft",
@@ -64,6 +66,7 @@ MAX_SCREENSHOT_SAVE_BYTES = 2 * 1024 * 1024
 _ACTIVE_RELAY_SESSIONS: set[str] = set()
 DEFAULT_PLAYER_NAME_REGEX = r"^\S{1,64}$"
 LEGACY_PLAYER_NAME_REGEX = r"^[A-Za-z0-9_]{3,16}$"
+SAFE_COMMAND_ADMIN_RE = re.compile(r"^[a-z0-9_.:@-]{1,128}$", re.IGNORECASE)
 
 NOTIFICATION_PRESETS: dict[str, dict[str, str]] = {
     "zh_CN": {
@@ -385,7 +388,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.6.12",
+    "0.6.13",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -422,6 +425,7 @@ class MineAstrPlugin(Star):
         self._binding_reconcile_tasks: set[asyncio.Task] = set()
         self._command_admin_sync_lock = asyncio.Lock()
         self._command_admin_revision = 0
+        self._reported_invalid_command_admin_count = 0
         self._pending_command_approvals: dict[str, str] = {}
         self._game_translation_cache: dict[
             tuple[str, str, tuple[str, ...], str], dict[str, Any]
@@ -1768,7 +1772,9 @@ class MineAstrPlugin(Star):
         self._binding_reconcile_tasks.add(task)
         task.add_done_callback(self._binding_reconcile_tasks.discard)
 
-    def _configured_command_admins(self) -> list[str]:
+    def _configured_command_admins(
+        self, additional_admins: Any = ()
+    ) -> list[str]:
         candidates = list(parse_items(self._cfg("bridge_admin_users")))
         get_config = getattr(self.context, "get_config", None)
         if callable(get_config):
@@ -1778,8 +1784,10 @@ class MineAstrPlugin(Star):
                     candidates.extend(parse_items(core_config.get("admins_id")))
             except (AttributeError, TypeError, ValueError):
                 pass
+        candidates.extend(parse_items(additional_admins))
         admins: list[str] = []
         seen: set[str] = set()
+        invalid_count = 0
         for candidate in candidates:
             value = str(candidate or "").strip()
             normalized = value.casefold()
@@ -1787,11 +1795,24 @@ class MineAstrPlugin(Star):
                 not value
                 or len(value) > 128
                 or any(character.isspace() or ord(character) < 32 for character in value)
+                or not SAFE_COMMAND_ADMIN_RE.fullmatch(value)
                 or normalized in seen
             ):
+                if value and normalized not in seen:
+                    invalid_count += 1
                 continue
             seen.add(normalized)
             admins.append(value)
+        previous_invalid_count = int(
+            getattr(self, "_reported_invalid_command_admin_count", 0)
+        )
+        if invalid_count and invalid_count != previous_invalid_count:
+            logger.warning(
+                "MineAstr 已跳过 %d 个格式无效的命令管理员标识；"
+                "仅允许字母、数字及 _ . : @ -。",
+                invalid_count,
+            )
+        self._reported_invalid_command_admin_count = invalid_count
         return admins[:256]
 
     def _schedule_command_admin_reconcile(self, server_id: str) -> None:
@@ -1860,7 +1881,9 @@ class MineAstrPlugin(Star):
         await self._sync_command_admins_now(server_id)
 
     async def _sync_command_admins_now(
-        self, server_id: str | None = None
+        self,
+        server_id: str | None = None,
+        additional_admins: Any = (),
     ) -> dict[str, Any]:
         """Refresh Bot administrators immediately before privileged approval."""
 
@@ -1876,7 +1899,7 @@ class MineAstrPlugin(Star):
             lock = asyncio.Lock()
             self._command_admin_sync_lock = lock
         async with lock:
-            admins = self._configured_command_admins()
+            admins = self._configured_command_admins(additional_admins)
             revision = int(getattr(self, "_command_admin_revision", 0)) + 1
             self._command_admin_revision = revision
             server_ids: list[str] = []
@@ -2288,7 +2311,8 @@ class MineAstrPlugin(Star):
                 "该指令不在公开白名单中，尚未执行。\n"
                 f"待审批指令：/{command}\n"
                 f"审批 ID：{data.get('approval_id')}\n"
-                f"管理员请使用 /mc approve {data.get('approval_id')}；"
+                "管理员发送 /mc approve 查看编号列表，再使用 "
+                "/mc approve <序号> 批准；"
                 f"有效期约 {data.get('expires_in_seconds', 0)} 秒。"
             )
         if status == "rejected":
@@ -2298,13 +2322,18 @@ class MineAstrPlugin(Star):
             if not isinstance(approvals, list) or not approvals:
                 return "当前没有待审批的服务器指令。"
             lines = ["待审批服务器指令："]
-            for item in approvals:
+            for index, item in enumerate(approvals, start=1):
                 if not isinstance(item, dict):
                     continue
-                lines.append(
-                    f"- {item.get('approval_id')}  /{item.get('command')} "
-                    f"（申请者 {item.get('requester')}）"
+                server_name = str(
+                    item.get("server_name") or item.get("server_id") or "Minecraft"
                 )
+                lines.append(
+                    f"{index}. [{server_name}] /{item.get('command')} "
+                    f"（申请者 {item.get('requester')}，"
+                    f"ID {item.get('approval_id')}）"
+                )
+            lines.append("使用 /mc approve <序号> 批准，或 /mc reject <序号> 拒绝。")
             return "\n".join(lines)
         if status == "executed" or "success" in data:
             output = data.get("output")
@@ -2322,18 +2351,47 @@ class MineAstrPlugin(Star):
             return "远程命令功能未启用。"
         if not self._is_bridge_admin(event):
             return "你没有权限审批服务器命令。"
+        action = str(action or "").strip().casefold()
         approval_id = str(approval_id or "").strip()
-        if action in {"approve", "reject"} and not re.fullmatch(
+        pending = getattr(self, "_pending_command_approvals", None)
+        if not isinstance(pending, dict):
+            pending = {}
+            self._pending_command_approvals = pending
+        if action in {"approve", "reject"} and not approval_id:
+            action = "list"
+        elif action in {"approve", "reject"} and approval_id.casefold() in {
+            "latest",
+            "最新",
+        }:
+            if not pending:
+                return "本地还没有审批列表，请先发送 /mc approve 获取列表。"
+            approval_id = next(reversed(pending))
+        elif action in {"approve", "reject"} and approval_id.isdecimal():
+            index = int(approval_id)
+            approval_ids = list(pending)
+            if index < 1 or index > len(approval_ids):
+                return "审批序号不存在，请先发送 /mc approve 刷新列表。"
+            approval_id = approval_ids[index - 1]
+        elif action in {"approve", "reject"} and not re.fullmatch(
             r"[0-9A-Fa-f-]{8,64}", approval_id
         ):
-            return f"用法：/mc {action} <审批 ID>"
+            return f"用法：/mc {action} [序号或审批 ID]"
         adapter = self._minecraft_adapter()
         if adapter is None:
             return "Minecraft 平台适配器未启用。"
-        pending = getattr(self, "_pending_command_approvals", {})
-        server_id = str(pending.get(approval_id) or "").strip() or None
-        await self._sync_command_admins_now(server_id)
         requester = self._requester_identity(event)
+        requester_id = requester["requester_id"]
+        requester_platform = requester["requester_platform"]
+        current_approver_identities = [requester_id]
+        if requester_id and requester_platform not in {"", "unknown"}:
+            current_approver_identities.append(
+                f"{requester_platform}:{requester_id}"
+            )
+        server_id = str(pending.get(approval_id) or "").strip() or None
+        await self._sync_command_admins_now(
+            server_id,
+            current_approver_identities,
+        )
         try:
             payload = await adapter.run_server_command(
                 server_id,
@@ -2350,15 +2408,18 @@ class MineAstrPlugin(Star):
             pending.pop(approval_id, None)
         if action == "list" and payload.get("ok"):
             data = self._query_data(payload)
+            refreshed_pending: dict[str, str] = {}
             for item in data.get("approvals", []):
                 if isinstance(item, dict):
                     item_id = str(item.get("approval_id") or "")
                     if item_id:
-                        pending[item_id] = str(
+                        refreshed_pending[item_id] = str(
                             item.get("server_id")
                             or payload.get("server_id")
                             or ""
                         )
+            pending.clear()
+            pending.update(refreshed_pending)
         return self._format_command_result(payload)
 
     def _format_status(self, payload: dict[str, Any]) -> str:
@@ -2784,18 +2845,18 @@ class MineAstrPlugin(Star):
 
     @mc.command("approve", alias={"批准指令", "审批指令"})
     async def mineastr_approve_command(
-        self, event: AstrMessageEvent, approval_id: str
+        self, event: AstrMessageEvent, approval_id: str = ""
     ):
-        """批准并执行一条服务器保存的待审批命令。"""
+        """列出待审批命令，或按序号/ID 批准并执行。"""
         yield event.plain_result(
             await self._command_approval_action(event, "approve", approval_id)
         )
 
     @mc.command("reject", alias={"拒绝指令"})
     async def mineastr_reject_command(
-        self, event: AstrMessageEvent, approval_id: str
+        self, event: AstrMessageEvent, approval_id: str = ""
     ):
-        """拒绝一条服务器保存的待审批命令。"""
+        """列出待审批命令，或按序号/ID 拒绝。"""
         yield event.plain_result(
             await self._command_approval_action(event, "reject", approval_id)
         )
@@ -3430,7 +3491,8 @@ class MineAstrPlugin(Star):
     ) -> str:
         """提交当前用户明确要求的精确服务器命令；仅在用户明确要求时调用。
 
-        Mod 会立即执行公开白名单命令；其他命令只生成待审批 ID，管理员必须另行使用 /mc approve 才会执行。
+        Mod 会立即执行公开白名单命令；其他命令只生成待审批申请。管理员可使用 /mc approve
+        查看编号列表，再按序号审批；也可在明确要求时调用审批工具。
 
         Args:
             command(str): 用户明确要求执行的完整命令，不要添加或改写额外命令。
@@ -3460,6 +3522,32 @@ class MineAstrPlugin(Star):
             logger.warning("MineAstr 执行受控服务器命令失败：%s", exc)
             payload = {"ok": False, "error": str(exc) or exc.__class__.__name__}
         return self._tool_json("Minecraft 受控服务器命令结果", payload)
+
+    @filter.llm_tool(name="mineastr_manage_command_approvals")
+    async def mineastr_manage_command_approvals(
+        self,
+        event: AstrMessageEvent,
+        action: str = "list",
+        selection: str = "",
+    ) -> str:
+        """由当前真实管理员列出、批准或拒绝待审批服务器命令。
+
+        只有当前对话用户明确要求审批时才可使用 approve/reject。插件会再次校验
+        当前用户的 AstrBot/MineAstr 管理员身份，并且只按 Mod 保存的原始命令执行。
+
+        Args:
+            action(str): list、approve 或 reject；未指定时仅列出，不执行命令。
+            selection(str): 列表序号、latest 或完整审批 ID；list 时留空。
+        """
+
+        normalized_action = str(action or "list").strip().casefold()
+        if normalized_action not in {"list", "approve", "reject"}:
+            return "审批 action 只支持 list、approve 或 reject。"
+        return await self._command_approval_action(
+            event,
+            normalized_action,
+            str(selection or "").strip(),
+        )
 
     @filter.llm_tool(name="mineastr_request_screenshot")
     async def mineastr_request_screenshot(
