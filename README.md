@@ -26,7 +26,7 @@ MineAstr 将 Minecraft 1.21.11 Fabric 服务器接入 AstrBot、QQ/OneBot 与 Di
 - `astrbot_plugin_mineastr-v0.6.12.zip`
 - `mineastr-fabric-0.6.11.jar`
 
-v0.6.12 将 QQ/Discord 平台翻译改为统一生成后分发：同一条消息先合并所有接收频道需要的目标语言，只调用一次模型，再按频道选择的语言与原文开关分别输出。翻译模型和术语表使用统一设置，旧的分平台/频道提示词会自动合并。该更新只需替换 AstrBot 插件，继续兼容 Fabric Mod 0.6.11。
+v0.6.12 将翻译改为统一生成后分发：同一条源消息先合并游戏客户端及所有 QQ/Discord 接收频道需要的目标语言，只调用一次模型，再分别套用游戏模板、平台标签、语言选择与原文开关。翻译模型和术语表使用统一设置，旧的分平台/频道提示词会自动合并。该更新只需替换 AstrBot 插件，继续兼容 Fabric Mod 0.6.11。
 
 ## 连接方式
 
@@ -48,7 +48,7 @@ Minecraft MineAstr Mod -> ws://astrbot.example.com:8765/ws -> AstrBot
 
 QQ/Discord 消息和 AstrBot 回复可选使用 AstrBot 文本模型检测原文语言并生成多个 locale 的译文，Minecraft 服务端会按每位玩家的客户端语言分别显示。目标语言与原文一致时直接显示原文，不会重复翻译。安装同版客户端 Mod 的玩家可在 F8 界面开关译文和原文；翻译默认关闭，失败或没有匹配语言时始终回退原文。
 
-服主使用唯一的统一翻译提示词/术语表为专有名词指定固定译法。Discord 可按任意数量的频道选择目标语言、事件开关和多语言样式；QQ/Discord 每个接收会话仍可独立决定语言和是否保留原文，但同一条消息只统一调用一次模型后分发。
+服主使用唯一的统一翻译提示词/术语表为专有名词指定固定译法。Discord 可按任意数量的频道选择目标语言、事件开关和多语言样式；游戏端及 QQ/Discord 每个接收会话仍可独立决定语言和是否保留原文，但同一条源消息合计只调用一次模型后分发。
 
 AstrBot 插件元数据的安装/更新源为本 Fork 的 [`astrbot-plugin`](https://github.com/YU322142/MineAstr/tree/astrbot-plugin) 分支，不会回到上游仓库或下载索引用的 `main` 分支。
 
@@ -63,7 +63,7 @@ AstrBot 插件元数据的安装/更新源为本 Fork 的 [`astrbot-plugin`](htt
 
 ## 构建验证
 
-- AstrBot 插件：68 个自动化测试通过，覆盖 fail-closed/常数时间鉴权、配置迁移、AstrBot Schema 类型兼容、QQ/Discord 自动化、统一翻译后按频道分发、源语言去重、自定义术语表、命令审批、管理员实时同步、并发冷却和游戏内翻译协议。
+- AstrBot 插件：70 个自动化测试通过，覆盖 fail-closed/常数时间鉴权、配置迁移、AstrBot Schema 类型兼容、QQ/Discord 自动化、游戏与平台共用单次翻译后分发、源语言去重、自定义术语表、命令审批、管理员实时同步、并发冷却和游戏内翻译协议。
 - Fabric Mod：Gradle `clean build` 通过。
 - 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证 Mixin 加载、离线后端收到正版客户端 UUID 时改用服务端真实离线 UUID、`whitelist_verified=true`，并实际通过原版白名单登录校验；既有解绑、管理员同步、可信命令和正常关服流程保持有效。
 
