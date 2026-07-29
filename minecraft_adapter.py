@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import inspect
 import json
 import re
@@ -30,6 +31,7 @@ except ImportError:
 PROTOCOL_VERSION = 1
 QUERY_TIMEOUT_SECONDS = 5.0
 SCREENSHOT_QUERY_TIMEOUT_SECONDS = 30.0
+MAX_WEBSOCKET_MESSAGE_BYTES = 2 * 1024 * 1024
 LOGO_PATH = str(Path(__file__).resolve().with_name("logo.png"))
 MINECRAFT_LEADING_MENTION_RE = re.compile(
     r"^\s*@(?P<target>[^\s@]+)(?P<body>(?:\s+.*)?)$"
@@ -74,7 +76,7 @@ CONFIG_METADATA = {
     "token": {
         "description": "连接认证 Token",
         "type": "string",
-        "hint": "Minecraft Mod 连接 AstrBot 时使用，两端必须完全一致；建议把 change-me 改成较长的随机字符串。",
+        "hint": "Minecraft Mod 连接 AstrBot 时使用，两端必须完全一致；留空或保持 change-me 时会拒绝所有连接，请改成较长的随机字符串。",
         "default": "change-me",
     },
     "group_id": {
@@ -525,7 +527,7 @@ class MinecraftPlatformAdapter(Platform):
         self.path = str(_config_value(self.config, "path"))
         if not self.path.startswith("/"):
             self.path = "/" + self.path
-        self.token = str(_config_value(self.config, "token"))
+        self.token = str(_config_value(self.config, "token")).strip()
         self.group_id = str(_config_value(self.config, "group_id"))
         self.group_name = str(_config_value(self.config, "group_name"))
         self.bot_id = str(_config_value(self.config, "bot_id"))
@@ -539,8 +541,9 @@ class MinecraftPlatformAdapter(Platform):
         self.outbound_max_message_length = max(
             1, int(_config_value(self.config, "outbound_max_message_length"))
         )
-        self.websocket_max_message_bytes = max(
-            8192, int(_config_value(self.config, "websocket_max_message_bytes"))
+        self.websocket_max_message_bytes = min(
+            MAX_WEBSOCKET_MESSAGE_BYTES,
+            max(8192, int(_config_value(self.config, "websocket_max_message_bytes"))),
         )
         self.screenshot_cooldown_seconds = max(
             0.0, float(_config_value(self.config, "screenshot_cooldown_seconds"))
@@ -669,6 +672,10 @@ class MinecraftPlatformAdapter(Platform):
         )
 
     async def run(self):
+        if not self._token_is_configured():
+            logger.error(
+                "MineAstr WebSocket Token 未配置或仍为 change-me；为防止未授权访问，所有连接都会被拒绝。"
+            )
         app = web.Application()
         app.router.add_get(self.path, self._handle_websocket)
         self._runner = web.AppRunner(app)
@@ -826,24 +833,75 @@ class MinecraftPlatformAdapter(Platform):
     async def run_server_command(
         self,
         server_id: str | None,
-        command: str,
-        requester_id: str,
-        requester_uuid: str,
-        requester_name: str,
-        requester_platform: str,
+        command: str = "",
+        requester_id: str = "",
+        requester_uuid: str = "",
+        requester_name: str = "",
+        requester_platform: str = "",
+        *,
+        action: str = "request",
+        approval_id: str = "",
     ) -> dict[str, Any]:
-        return await self.connection_manager.query(
-            "command",
-            server_id,
-            params={
-                "command": command.strip(),
-                "requester_id": requester_id.strip(),
-                "requester_uuid": requester_uuid.strip(),
-                "requester_name": requester_name.strip(),
-                "requester_platform": requester_platform.strip(),
-            },
-            timeout=10.0,
+        normalized_action = action.strip().casefold() or "request"
+        params = {
+            "action": normalized_action,
+            "command": command.strip(),
+            "approval_id": approval_id.strip(),
+            "requester_id": requester_id.strip(),
+            "requester_uuid": requester_uuid.strip(),
+            "requester_name": requester_name.strip(),
+            "requester_platform": requester_platform.strip(),
+        }
+        if server_id or normalized_action == "request":
+            return await self.connection_manager.query(
+                "command", server_id, params=params, timeout=10.0
+            )
+
+        results = await self.connection_manager.query_all(
+            "command", params=params, timeout=10.0
         )
+        if normalized_action == "list":
+            approvals: list[dict[str, Any]] = []
+            for result in results:
+                if not result.get("ok"):
+                    continue
+                data = result.get("data")
+                if not isinstance(data, dict) or not isinstance(
+                    data.get("approvals"), list
+                ):
+                    continue
+                for item in data["approvals"]:
+                    if isinstance(item, dict):
+                        normalized = dict(item)
+                        normalized.setdefault(
+                            "server_id", str(result.get("server_id") or "")
+                        )
+                        normalized.setdefault(
+                            "server_name", str(result.get("server_name") or "")
+                        )
+                        approvals.append(normalized)
+            return {
+                "type": "query_result",
+                "query": "command",
+                "ok": bool(results) and any(result.get("ok") for result in results),
+                "data": {"status": "pending_list", "approvals": approvals},
+                "servers": results,
+                "error": "" if results else "当前没有已连接的 Minecraft 服务器",
+            }
+        successful = next((result for result in results if result.get("ok")), None)
+        if successful is not None:
+            return successful
+        return {
+            "type": "query_result",
+            "query": "command",
+            "ok": False,
+            "servers": results,
+            "error": (
+                "当前没有已连接的 Minecraft 服务器"
+                if not results
+                else "没有服务器接受该命令审批操作"
+            ),
+        }
 
     async def request_screenshot(
         self,
@@ -956,7 +1014,7 @@ class MinecraftPlatformAdapter(Platform):
         return {"ok": True, "applied": applied, "server_id": server_id}
 
     async def replace_trusted_command_users(
-        self, server_id: str, users: list[str]
+        self, server_id: str, users: list[str], revision: int = 0
     ) -> dict[str, Any]:
         """Replace the Mod's in-memory AstrBot administrator trust set."""
 
@@ -977,7 +1035,11 @@ class MinecraftPlatformAdapter(Platform):
         return await self.connection_manager.query(
             "trusted_users",
             server_id,
-            params={"action": "replace", "users": normalized[:256]},
+            params={
+                "action": "replace",
+                "users": normalized[:256],
+                "revision": max(0, int(revision)),
+            },
         )
 
     async def local_status(self) -> dict[str, Any]:
@@ -1018,10 +1080,14 @@ class MinecraftPlatformAdapter(Platform):
         return ws
 
     def _authorized(self, request: web.Request) -> bool:
-        if not self.token:
-            return True
-        expected = f"Bearer {self.token}"
-        return request.headers.get("Authorization") == expected
+        if not self._token_is_configured():
+            return False
+        expected = f"Bearer {self.token}".encode()
+        actual = str(request.headers.get("Authorization") or "").encode()
+        return hmac.compare_digest(expected, actual)
+
+    def _token_is_configured(self) -> bool:
+        return bool(self.token) and self.token.casefold() != "change-me"
 
     async def _handle_text(self, ws: web.WebSocketResponse, data: str) -> None:
         try:

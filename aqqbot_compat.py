@@ -15,6 +15,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+try:
+    import regex as _timeout_regex
+except ImportError:  # Tests and minimal source checkouts may not install extras yet.
+    _timeout_regex = None
+
+_USER_REGEX_EXCEPTIONS: tuple[type[BaseException], ...] = (re.error, TimeoutError)
+if _timeout_regex is not None:
+    _USER_REGEX_EXCEPTIONS += (_timeout_regex.error,)
+
 DEFAULT_BINDING_DATABASE = "data/mineastr/bindings.sqlite3"
 LEGACY_LOGIN_ENDPOINT_RE = re.compile(
     r"^(?P<player>.+?) \(/(?:\[[^\]\s]+\]|(?:\d{1,3}\.){3}\d{1,3}):\d{1,5}\)$"
@@ -537,10 +546,42 @@ def normalize_owner_spec(
 
 
 MINECRAFT_COLOR_RE = re.compile(r"(?i)§x(?:§[0-9a-f]){6}|§[0-9a-fk-or]|&[0-9a-fk-or]")
+MAX_USER_REGEX_LENGTH = 512
+USER_REGEX_TIMEOUT_SECONDS = 0.05
+UNSAFE_NESTED_QUANTIFIER_RE = re.compile(
+    r"\((?:[^()\\]|\\.)*(?:[+*]|\{\d*,?\d*\})(?:[^()\\]|\\.)*\)"
+    r"(?:[+*]|\{\d*,?\d*\})"
+)
 
 
 def strip_minecraft_colors(text: str) -> str:
     return MINECRAFT_COLOR_RE.sub("", text)
+
+
+def _user_regex_allowed(pattern: str) -> bool:
+    return (
+        bool(pattern)
+        and len(pattern) <= MAX_USER_REGEX_LENGTH
+        and UNSAFE_NESTED_QUANTIFIER_RE.search(pattern) is None
+    )
+
+
+def safe_user_regex_fullmatch(pattern: str, text: str) -> bool:
+    """Match an administrator-supplied regex with a hard execution timeout."""
+
+    if not _user_regex_allowed(pattern):
+        return False
+    try:
+        if _timeout_regex is not None:
+            return (
+                _timeout_regex.fullmatch(
+                    pattern, text, timeout=USER_REGEX_TIMEOUT_SECONDS
+                )
+                is not None
+            )
+        return re.fullmatch(pattern, text) is not None
+    except _USER_REGEX_EXCEPTIONS:
+        return False
 
 
 def apply_aqqbot_filters(text: str, rules: Any) -> str | None:
@@ -563,12 +604,30 @@ def apply_aqqbot_filters(text: str, rules: Any) -> str | None:
                 return None
             result = result.replace(pattern, replacement)
             continue
+        if not _user_regex_allowed(pattern):
+            continue
         try:
-            matched = re.search(pattern, result) is not None
+            if _timeout_regex is not None:
+                matched = (
+                    _timeout_regex.search(
+                        pattern, result, timeout=USER_REGEX_TIMEOUT_SECONDS
+                    )
+                    is not None
+                )
+            else:
+                matched = re.search(pattern, result) is not None
             if matched and replacement == "!CANCEL":
                 return None
-            result = re.sub(pattern, replacement, result)
-        except re.error:
+            if _timeout_regex is not None:
+                result = _timeout_regex.sub(
+                    pattern,
+                    replacement,
+                    result,
+                    timeout=USER_REGEX_TIMEOUT_SECONDS,
+                )
+            else:
+                result = re.sub(pattern, replacement, result)
+        except _USER_REGEX_EXCEPTIONS:
             continue
     return result
 

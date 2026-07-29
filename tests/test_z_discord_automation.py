@@ -1,3 +1,4 @@
+import asyncio
 import importlib.util
 import sys
 import tempfile
@@ -489,7 +490,151 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
             ("zh_cn", "fr_fr"),
             100,
         )
-        self.assertEqual(parsed, {"zh_cn": "译文"})
+        self.assertEqual(
+            parsed,
+            {"source_language": "", "translations": {"zh_cn": "译文"}},
+        )
+
+    def test_translation_parser_omits_detected_source_language_target(self):
+        parsed = MAIN.MineAstrPlugin._parse_translation_response(
+            '{"source_language":"zh-CN","translations":'
+            '{"zh_cn":"不应重复","en_us":"Hello"}}',
+            ("zh_cn", "en_us"),
+            100,
+        )
+        self.assertEqual(
+            parsed,
+            {
+                "source_language": "zh_cn",
+                "translations": {"en_us": "Hello"},
+            },
+        )
+
+    async def test_same_source_language_uses_original_without_duplicate_line(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        discord_profile = MAIN.DISCORD_NOTIFICATION_DEFAULTS.copy()
+        discord_profile.update(
+            {
+                "chat_translation_enabled": True,
+                "chat_translation_languages": "zh_cn",
+                "chat_translation_show_original": True,
+            }
+        )
+        plugin.config = {
+            "bridge_settings": {
+                "translation_custom_instructions": "",
+                "max_relay_length": 500,
+                "discord_channel_settings": [],
+            },
+            "qq_settings": {
+                "qq_notification_settings": MAIN.QQ_NOTIFICATION_DEFAULTS.copy()
+            },
+            "discord_settings": {
+                "discord_notification_settings": discord_profile
+            },
+        }
+        plugin._translate_text = AsyncMock(
+            return_value={"source_language": "zh", "translations": {}}
+        )
+
+        rendered = await plugin._platform_chat_message(
+            "discord:GroupMessage:20002", "你好", "discord:GroupMessage:20002"
+        )
+
+        self.assertEqual(rendered, "你好")
+
+    def test_discord_channel_profile_overrides_global_without_count_limit(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        global_profile = MAIN.DISCORD_NOTIFICATION_DEFAULTS.copy()
+        global_profile["language"] = "zh_CN"
+        channel_profiles = [
+            {
+                "__template_key": "discord_channel",
+                "name": f"channel-{index}",
+                "enabled": True,
+                "channel_ids": str(20000 + index),
+                "language": "en_US",
+            }
+            for index in range(20)
+        ]
+        plugin.config = {
+            "bridge_settings": {"discord_channel_settings": channel_profiles},
+            "discord_settings": {
+                "discord_notification_settings": global_profile
+            },
+        }
+
+        matched = plugin._platform_notification_profile(
+            "discord", "discord:GroupMessage:20019"
+        )
+        fallback = plugin._platform_notification_profile(
+            "discord", "discord:GroupMessage:99999"
+        )
+
+        self.assertEqual(matched["language"], "en_US")
+        self.assertEqual(fallback["language"], "zh_CN")
+
+
+class CommandApprovalTests(unittest.IsolatedAsyncioTestCase):
+    async def test_admin_approval_syncs_admins_and_never_resubmits_command_text(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "admin_command_settings": {
+                "remote_command_enabled": True,
+                "sync_command_admins_to_server": True,
+                "bridge_admin_users": "",
+            }
+        }
+        approval_id = "00000000-0000-0000-0000-000000000001"
+        plugin._pending_command_approvals = {approval_id: "survival"}
+        plugin._sync_command_admins_now = AsyncMock(return_value={"ok": True})
+        adapter = types.SimpleNamespace(
+            run_server_command=AsyncMock(
+                return_value={
+                    "ok": True,
+                    "server_id": "survival",
+                    "data": {
+                        "status": "executed",
+                        "command": "op Steve",
+                        "success": True,
+                        "result": 1,
+                        "output": ["Made Steve a server operator"],
+                    },
+                }
+            )
+        )
+        plugin._minecraft_adapter = lambda: adapter
+        event = types.SimpleNamespace(
+            is_admin=lambda: True,
+            message_obj=types.SimpleNamespace(raw_message={}),
+            get_sender_id=lambda: "42",
+            get_sender_name=lambda: "Admin",
+            get_platform_id=lambda: "default",
+        )
+
+        result = await plugin._command_approval_action(
+            event, "approve", approval_id
+        )
+
+        plugin._sync_command_admins_now.assert_awaited_once_with("survival")
+        call = adapter.run_server_command.await_args
+        self.assertEqual(call.args, ("survival",))
+        self.assertEqual(call.kwargs["action"], "approve")
+        self.assertEqual(call.kwargs["approval_id"], approval_id)
+        self.assertNotIn("command", call.kwargs)
+        self.assertIn("Made Steve", result)
+        self.assertNotIn(approval_id, plugin._pending_command_approvals)
+
+    async def test_screenshot_cooldown_is_atomic_for_concurrent_requests(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin._screenshot_last_request_at = {}
+        plugin._screenshot_cooldown_lock = asyncio.Lock()
+        results = await asyncio.gather(
+            plugin._mark_screenshot_cooldown(("survival", "uuid", "alice"), 10),
+            plugin._mark_screenshot_cooldown(("survival", "uuid", "alice"), 10),
+        )
+        self.assertEqual(sum(value == 0 for value in results), 1)
+        self.assertEqual(sum(value > 0 for value in results), 1)
 
 
 class FakeGuild:

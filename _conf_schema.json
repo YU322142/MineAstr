@@ -1,6 +1,6 @@
 {
   "bridge_settings": {
-    "description": "① 群服互联与聊天转发",
+    "description": "① 群服互联、翻译与 Discord 频道策略",
     "type": "object",
     "hint": "配置 QQ 群、Discord 频道与 Minecraft 的双向聊天。建议直接在目标会话执行 /mc bridge_add，不必手填会话 ID。",
     "obvious_hint": true,
@@ -110,6 +110,69 @@
         "hint": "可逐行写专有名词、固定译名和风格要求，例如：Motiquies 固定译为 动静交映。作为服主可信规则加入提示词；MineAstr 仍会强制模型输出语言 JSON。最多使用前 4000 字。",
         "obvious_hint": true,
         "default": ""
+      },
+      "discord_channel_settings": {
+        "description": "Discord 频道独立语言、翻译与通知设置",
+        "type": "template_list",
+        "hint": "可添加任意数量的频道配置。命中频道 ID 时优先使用该项；未命中的频道继续使用上方 Discord 平台设置。频道 ID 可从 /mc bridge_list 或 AstrBot 日志中的会话 ID 末尾取得。",
+        "obvious_hint": true,
+        "default": [],
+        "templates": {
+          "discord_channel": {
+            "name": "Discord 频道配置",
+            "display_item": "name",
+            "hide_hint_in_list": true,
+            "items": {
+              "name": {"description": "配置名称", "type": "string", "default": "Discord 频道"},
+              "enabled": {"description": "启用此频道配置", "type": "bool", "default": true},
+              "channel_ids": {"description": "Discord 频道 ID（每行一个）", "type": "text", "hint": "可填写纯频道 ID、从消息会话类型开始的尾部，或完整 unified_msg_origin；一项可匹配多个频道。", "default": ""},
+              "language": {"description": "事件通知语言（每行一个）", "type": "text", "hint": "支持 zh_CN、en_US；可配置单语或多语，顺序即输出顺序。", "default": "zh_CN"},
+              "chat_translation_enabled": {"description": "频道聊天自动翻译", "type": "bool", "default": false},
+              "chat_translation_languages": {"description": "聊天翻译目标语言（每行一个）", "type": "text", "default": "en_us"},
+              "chat_translation_show_original": {"description": "翻译后显示原文", "type": "bool", "default": true},
+              "chat_translation_custom_instructions": {"description": "频道翻译附加提示词 / 术语表", "type": "text", "default": ""},
+              "notifications_enabled": {"description": "事件通知总开关", "type": "bool", "default": true},
+              "notify_server_start_enabled": {"description": "服务器连接通知", "type": "bool", "default": true},
+              "notify_server_stop_enabled": {"description": "服务器断开通知", "type": "bool", "default": true},
+              "notify_player_join_enabled": {"description": "玩家进入通知", "type": "bool", "default": true},
+              "notify_player_leave_enabled": {"description": "玩家离开通知", "type": "bool", "default": true},
+              "notify_player_death_enabled": {"description": "玩家死亡通知", "type": "bool", "default": true},
+              "notify_server_start": {"description": "通用服务器连接模板（非空时覆盖多语）", "type": "text", "default": ""},
+              "notify_server_stop": {"description": "通用服务器断开模板（非空时覆盖多语）", "type": "text", "default": ""},
+              "notify_player_join": {"description": "通用玩家进入模板（非空时覆盖多语）", "type": "text", "default": ""},
+              "notify_player_leave": {"description": "通用玩家离开模板（非空时覆盖多语）", "type": "text", "default": ""},
+              "notify_player_death": {"description": "通用玩家死亡模板（非空时覆盖多语）", "type": "text", "default": ""},
+              "localized_templates": {
+                "description": "频道分语言自定义样式",
+                "type": "object",
+                "items": {
+                  "zh_CN": {
+                    "description": "简体中文样式",
+                    "type": "object",
+                    "items": {
+                      "notify_server_start": {"description": "服务器连接", "type": "text", "default": ""},
+                      "notify_server_stop": {"description": "服务器断开", "type": "text", "default": ""},
+                      "notify_player_join": {"description": "玩家进入", "type": "text", "default": ""},
+                      "notify_player_leave": {"description": "玩家离开", "type": "text", "default": ""},
+                      "notify_player_death": {"description": "玩家死亡", "type": "text", "default": ""}
+                    }
+                  },
+                  "en_US": {
+                    "description": "English (US) styles",
+                    "type": "object",
+                    "items": {
+                      "notify_server_start": {"description": "Server connected", "type": "text", "default": ""},
+                      "notify_server_stop": {"description": "Server disconnected", "type": "text", "default": ""},
+                      "notify_player_join": {"description": "Player joined", "type": "text", "default": ""},
+                      "notify_player_leave": {"description": "Player left", "type": "text", "default": ""},
+                      "notify_player_death": {"description": "Player death", "type": "text", "default": ""}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -398,7 +461,7 @@
   "admin_command_settings": {
     "description": "⑤ 管理员与远程服务器指令",
     "type": "object",
-    "hint": "两层安全开关：这里允许 /mc command；Mod 的 mineastr-common.json 还必须设置 enableCommandTool=true、trustedCommandUsers 和 allowedCommandRules。不要使用 [\"*\"]。",
+    "hint": "这里开启 /mc command；Mod 还必须设置 enableCommandTool=true。allowedCommandRules 是所有人可立即执行的公开指令，其他指令只生成申请，并由 trustedCommandUsers / 实时同步的 Bot 管理员使用 /mc approve 二次审批。",
     "obvious_hint": true,
     "items": {
       "bridge_admin_users": {
@@ -411,21 +474,21 @@
       "sync_command_admins_to_server": {
         "description": "同步 Bot 管理员到服务端命令可信名单",
         "type": "bool",
-        "hint": "开启后，Mod 每次连接时会用 MineAstr 管理员和 AstrBot 全局 admins_id 更新一份内存可信名单。Mod 侧还需 syncTrustedCommandUsers=true；本地 trustedCommandUsers、allowedCommandRules 和命令总开关不会被修改。",
+        "hint": "开启后会在 Mod 连接及每次管理员审批前，用 MineAstr 管理员和 AstrBot 全局 admins_id 实时刷新内存管理员名单。Mod 侧还需 syncTrustedCommandUsers=true；静态 trustedCommandUsers 不会被覆盖。",
         "obvious_hint": true,
-        "default": false
+        "default": true
       },
       "remote_command_enabled": {
         "description": "启用 /mc command",
         "type": "bool",
-        "hint": "这里只开启聊天指令入口；Mod 侧 enableCommandTool=false 时仍会拒绝。",
+        "hint": "这里只开启聊天指令入口；Mod 侧 enableCommandTool=false 时仍会拒绝。公开白名单外的指令不会立即执行。",
         "obvious_hint": true,
         "default": false
       },
       "remote_command_admin_only": {
-        "description": "仅 MineAstr 管理员可执行",
+        "description": "旧版管理员执行限制（已由审批流替代）",
         "type": "bool",
-        "hint": "强烈建议保持开启。",
+        "hint": "为兼容旧配置保留；新流程中 allowedCommandRules 内的指令所有人可用，其他指令只生成申请并由管理员使用 /mc approve 审批。",
         "default": true
       }
     }
@@ -648,7 +711,7 @@
   "remote_command_enabled": {"type": "bool", "default": false, "invisible": true},
   "remote_command_admin_only": {"type": "bool", "default": true, "invisible": true},
   "bridge_admin_users": {"type": "text", "default": "", "invisible": true},
-  "sync_command_admins_to_server": {"type": "bool", "default": false, "invisible": true},
+  "sync_command_admins_to_server": {"type": "bool", "default": true, "invisible": true},
   "player_mention_enabled": {"type": "bool", "default": true, "invisible": true},
   "notifications_enabled": {"type": "bool", "default": true, "invisible": true},
   "notification_language": {"type": "string", "default": "zh_CN", "invisible": true},

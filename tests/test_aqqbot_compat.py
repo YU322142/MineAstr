@@ -10,6 +10,7 @@ from aqqbot_compat import (
     apply_aqqbot_filters,
     format_template,
     normalize_owner_spec,
+    safe_user_regex_fullmatch,
     sanitize_minecraft_login_name,
     strip_minecraft_colors,
 )
@@ -160,6 +161,20 @@ class BindingStoreTests(unittest.IsolatedAsyncioTestCase):
 
 
 class CompatibilityHelperTests(unittest.TestCase):
+    def test_user_regex_rejects_nested_quantifier_redos_patterns(self):
+        self.assertFalse(safe_user_regex_fullmatch(r"^(a+)+$", "a" * 64 + "X"))
+        self.assertTrue(safe_user_regex_fullmatch(r"^\S{1,64}$", "NekoYu_322142"))
+
+    def test_template_values_are_not_recursively_interpreted(self):
+        self.assertEqual(
+            format_template("[{platform}] {message}", {
+                "platform": "discord",
+                "message": "{owner_key} stays literal",
+                "owner_key": "secret",
+            }),
+            "[discord] {owner_key} stays literal",
+        )
+
     def test_sanitizes_legacy_login_endpoint_suffix(self):
         self.assertEqual(
             sanitize_minecraft_login_name(

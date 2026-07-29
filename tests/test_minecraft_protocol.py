@@ -6,6 +6,7 @@ import unittest
 from dataclasses import dataclass
 from enum import Enum
 from types import SimpleNamespace
+from unittest.mock import patch
 
 
 def _install_astrbot_stubs():
@@ -122,6 +123,50 @@ class FakeWebSocket:
 
     async def close(self):
         self.closed = True
+
+
+class AuthenticationTests(unittest.TestCase):
+    @staticmethod
+    def _request(authorization=None):
+        headers = {} if authorization is None else {"Authorization": authorization}
+        return SimpleNamespace(headers=headers)
+
+    def test_empty_and_default_tokens_fail_closed(self):
+        for token in ("", "   ", "change-me", "CHANGE-ME"):
+            with self.subTest(token=token):
+                adapter = MinecraftPlatformAdapter({"token": token}, {}, None)
+                self.assertFalse(adapter._authorized(self._request()))
+                self.assertFalse(
+                    adapter._authorized(self._request("Bearer change-me"))
+                )
+
+    def test_token_uses_exact_bearer_authentication(self):
+        adapter = MinecraftPlatformAdapter({"token": "秘密-token-123"}, {}, None)
+        self.assertTrue(
+            adapter._authorized(self._request("Bearer 秘密-token-123"))
+        )
+        self.assertFalse(adapter._authorized(self._request("秘密-token-123")))
+        self.assertFalse(
+            adapter._authorized(self._request("Bearer 秘密-token-124"))
+        )
+
+    def test_configured_token_is_compared_in_constant_time(self):
+        adapter = MinecraftPlatformAdapter({"token": "secure-token"}, {}, None)
+        with patch("minecraft_adapter.hmac.compare_digest", return_value=True) as compare:
+            self.assertTrue(
+                adapter._authorized(self._request("Bearer supplied-token"))
+            )
+        compare.assert_called_once_with(
+            b"Bearer secure-token", b"Bearer supplied-token"
+        )
+
+    def test_websocket_message_limit_has_a_hard_security_cap(self):
+        adapter = MinecraftPlatformAdapter(
+            {"token": "secure", "websocket_max_message_bytes": 100_000_000},
+            {},
+            None,
+        )
+        self.assertEqual(adapter.websocket_max_message_bytes, 2 * 1024 * 1024)
 
 
 class ConnectionManagerTests(unittest.IsolatedAsyncioTestCase):
@@ -241,6 +286,7 @@ class AdapterEventTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request["query"], "trusted_users")
         self.assertEqual(request["action"], "replace")
         self.assertEqual(request["users"], ["default:42", "discord:99"])
+        self.assertEqual(request["revision"], 0)
         await adapter.connection_manager.resolve_query(
             websocket,
             {
@@ -254,6 +300,75 @@ class AdapterEventTests(unittest.IsolatedAsyncioTestCase):
         result = await task
         self.assertTrue(result["ok"])
         self.assertEqual(result["data"]["synced_count"], 2)
+
+    async def test_command_protocol_separates_request_and_admin_approval(self):
+        adapter = MinecraftPlatformAdapter({"token": "secure"}, {}, None)
+        websocket = FakeWebSocket()
+        await adapter.connection_manager.register(
+            websocket,
+            {"server_id": "survival", "server_name": "Survival"},
+        )
+        task = asyncio.create_task(
+            adapter.run_server_command(
+                "survival",
+                "op Steve",
+                "42",
+                "",
+                "Alice",
+                "default",
+            )
+        )
+        await asyncio.sleep(0)
+        request = websocket.sent[-1]
+        self.assertEqual(request["action"], "request")
+        self.assertEqual(request["command"], "op Steve")
+        await adapter.connection_manager.resolve_query(
+            websocket,
+            {
+                "type": "query_result",
+                "query": "command",
+                "message_id": request["message_id"],
+                "server_id": "survival",
+                "ok": True,
+                "data": {
+                    "status": "approval_required",
+                    "approval_id": "00000000-0000-0000-0000-000000000001",
+                    "command": "op Steve",
+                },
+            },
+        )
+        result = await task
+        self.assertEqual(result["data"]["status"], "approval_required")
+
+        approve_task = asyncio.create_task(
+            adapter.run_server_command(
+                "survival",
+                requester_id="99",
+                requester_name="Admin",
+                requester_platform="discord",
+                action="approve",
+                approval_id="00000000-0000-0000-0000-000000000001",
+            )
+        )
+        await asyncio.sleep(0)
+        approve_request = websocket.sent[-1]
+        self.assertEqual(approve_request["action"], "approve")
+        self.assertEqual(approve_request["command"], "")
+        self.assertEqual(
+            approve_request["approval_id"],
+            "00000000-0000-0000-0000-000000000001",
+        )
+        await adapter.connection_manager.resolve_query(
+            websocket,
+            {
+                "type": "query_result",
+                "query": "command",
+                "message_id": approve_request["message_id"],
+                "ok": True,
+                "data": {"status": "executed", "command": "op Steve"},
+            },
+        )
+        self.assertEqual((await approve_task)["data"]["status"], "executed")
 
     async def test_login_check_listener_controls_event_result(self):
         adapter = MinecraftPlatformAdapter({}, {}, None)

@@ -41,7 +41,7 @@ AstrBot 对该会话的文本回复会回传给所有已连接的 Minecraft 服�
 
 ## 安装包兼容性
 
-在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.10.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
+在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.11.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
 
 插件元数据中的安装/更新源固定为 Fork 分支 `https://github.com/YU322142/MineAstr/tree/astrbot-plugin`，不会再让 AstrBot 回到原项目或下载仅用于项目导航的 `main` 分支。
 
@@ -83,7 +83,10 @@ Discord 不需要本插件自行登录 Discord；它复用 AstrBot 官方 Discor
 | `/mc bindings` | 查看自己的绑定 | 所有人 |
 | `/mc who <玩家名>` | 查询玩家绑定的平台与显示名 | 所有人 |
 | `/mc discord_status` | 检查 Discord 自动解绑、昵称、Intent 与监听状态 | MineAstr 管理员 |
-| `/mc command <命令>` | 执行 Minecraft 端白名单允许的命令 | 默认关闭；通常仅管理员 |
+| `/mc command <命令>` | 公开白名单命令立即执行；其他命令创建待审批申请 | 默认关闭；所有人可提交 |
+| `/mc approve <审批 ID>` | 批准并执行 Mod 保存的白名单外原始命令 | MineAstr / AstrBot 管理员 |
+| `/mc reject <审批 ID>` | 拒绝待审批命令 | MineAstr / AstrBot 管理员 |
+| `/mc approvals` | 查看各已连接服务器的待审批命令 | MineAstr / AstrBot 管理员 |
 | `/mc say <消息>` | 主动广播到 Minecraft | MineAstr 管理员 |
 | `/mc bridge_add` / `bridge_remove` | 添加/移除当前 QQ 群或 Discord 频道 | MineAstr 管理员 |
 | `/mc bridge_list` | 查看桥接会话 | MineAstr 管理员 |
@@ -191,22 +194,23 @@ pip install -r requirements.txt
 | `discord_restore_nickname_on_unbind` | `true` | 最后一个绑定解除后恢复首次改名前保存的原昵称。 |
 | `discord_guild_ids` | 空 | 每行一个允许自动操作的 Guild ID；空表示当前 Discord 实例加入的全部服务器。 |
 | `discord_nickname_template` | `{players}` | 按绑定先后并列显示完整游戏名，超出 32 字符时只保留最早能放下的几项。 |
-| `remote_command_enabled` | `false` | 高风险开关；Minecraft 端仍须进行可信用户和命令白名单检查。 |
+| `remote_command_enabled` | `false` | 开启命令申请入口；Mod 公开白名单内立即执行，其他命令必须二次审批。 |
 | `bridge_admin_users` | 空 | 每行一个 `platform_id:user_id`；也接受单独 user ID。 |
-| `sync_command_admins_to_server` | `false` | 把 MineAstr 管理员与 AstrBot 全局 `admins_id` 同步到 Mod 内存可信名单；Mod 侧也需开启对应开关。 |
+| `sync_command_admins_to_server` | `true` | 在连接及每次审批前把 MineAstr 管理员与 AstrBot 全局 `admins_id` 实时同步到 Mod 内存管理员名单；Mod 侧也需开启对应开关。 |
 | `notifications_enabled` | `true` | 启用服务器与玩家事件通知。 |
 | `notification_language` | `zh_CN` | 预设通知语言，可选 `zh_CN` / `en_US`；自定义模板保持原文。 |
 | `notify_*_enabled` | `true` | 服务器连接/断开、玩家进入/离开/死亡各自的独立通知开关。 |
 | `qq_notification_settings` | QQ 独立设置 | QQ/OneBot 的平台 ID、聊天单/多语自动翻译、分平台术语表、逐行通知语言、事件开关和每种语言的通知样式。 |
 | `discord_notification_settings` | Discord 独立设置 | Discord 的平台 ID、聊天单/多语自动翻译、分平台术语表、逐行通知语言、事件开关和每种语言的通知样式。 |
+| `discord_channel_settings` | 空列表 | 可添加任意数量的 Discord 频道配置；命中频道时覆盖该频道的翻译、语言、事件开关和样式，未命中时回退上方 Discord 全局设置。 |
 
 配置页按群服互联、绑定、QQ、Discord、管理员/远程指令和通知分成六个可折叠区域；账号、群号、会话和过滤规则均使用多行输入框。升级时旧版平铺配置会自动迁移一次，不会重置现有设置。v0.6.9 起，QQ 与 Discord 的“通知语言”都是逐行列表：只写一行就是单语，写 `zh_CN` 和 `en_US` 两行就会按该顺序同时发送；“分语言自定义样式”可为每种语言单独填写多行模板，留空则使用内置预设。旧版通用模板非空时为兼容旧配置，只发送该模板一次。事件模板支持 `{server}`、`{server_id}`、`{player}`、`{binding}` 等占位符，死亡事件另支持 `{reason}`、`{death_type}`、`{attacker}`、`{direct_entity}` 和 `{weapon}`。平台适配器的 `host`、`port`、`path`、`token` 仍应在 AstrBot 的 `minecraft` 平台配置页修改。
 
 未绑定登录提示由“未绑定登录拒绝消息开关”控制。登录校验发生在 Minecraft 玩家尚未绑定任何聊天平台时，因此这条提示无法判断应使用 QQ 还是 Discord 的平台配置：插件会附带客户端翻译键，安装同版 MineAstr 客户端 Mod 时由客户端按自身语言显示；未安装客户端 Mod 时回退到 AstrBot 的全局语言和模板。
 
-“启用游戏内消息自动翻译”处理的是聊天正文：QQ、Discord 和 AstrBot 回复进入游戏前会一次生成配置中各目标语言的译文，Mod 再按每位在线玩家的客户端 locale 分别选择，不会把同一种语言强制广播给所有人。玩家安装 v0.6.7 客户端 Mod 后可在 F8 设置中关闭译文或关闭原文；没有匹配译文、模型失败或超时时始终显示原文。翻译提示把聊天正文当作不可信数据，不执行其中的指令，但仍建议为此功能使用独立、低成本的 Provider。
+“启用游戏内消息自动翻译”处理的是聊天正文：QQ、Discord 和 AstrBot 回复进入游戏前会检测原文语言，并只生成与原文不同的目标语言译文；Mod 再按每位在线玩家的客户端 locale 分别选择。目标语言与原文一致时直接显示原文，不会重复显示同文译文。玩家安装 v0.6.7 客户端 Mod 后可在 F8 设置中关闭译文或关闭原文；没有匹配译文、模型失败或超时时始终显示原文。翻译提示把聊天正文当作不可信数据，不执行其中的指令，但仍建议为此功能使用独立、低成本的 Provider。
 
-“全局翻译附加提示词/术语表”会作为服主可信规则加入系统提示词，例如每行写 `Motiquies 固定译为 动静交映`。QQ 与 Discord 平台设置中还可分别开启聊天自动翻译、填写一个或多个目标 locale、决定是否附带原文，并追加只对该平台生效的术语。Minecraft 消息发往 QQ/Discord、以及 QQ 与 Discord 之间转发的玩家消息都会按目标平台配置处理；翻译失败仍发送原文。MineAstr 保留不可覆盖的 JSON 输出约束，因此术语表不需要也不应要求模型改变响应格式。
+“全局翻译附加提示词/术语表”会作为服主可信规则加入系统提示词，例如每行写 `Motiquies 固定译为 动静交映`。QQ 与 Discord 平台设置中还可分别开启聊天自动翻译、填写一个或多个目标 locale、决定是否附带原文，并追加只对该平台生效的术语。Discord 还可添加不限数量的频道独立配置，按频道 ID 覆盖上述字段。Minecraft 消息发往 QQ/Discord、以及 QQ 与 Discord 之间转发的玩家消息都会按目标会话配置处理；翻译失败仍发送原文。MineAstr 保留不可覆盖的源语言与译文 JSON 输出约束，因此术语表不需要也不应要求模型改变响应格式。
 
 ## 机器人可调用工具
 
@@ -220,7 +224,7 @@ pip install -r requirements.txt
 | `mineastr_get_player_inventory` | 查询快捷栏、背包、护甲、副手和可选末影箱的安全摘要。 |
 | `mineastr_get_nearby_entities` | 查询玩家附近实体的种类、数量、距离和生命摘要。 |
 | `mineastr_analyze_region` | 分析已加载区域的方块材料、建筑部件、表面高度和粗略三维形状。 |
-| `mineastr_run_server_command` | 代表真实请求者执行受控服务器命令；Mod 侧默认关闭并执行可信名单、命令白名单和审计检查。 |
+| `mineastr_run_server_command` | 提交真实请求者明确要求的精确命令；公开白名单内执行，其他命令仅返回待审批 ID。 |
 | `mineastr_request_screenshot` | 请求指定玩家客户端发送低清晰度截图，并把截图保存到 AstrBot 工作目录。 |
 
 使用示例：
@@ -236,7 +240,7 @@ pip install -r requirements.txt
 - “我背包里还有多少火把？”会调用 `mineastr_get_player_inventory`。
 - “附近有什么怪？”会调用 `mineastr_get_nearby_entities`。
 - “分析一下这栋房子的材料和结构”会调用 `mineastr_analyze_region`；区域工具只扫描已加载区块，不读取箱子内容、告示牌文字或方块实体 NBT。
-- “帮我执行 `/time query daytime`”可以调用 `mineastr_run_server_command`，但只有 Mod 配置明确启用、真实请求者在可信名单中且命令命中白名单时才会成功。
+- “帮我执行 `/time query daytime`”可以调用 `mineastr_run_server_command`；若命中 Mod 的 `allowedCommandRules` 会立即执行，否则只创建申请，管理员必须另发 `/mc approve <审批 ID>` 才会执行。
 
 截图示例：
 
@@ -257,9 +261,9 @@ pip install -r requirements.txt
 - 配套成品要求 Minecraft 1.21.11、Fabric API `0.141.4+1.21.11` 和 Java 21；更新插件时也应替换配套 Mod JAR。
 - 接入多个 Minecraft 服务器时，工具可以传入 `server_id` 查询指定服务器；只有一个服务器时无需填写。
 - 截图功能需要目标玩家安装客户端 Mod；只安装服务端 Mod 时基础聊天和查询可用，但截图不可用。
-- 命令工具的最终权限完全由 Minecraft Mod 的 `mineastr-common.json` 决定。默认 `enableCommandTool = false`；不要为了省事把 `allowedCommandRules` 设为 `["*"]`。
+- 命令工具的最终权限完全由 Minecraft Mod 的 `mineastr-common.json` 决定。默认 `enableCommandTool = false`。`allowedCommandRules` 是任何人可用的公开命令列表，不要把管理命令或单独的 `"*"` 放进去；白名单外命令由 `/mc approve` 审批。
 - AQQBot 兼容层的账号数据库在 AstrBot 侧；如果同时运行原 AQQBot，两套绑定数据不会自动合并，也不应同时负责登录白名单。
-- Fabric 0.6.10 Mod 支持 `performance`、玩家通知、验证码、登录拦截、纯登录玩家名读取、按服务端认证模式解析 UUID、在原版登录校验前按真实身份二次对账的白名单同步、重连对账、管理员可信名单同步、游戏内玩家提醒及 `平台ID:用户ID` 命令可信身份；更老的 Mod 不支持完整扩展。
+- Fabric 0.6.11 Mod 支持 `performance`、玩家通知、验证码、登录拦截、按真实身份对账的白名单同步、管理员实时同步，以及公开命令白名单与白名单外指令二次审批；更老的 Mod 不支持完整审批扩展。
 - 本插件不会获取 `$url` 远程过滤词库，避免让聊天消息触发服务端任意 URL 请求；请把词库转换为本地 `$filter` / `$regex` 规则。
 - Discord 自动化直接挂接 AstrBot 官方 Pycord 客户端。管理员权限仍受 Discord 角色层级限制；多服务器部署应填写 `discord_guild_ids`，否则离开任一可见服务器都会触发该 Discord 平台账号的全局解绑。
 
@@ -273,7 +277,7 @@ AI 输出不代表天然正确或安全。提交到仓库的内容仍需由维�
 
 ## 故障排查
 
-- Mod 日志提示 `401` 或连接后立即断开：检查两端 `token` 是否完全一致。
+- Mod 日志提示 `401` 或连接后立即断开：检查两端 `token` 是否完全一致；AstrBot 侧留空或保持 `change-me` 会安全拒绝全部连接。
 - Mod 一直显示 `未连接`：确认 AstrBot 插件已加载，`minecraft` 平台适配器已启用，端口没有被防火墙或其他程序占用。
 - AstrBot 收到消息但没有回复：这是 AstrBot 群聊规则、唤醒词或权限设置决定的，需要检查 AstrBot 的回复策略。Minecraft 里如果你是用 `@Aria` 之类的方式叫它，请确认 `mention_aliases` 包含 `Aria`。
 - Discord 普通消息没有进入 Minecraft：先在该频道执行 `/mc bridge_add`，再用 `/mc bridge_list` 检查保存的会话；同时确认发送者具有 MineAstr 管理权限、`bridge_enabled=true` 且 Minecraft WebSocket 已连接。
@@ -288,7 +292,7 @@ AI 输出不代表天然正确或安全。提交到仓库的内容仍需由维�
 - QQ 绑定后群名片未改变：开启 `qq_auto_group_card`，并确保 OneBot 机器人是该群管理员或群主。
 - `need_bind_to_login` 开启后仍能登录：配套 Fabric Mod 的 `loginBindingCheckEnabled` 也必须开启，并确认 Mod 已连接 AstrBot；`loginCheckFailOpen=true` 时断线/超时会放行。
 - 机器人不会主动查询服务器数据：确认当前模型支持工具调用，并确认 MineAstr 的 LLM 工具没有被禁用。
-- 命令工具返回禁用、不可信或白名单外：检查 Mod 侧 `enableCommandTool`、`trustedCommandUsers` 和 `allowedCommandRules`。也可同时开启插件 `sync_command_admins_to_server` 与 Mod `syncTrustedCommandUsers`，让 MineAstr/AstrBot 管理员在重连时进入临时可信集合；执行 `op 玩家名` 仍需显式允许 `op *`。
+- 命令工具返回禁用：检查 Mod 侧 `enableCommandTool`。公开查询应加入 `allowedCommandRules`；`op` 等高权限命令不应加入公开规则，提交后由 Bot 管理员使用 `/mc approve <审批 ID>` 批准。若审批者仍提示不可信，请确认插件 `sync_command_admins_to_server` 与 Mod `syncTrustedCommandUsers` 均开启，或把该管理员写入静态 `trustedCommandUsers`。
 - `/mc discord_status` 显示退群监听未注册：确认 AstrBot Discord 适配器已经在线并重载 MineAstr；若适配器因 4014 断开，请在 Developer Portal 开启 `Server Members Intent`。
 - 绑定成功但昵称未改变：确认机器人拥有 `Manage Nicknames`，且机器人角色高于目标成员；机器人不能修改服务器所有者或同级/更高角色成员。
 - 截图工具返回未安装客户端 Mod：目标玩家需要在自己的 Fabric 1.21.11 客户端 `mods` 目录安装 MineAstr 和 Fabric API 0.141.4。

@@ -44,13 +44,13 @@ class ConfigSchemaTests(unittest.TestCase):
         metadata_path = Path(__file__).resolve().parents[1] / "metadata.yaml"
         metadata = metadata_path.read_text(encoding="utf-8")
         self.assertIn("author: YU322142", metadata)
-        self.assertIn("version: v0.6.10", metadata)
+        self.assertIn("version: v0.6.11", metadata)
         self.assertIn(
             'repo: "https://github.com/YU322142/MineAstr/tree/astrbot-plugin"',
             metadata,
         )
         main = (metadata_path.parent / "main.py").read_text(encoding="utf-8")
-        self.assertIn('    "0.6.10",\n)', main)
+        self.assertIn('    "0.6.11",\n)', main)
 
     def test_newline_delimited_fields_use_astrbot_textarea_type(self):
         schema = self._schema()
@@ -128,6 +128,16 @@ class ConfigSchemaTests(unittest.TestCase):
                 if field["type"] == "object":
                     self.assertIn("items", field, f"{field_path} is missing items")
                     check_fields(field["items"], field_path)
+                if field["type"] == "template_list":
+                    self.assertIn(
+                        "templates", field, f"{field_path} is missing templates"
+                    )
+                    for template_key, template in field["templates"].items():
+                        self.assertIn("items", template)
+                        check_fields(
+                            template["items"],
+                            f"{field_path}.templates.{template_key}",
+                        )
 
         check_fields(self._schema())
 
@@ -211,11 +221,21 @@ class ConfigSchemaTests(unittest.TestCase):
                 items["chat_translation_custom_instructions"]["type"], "text"
             )
 
-    def test_command_admin_sync_is_explicit_and_disabled_by_default(self):
+    def test_command_admin_sync_is_explicit_and_enabled_for_approval_flow(self):
         schema = self._schema()
         field = self._visible_field(schema, "sync_command_admins_to_server")
         self.assertEqual(field["type"], "bool")
-        self.assertFalse(field["default"])
+        self.assertTrue(field["default"])
+
+    def test_discord_channel_profiles_are_an_unbounded_template_list(self):
+        schema = self._schema()
+        field = self._visible_field(schema, "discord_channel_settings")
+        self.assertEqual(field["type"], "template_list")
+        self.assertEqual(field["default"], [])
+        items = field["templates"]["discord_channel"]["items"]
+        self.assertEqual(items["channel_ids"]["type"], "text")
+        self.assertEqual(items["chat_translation_languages"]["type"], "text")
+        self.assertIn("localized_templates", items)
 
 
 if __name__ == "__main__":

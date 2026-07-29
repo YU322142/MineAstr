@@ -1,6 +1,6 @@
 # MineAstr WebSocket 协议
 
-本文描述 AstrBot 插件 `v0.6.10` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
+本文描述 AstrBot 插件 `v0.6.11` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
 
 ## 连接与认证
 
@@ -19,7 +19,7 @@ Authorization: Bearer <token>
   "protocol": 1,
   "server_id": "survival",
   "server_name": "Survival Server",
-  "mod_version": "0.6.10"
+  "mod_version": "0.6.11"
 }
 ```
 
@@ -59,7 +59,7 @@ Authorization: Bearer <token>
 }
 ```
 
-`translations` 与 `show_original` 均为 v0.6.7 可选扩展。Mod 应按每位在线玩家的 `clientInformation().language()` 选择精确 locale，找不到时可回退到同语言族；仍找不到、译文无效或玩家关闭翻译时显示 `content`。安装同版客户端 Mod 的玩家可通过单独的 C2S 偏好包覆盖 `show_original` 并关闭译文；不要修改旧版客户端能力包的 codec，以免协议不匹配导致断线。
+`translations` 与 `show_original` 均为 v0.6.7 可选扩展。v0.6.11 AstrBot 翻译器先检测原文语言，不会为与源语言相同的目标 locale 写入重复译文；对应玩家自然回退显示 `content`。Mod 应按每位在线玩家的 `clientInformation().language()` 选择精确 locale，找不到时可回退到同语言族；仍找不到、译文无效或玩家关闭翻译时显示 `content`。安装同版客户端 Mod 的玩家可通过单独的 C2S 偏好包覆盖 `show_original` 并关闭译文；不要修改旧版客户端能力包的 codec，以免协议不匹配导致断线。
 
 AstrBot 插件只发送纯文本，不把译文解析为命令或 JSON 组件。目标语言数量、文本长度和模型等待时间都必须受限；翻译模型失败时不得丢弃原文。
 
@@ -145,6 +145,41 @@ Mod 应只允许通知在线的准确玩家名，并在服务端配置中决定�
 
 `action` 支持 `bind` / `unbind` / `reset`。`reset` 不带玩家身份，用于 Mod 每次重连后先清空绑定缓存，再由 AstrBot 逐条发送当前 SQLite 中的全部绑定；启用白名单同步时也会移除旧缓存对应的白名单条目。AstrBot SQLite 数据库仍是聊天平台绑定的事实来源。Mod 应按服务器认证模式解析 `NameAndId`，直接更新和保存原版白名单，并仅在读回状态与目标一致时返回 `ok=true`。成功响应的 `data` 会包含 `player_uuid`、`identity_source`、`whitelist_changed` 与 `whitelist_verified`。`identity_source` 可为 `offline_mode`、`authenticated_profile`、`observed_login` 或 `synced_binding`；0.6.10 Mod 还会在原版白名单检查前使用本次连接的真实 `NameAndId` 修正代理/Floodgate 身份。
 
+## v0.6.11 命令申请与审批扩展
+
+首次提交使用 `action=request`，并携带真实请求者身份：
+
+```json
+{
+  "type": "query",
+  "message_id": "uuid",
+  "query": "command",
+  "action": "request",
+  "command": "op Steve",
+  "requester_id": "123456789",
+  "requester_name": "Alice",
+  "requester_platform": "default"
+}
+```
+
+命中 `allowedCommandRules` 时 Mod 立即执行并返回 `data.status=executed`；该列表是所有请求者可用的公开命令白名单。未命中时不得执行，而是把规范化后的精确命令、原请求者、创建时间和过期时间保存在 Mod 内存中，返回 `data.status=approval_required`、随机 `approval_id` 与有效期。
+
+管理员使用单独请求批准或拒绝：
+
+```json
+{
+  "type": "query",
+  "message_id": "uuid",
+  "query": "command",
+  "action": "approve",
+  "approval_id": "approval-uuid",
+  "requester_id": "987654321",
+  "requester_platform": "discord"
+}
+```
+
+`approve` / `reject` / `list` 的当前请求者必须命中 Mod 静态 `trustedCommandUsers` 或 AstrBot 同步管理员。批准请求不接受新的 `command`：Mod 必须原子取出并执行申请阶段保存的命令，确保 AI 或审批消息无法篡改。`list` 返回 `status=pending_list` 和 `approvals` 数组。待审批项有数量和时效上限，在处理、过期或 WebSocket 断线后删除。
+
 ## v0.6.9 管理员可信名单扩展
 
 ### `trusted_users`
@@ -157,11 +192,12 @@ AstrBot 插件可在 Mod 建立连接后发送当前 Bot 管理员列表：
   "message_id": "uuid",
   "query": "trusted_users",
   "action": "replace",
+  "revision": 42,
   "users": ["123456789", "default:123456789", "discord:987654321"]
 }
 ```
 
-该查询仅在 AstrBot 插件 `sync_command_admins_to_server=true` 且 Mod `syncTrustedCommandUsers=true` 时使用。`replace` 只替换本次 WebSocket 连接同步的内存集合；不得覆盖或保存 Mod 的静态 `trustedCommandUsers`。连接关闭或认证失败后必须清空同步集合。命令执行仍须同时满足 `enableCommandTool=true` 和 `allowedCommandRules`，因此同步管理员不会隐式允许 `op` 或任意命令。
+该查询仅在 AstrBot 插件 `sync_command_admins_to_server=true` 且 Mod `syncTrustedCommandUsers=true` 时使用。`replace` 只替换本次 WebSocket 连接同步的内存集合；不得覆盖或保存 Mod 的静态 `trustedCommandUsers`。`revision` 单调递增，Mod 必须拒绝小于已应用 revision 的旧同步。连接关闭或认证失败后必须清空同步集合。同步管理员只获得白名单外命令的审批资格；公开白名单仍由 `allowedCommandRules` 独立决定。
 
 ## Mod → AstrBot 事件扩展
 
@@ -274,7 +310,7 @@ AstrBot 返回：
 ## 安全边界
 
 - WebSocket Token 必须使用随机长字符串；跨机器部署优先通过 TLS 反向代理或受信内网，不要把明文 WS 直接暴露到公网。
-- `command`、`binding`、`notify_player` 都必须由 Mod 再次做开关、请求者、参数白名单和审计检查。
+- `command`、`binding`、`notify_player` 都必须由 Mod 再次做开关、身份、参数和审计检查；白名单外命令必须经过服务端保存原文的二阶段审批。
 - 不要因为 AstrBot 侧已经判断管理员，就在 Mod 侧允许任意命令。
 - 截图继续受客户端同意、大小、格式、冷却和超时限制。
 - 所有文本进入 Minecraft 命令、JSON 组件或日志前都要按目标上下文转义；聊天文本不能当作命令执行。
