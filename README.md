@@ -16,17 +16,17 @@ MineAstr 将 Minecraft 1.21.11 Fabric 服务器接入 AstrBot、QQ/OneBot 与 Di
 
 ## 当前版本
 
-- AstrBot 插件：`0.6.10`
-- MineAstr Fabric Mod：`0.6.10`
+- AstrBot 插件：`0.6.11`
+- MineAstr Fabric Mod：`0.6.11`
 - Minecraft：`1.21.11`
 - Fabric API：`0.141.4+1.21.11`
 
 成品请从 [GitHub Releases](https://github.com/YU322142/MineAstr/releases) 下载：
 
-- `astrbot_plugin_mineastr-v0.6.10.zip`
-- `mineastr-fabric-0.6.10.jar`
+- `astrbot_plugin_mineastr-v0.6.11.zip`
+- `mineastr-fabric-0.6.11.jar`
 
-v0.6.10 修复了离线后端为正版启动器账号写入 Mojang UUID、导致白名单文件看似正确却仍被原版拒绝的问题。绑定同步现在按服务端认证模式选择 UUID、清理同名冲突项，并在原版白名单检查前使用本次连接的真实身份二次对账，因此也兼容 Velocity/BungeeCord、Floodgate 和混合认证。v0.6.9 的多语言通知、自定义样式、跨平台翻译、@机器人双向转发及管理员可信名单同步均保留。
+v0.6.11 修复空/default Token 放行和普通字符串比较问题；翻译会检测源语言并避免同语种重复；Discord 可按不限数量的频道分别配置语言、翻译和通知样式；命令改为“公开白名单立即执行、其他命令由管理员二次审批”。v0.6.10 的真实登录身份与白名单对账修复全部保留。
 
 ## 连接方式
 
@@ -36,7 +36,7 @@ Minecraft Mod 主动连接 AstrBot 插件注册的 `minecraft` 平台适配器�
 Minecraft MineAstr Mod -> ws://astrbot.example.com:8765/ws -> AstrBot
 ```
 
-跨机器部署时，AstrBot 监听地址应设为 `0.0.0.0`，Mod 填写 AstrBot 主机的可达地址。Token 必须由部署者自行生成并在两端保持一致。
+跨机器部署时，AstrBot 监听地址应设为 `0.0.0.0`，Mod 填写 AstrBot 主机的可达地址。Token 必须由部署者自行生成并在两端保持一致；留空或保持 `change-me` 时 AstrBot 插件会安全拒绝全部连接。
 
 仓库不包含真实服务器 IP、Token、QQ 号、Discord 用户 ID 或运行时绑定数据库。示例仅使用 `127.0.0.1`、`0.0.0.0`、`change-me` 和虚构账号；运行时配置、日志与数据库均已加入 `.gitignore`。
 
@@ -46,9 +46,9 @@ Minecraft MineAstr Mod -> ws://astrbot.example.com:8765/ws -> AstrBot
 
 本版为 QQ/OneBot 与 Discord 分别提供逐行通知语言列表、总开关、服务器连接/断开、玩家进入/离开/死亡开关和按语言自定义样式；只写一行是单语，写多行会按顺序并列发送。死亡事件使用 Minecraft 结构化伤害类型生成中文/英文原因，不再出现“玩家名 因 玩家名 died”。未绑定登录、验证码与游戏内定向提醒支持客户端中英文；安装同版客户端 Mod 时会跟随客户端语言。
 
-QQ/Discord 消息和 AstrBot 回复可选使用 AstrBot 文本模型生成多个 locale 的译文，Minecraft 服务端会按每位玩家的客户端语言分别显示。安装同版客户端 Mod 的玩家可在 F8 界面开关译文和原文；翻译默认关闭，失败或没有匹配语言时始终回退原文。
+QQ/Discord 消息和 AstrBot 回复可选使用 AstrBot 文本模型检测原文语言并生成多个 locale 的译文，Minecraft 服务端会按每位玩家的客户端语言分别显示。目标语言与原文一致时直接显示原文，不会重复翻译。安装同版客户端 Mod 的玩家可在 F8 界面开关译文和原文；翻译默认关闭，失败或没有匹配语言时始终回退原文。
 
-服主可在全局及 QQ/Discord 分平台配置中填写翻译附加提示词/术语表，为专有名词指定固定译法。Minecraft → 平台与 QQ ↔ Discord 的桥接聊天可按目标平台分别输出一个或多个语言，并独立决定是否保留原文。
+服主可在全局及 QQ/Discord 分平台配置中填写翻译附加提示词/术语表，为专有名词指定固定译法。Discord 还可按任意数量的频道独立覆盖目标语言、术语表、事件开关和多语言样式。Minecraft → 平台与 QQ ↔ Discord 的桥接聊天可按目标会话分别输出一个或多个语言，并独立决定是否保留原文。
 
 AstrBot 插件元数据的安装/更新源为本 Fork 的 [`astrbot-plugin`](https://github.com/YU322142/MineAstr/tree/astrbot-plugin) 分支，不会回到上游仓库或下载索引用的 `main` 分支。
 
@@ -59,11 +59,11 @@ AstrBot 插件元数据的安装/更新源为本 Fork 的 [`astrbot-plugin`](htt
 
 完整安装和权限说明请查看两个工程分支的 README。
 
-需要让 Bot 管理员请求受控服务器命令时，同时开启插件 `sync_command_admins_to_server=true` 和 Mod `syncTrustedCommandUsers=true`。这不会自动放开命令；Mod 仍要求 `enableCommandTool=true`，并且命令命中 `allowedCommandRules`（例如 `op *`）。
+需要使用服务器命令时开启 Mod `enableCommandTool=true`。`allowedCommandRules` 是所有人可立即执行的公开命令白名单，不应加入 `op *` 等管理命令；白名单外命令只生成待审批 ID。插件 `sync_command_admins_to_server=true` 与 Mod `syncTrustedCommandUsers=true` 会在审批前实时同步管理员，再由管理员使用 `/mc approve <审批 ID>` 执行 Mod 保存的原始命令。
 
 ## 构建验证
 
-- AstrBot 插件：53 个自动化测试通过，覆盖配置迁移、AstrBot 4.23.6 Schema 类型兼容、QQ/Discord 自动化、单/多语言分平台通知与聊天翻译、自定义术语表、@机器人双向转发、管理员同步、死亡原因本地化和游戏内翻译协议。
+- AstrBot 插件：66 个自动化测试通过，覆盖 fail-closed/常数时间鉴权、配置迁移、AstrBot Schema 类型兼容、QQ/Discord 自动化、频道级单/多语言翻译、源语言去重、自定义术语表、命令审批、管理员实时同步、并发冷却和游戏内翻译协议。
 - Fabric Mod：Gradle `clean build` 通过。
 - 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证 Mixin 加载、离线后端收到正版客户端 UUID 时改用服务端真实离线 UUID、`whitelist_verified=true`，并实际通过原版白名单登录校验；既有解绑、管理员同步、可信命令和正常关服流程保持有效。
 
