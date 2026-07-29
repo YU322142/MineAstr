@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.11
+
+- `allowedCommandRules` 改为公开命令白名单：命中规则的指令任何真实聊天请求者都可立即执行。
+- 白名单外指令不再直接拒绝或执行，而是保存为限量、限时的待审批项；只有静态或 AstrBot 实时同步管理员可批准/拒绝，批准时只执行 Mod 已保存的精确原始指令。
+- 新增 `commandApprovalTimeoutSeconds` 与 `commandMaxPendingApprovals`，并为申请、审批、拒绝和执行写入 WARN 审计日志。
+- 管理员同步新增 revision 防倒序覆盖，并在 WebSocket 断线时同时清除动态管理员与待审批命令。
+- 新安装默认开启 `syncTrustedCommandUsers`；静态 `trustedCommandUsers` 仍与动态名单取并集且不会被覆盖。
+
 ## 0.6.10
 
 - 修复离线模式服务端误把 Mojang 正版 UUID 写入原版白名单：绑定同步现在使用与原版离线登录一致的 UUID。

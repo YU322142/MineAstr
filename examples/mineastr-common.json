@@ -13,7 +13,7 @@
   "enableRegionTool": true,
   "regionMaxBlocks": 32768,
   "enableCommandTool": false,
-  "syncTrustedCommandUsers": false,
+  "syncTrustedCommandUsers": true,
   "trustedCommandUsers": [],
   "allowedCommandRules": [
     "list",
@@ -24,6 +24,8 @@
   ],
   "commandPermissionLevel": 4,
   "commandMaxLength": 256,
+  "commandApprovalTimeoutSeconds": 300,
+  "commandMaxPendingApprovals": 128,
   "enablePlayerNotifications": true,
   "notifyActionBar": true,
   "notifyTitle": false,

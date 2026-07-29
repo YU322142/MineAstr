@@ -6,9 +6,9 @@ MineAstr 是同一仓库中 AstrBot MineAstr 插件的 Minecraft 端，已适配
 - Fabric Loader `0.19.3`（最低 `0.18.1`）
 - Fabric API `0.141.4+1.21.11`
 - Java `21`
-- MineAstr `0.6.10`
+- MineAstr `0.6.11`
 
-同一个 `mineastr-fabric-0.6.10.jar` 可以放在独立服务端、客户端或两端。服务端只安装 Mod 即可使用聊天、事件、绑定、登录检查及查询；截图功能要求目标玩家客户端也安装该 JAR。
+同一个 `mineastr-fabric-0.6.11.jar` 可以放在独立服务端、客户端或两端。服务端只安装 Mod 即可使用聊天、事件、绑定、登录检查及查询；截图功能要求目标玩家客户端也安装该 JAR。
 
 ## 功能
 
@@ -31,13 +31,13 @@ MineAstr 是同一仓库中 AstrBot MineAstr 插件的 Minecraft 端，已适配
 .\gradlew.bat clean build
 ```
 
-产物位于 `build/libs/mineastr-fabric-0.6.10.jar`。
+产物位于 `build/libs/mineastr-fabric-0.6.11.jar`。
 
 ## 安装
 
 1. 为 Minecraft 1.21.11 安装 Fabric Loader。
 2. 把 `fabric-api-0.141.4+1.21.11.jar` 放入 `mods`。
-3. 把 `mineastr-fabric-0.6.10.jar` 放入 `mods`。
+3. 把 `mineastr-fabric-0.6.11.jar` 放入 `mods`。
 4. 启动一次，生成 `config/mineastr-common.json`。
 5. 把配置中的 `token` 改成与 AstrBot `minecraft` 平台适配器完全相同的随机字符串，然后重启。
 
@@ -65,7 +65,7 @@ MineAstr 是同一仓库中 AstrBot MineAstr 插件的 Minecraft 端，已适配
   "enableRegionTool": true,
   "regionMaxBlocks": 32768,
   "enableCommandTool": false,
-  "syncTrustedCommandUsers": false,
+  "syncTrustedCommandUsers": true,
   "trustedCommandUsers": [],
   "allowedCommandRules": [
     "list",
@@ -76,6 +76,8 @@ MineAstr 是同一仓库中 AstrBot MineAstr 插件的 Minecraft 端，已适配
   ],
   "commandPermissionLevel": 4,
   "commandMaxLength": 256,
+  "commandApprovalTimeoutSeconds": 300,
+  "commandMaxPendingApprovals": 128,
   "enablePlayerNotifications": true,
   "notifyActionBar": true,
   "notifyTitle": false,
@@ -113,14 +115,15 @@ Mod 每次连接或重连后，AstrBot 会先重置服务端绑定缓存，再�
 
 ### 受控命令
 
-`enableCommandTool` 默认关闭。启用后，请同时配置：
+`enableCommandTool` 默认关闭。启用后，命令分成两类：
 
-- `trustedCommandUsers`：可信 Minecraft UUID、玩家名、AstrBot 用户 ID 或 `平台ID:用户ID`；QQ/OneBot 例如 `default:123456789`；
-- `allowedCommandRules`：完整命令或带 `*` 的前缀规则，例如 `"say *"`。`"op *"` 会允许可信请求者授予任意玩家 OP，只应按需开启。
+- `allowedCommandRules`：所有聊天用户都能立即执行的公开命令，可写完整命令或带 `*` 的前缀规则，例如 `"time query *"`；不要放入 `op *`、`stop` 或单独的 `*`；
+- 其他命令：只创建限时待审批项，不会立即执行。AstrBot 管理员使用 `/mc approve <审批 ID>` 后，Mod 才执行申请时保存的精确原始命令；审批消息无法替换命令文本；
+- `trustedCommandUsers`：可审批非公开命令的静态管理员，接受 Minecraft UUID、玩家名、AstrBot 用户 ID 或 `平台ID:用户ID`；QQ/OneBot 例如 `default:123456789`。
 
-如果希望 Bot 管理员自动拥有服务端命令请求资格，请同时开启 AstrBot 插件的 `sync_command_admins_to_server` 和本文件的 `syncTrustedCommandUsers`。Mod 会在每次连接时接收 MineAstr `bridge_admin_users` 与 AstrBot 全局 `admins_id` 的并集；它只存在于当前连接的内存中，断线即清空，也不会覆盖上面的静态 `trustedCommandUsers`。
+如果希望 Bot 管理员自动拥有审批资格，请同时开启 AstrBot 插件的 `sync_command_admins_to_server` 和本文件的 `syncTrustedCommandUsers`（新安装默认开启）。插件会在连接和每次审批前同步 MineAstr `bridge_admin_users` 与 AstrBot 全局 `admins_id` 的并集，并用 revision 防止旧请求覆盖新名单；动态名单只存在于当前连接内存中，断线即清空，也不会覆盖静态 `trustedCommandUsers`。
 
-管理员同步只解决“谁可以请求”，不解决“允许执行什么”。仍需开启 `enableCommandTool`，并在 `allowedCommandRules` 明确加入需要的命令；例如授予 OP 必须加入 `"op *"`。不要使用单独的 `"*"`，除非你明确接受远程执行任意服务器命令的风险。所有成功执行都会写 WARN 审计日志。
+`commandApprovalTimeoutSeconds` 控制审批有效期，`commandMaxPendingApprovals` 限制内存中的申请数量。申请、批准、拒绝和实际执行都会写 WARN 审计日志；WebSocket 断线会清除所有待审批项。
 
 ## 客户端配置
 

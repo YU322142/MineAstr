@@ -77,9 +77,11 @@ public final class MineAstrBridge implements WebSocket.Listener {
     private final ConcurrentMap<UUID, String> pendingScreenshotByPlayer = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, ScreenshotAssembly> screenshotAssemblies = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, PendingLoginCheck> pendingLoginChecks = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, PendingCommandApproval> pendingCommandApprovals = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, SyncedBinding> syncedBindings = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, NameAndId> observedLoginIdentities = new ConcurrentHashMap<>();
     private final Set<String> syncedTrustedCommandUsers = ConcurrentHashMap.newKeySet();
+    private final AtomicLong syncedTrustedCommandUsersRevision = new AtomicLong(-1L);
 
     private volatile MinecraftServer server;
     private volatile ScheduledExecutorService reconnectExecutor = createReconnectExecutor();
@@ -106,9 +108,11 @@ public final class MineAstrBridge implements WebSocket.Listener {
         cancelReconnect();
         clearScreenshotState("Minecraft 服务器正在停止。");
         clearPendingLoginChecks("Minecraft 服务器正在停止。");
+        pendingCommandApprovals.clear();
         translationPreferences.clear();
         observedLoginIdentities.clear();
         syncedTrustedCommandUsers.clear();
+        syncedTrustedCommandUsersRevision.set(-1L);
         WebSocket socket = webSocket.getAndSet(null);
         if (socket != null) {
             socket.sendClose(WebSocket.NORMAL_CLOSURE, "server stopping");
@@ -441,7 +445,9 @@ public final class MineAstrBridge implements WebSocket.Listener {
             inboundBuffer.setLength(0);
             clearPendingScreenshots("AstrBot WebSocket 已断开。");
             clearPendingLoginChecks("AstrBot WebSocket 已断开。");
+            pendingCommandApprovals.clear();
             syncedTrustedCommandUsers.clear();
+            syncedTrustedCommandUsersRevision.set(-1L);
             scheduleReconnect();
         }
         return CompletableFuture.completedFuture(null);
@@ -455,7 +461,9 @@ public final class MineAstrBridge implements WebSocket.Listener {
             inboundBuffer.setLength(0);
             clearPendingScreenshots("AstrBot WebSocket 出错。");
             clearPendingLoginChecks("AstrBot WebSocket 出错。");
+            pendingCommandApprovals.clear();
             syncedTrustedCommandUsers.clear();
+            syncedTrustedCommandUsersRevision.set(-1L);
             scheduleReconnect();
         }
     }
@@ -770,12 +778,19 @@ public final class MineAstrBridge implements WebSocket.Listener {
             sendQueryError(socket, messageId, "command", "命令工具要求先把默认 token 改为安全随机字符串。");
             return;
         }
+
+        String action = trimFlatContent(getString(payload, "action", "request"), 16).toLowerCase(Locale.ROOT);
         Requester requester = Requester.from(payload);
-        if (!isTrustedRequester(requester)) {
-            MineAstr.LOGGER.warn("MineAstr 已拒绝不可信命令请求：requester={} command={}", requester.auditName(), shortenForLog(getString(payload, "command", "")));
-            sendQueryError(socket, messageId, "command", "当前请求者不在 trustedCommandUsers 可信名单中。");
+        cleanupExpiredCommandApprovals();
+        if ("approve".equals(action) || "reject".equals(action) || "list".equals(action)) {
+            handleCommandApprovalAction(socket, messageId, action, payload, requester, currentServer);
             return;
         }
+        if (!"request".equals(action)) {
+            sendQueryError(socket, messageId, "command", "不支持的命令操作：" + action);
+            return;
+        }
+
         String command = normalizeCommand(getString(payload, "command", ""));
         if (command.isEmpty()) {
             sendQueryError(socket, messageId, "command", "命令不能为空。");
@@ -785,24 +800,149 @@ public final class MineAstrBridge implements WebSocket.Listener {
             sendQueryError(socket, messageId, "command", "命令长度超过服务端限制。");
             return;
         }
-        if (!isAllowedCommand(command)) {
-            MineAstr.LOGGER.warn("MineAstr 已拒绝白名单外命令：requester={} command={}", requester.auditName(), command);
-            sendQueryError(socket, messageId, "command", "命令未命中 allowedCommandRules 白名单。");
+
+        if (isAllowedCommand(command)) {
+            executeCommand(socket, messageId, currentServer, command, requester, "", "");
             return;
         }
 
+        for (var entry : pendingCommandApprovals.entrySet()) {
+            PendingCommandApproval pending = entry.getValue();
+            if (pending.command().equals(command)
+                    && pending.requester().auditName().equals(requester.auditName())) {
+                sendPendingCommandResult(socket, messageId, entry.getKey(), pending);
+                return;
+            }
+        }
+        if (pendingCommandApprovals.size() >= MineAstrConfig.COMMAND_MAX_PENDING_APPROVALS.getAsInt()) {
+            sendQueryError(socket, messageId, "command", "待审批命令数量已达服务端上限，请先由管理员处理现有申请。");
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long expiresAt = now + MineAstrConfig.COMMAND_APPROVAL_TIMEOUT_SECONDS.getAsInt() * 1000L;
+        String approvalId = UUID.randomUUID().toString();
+        PendingCommandApproval pending = new PendingCommandApproval(command, requester, now, expiresAt);
+        pendingCommandApprovals.put(approvalId, pending);
+        MineAstr.LOGGER.warn(
+                "MineAstr 已创建白名单外命令审批：approval_id={} requester={} command={}",
+                approvalId, requester.auditName(), command);
+        sendPendingCommandResult(socket, messageId, approvalId, pending);
+    }
+
+    private void handleCommandApprovalAction(
+            WebSocket socket,
+            String messageId,
+            String action,
+            JsonObject payload,
+            Requester approver,
+            MinecraftServer currentServer) {
+        if (!isTrustedRequester(approver)) {
+            MineAstr.LOGGER.warn("MineAstr 已拒绝非管理员命令审批：requester={} action={}", approver.auditName(), action);
+            sendQueryError(socket, messageId, "command", "当前审批者不在 trustedCommandUsers 管理员名单中。");
+            return;
+        }
+        if ("list".equals(action)) {
+            JsonObject data = new JsonObject();
+            data.addProperty("status", "pending_list");
+            JsonArray approvals = new JsonArray();
+            pendingCommandApprovals.forEach((approvalId, pending) -> {
+                JsonObject item = new JsonObject();
+                item.addProperty("approval_id", approvalId);
+                item.addProperty("command", pending.command());
+                item.addProperty("requester", pending.requester().auditName());
+                item.addProperty("created_at_ms", pending.createdAtMs());
+                item.addProperty("expires_at_ms", pending.expiresAtMs());
+                approvals.add(item);
+            });
+            data.add("approvals", approvals);
+            sendQueryResult(socket, messageId, "command", data);
+            return;
+        }
+
+        String approvalId = trimFlatContent(getString(payload, "approval_id", ""), 64);
+        if (approvalId.isEmpty()) {
+            sendQueryError(socket, messageId, "command", "approval_id 不能为空。");
+            return;
+        }
+        PendingCommandApproval pending = pendingCommandApprovals.get(approvalId);
+        if (pending == null) {
+            sendQueryError(socket, messageId, "command", "待审批命令不存在或已经过期。");
+            return;
+        }
+        if (!pendingCommandApprovals.remove(approvalId, pending)) {
+            sendQueryError(socket, messageId, "command", "该命令审批已被其他管理员处理。");
+            return;
+        }
+        if ("reject".equals(action)) {
+            MineAstr.LOGGER.warn(
+                    "MineAstr 管理员已拒绝命令：approval_id={} approver={} requester={} command={}",
+                    approvalId, approver.auditName(), pending.requester().auditName(), pending.command());
+            JsonObject data = new JsonObject();
+            data.addProperty("status", "rejected");
+            data.addProperty("approval_id", approvalId);
+            data.addProperty("command", pending.command());
+            data.addProperty("requester", pending.requester().auditName());
+            data.addProperty("approved_by", approver.auditName());
+            sendQueryResult(socket, messageId, "command", data);
+            return;
+        }
+        executeCommand(
+                socket,
+                messageId,
+                currentServer,
+                pending.command(),
+                pending.requester(),
+                approver.auditName(),
+                approvalId);
+    }
+
+    private void sendPendingCommandResult(
+            WebSocket socket, String messageId, String approvalId, PendingCommandApproval pending) {
+        JsonObject data = new JsonObject();
+        data.addProperty("status", "approval_required");
+        data.addProperty("approval_id", approvalId);
+        data.addProperty("command", pending.command());
+        data.addProperty("requester", pending.requester().auditName());
+        data.addProperty("created_at_ms", pending.createdAtMs());
+        data.addProperty("expires_at_ms", pending.expiresAtMs());
+        data.addProperty(
+                "expires_in_seconds",
+                Math.max(0L, (pending.expiresAtMs() - System.currentTimeMillis() + 999L) / 1000L));
+        sendQueryResult(socket, messageId, "command", data);
+    }
+
+    private void cleanupExpiredCommandApprovals() {
+        long now = System.currentTimeMillis();
+        pendingCommandApprovals.entrySet().removeIf(entry -> entry.getValue().expiresAtMs() <= now);
+    }
+
+    private void executeCommand(
+            WebSocket socket,
+            String messageId,
+            MinecraftServer currentServer,
+            String command,
+            Requester requester,
+            String approvedBy,
+            String approvalId) {
         CommandCapture capture = new CommandCapture();
         CommandSourceStack source = currentServer.createCommandSourceStack()
                 .withSource(capture)
                 .withPermission(LevelBasedPermissionSet.forLevel(
                         PermissionLevel.byId(MineAstrConfig.COMMAND_PERMISSION_LEVEL.getAsInt())))
                 .withCallback(capture::onResult);
-        MineAstr.LOGGER.warn("MineAstr 正在执行受控 LLM 命令：requester={} command={}", requester.auditName(), command);
+        MineAstr.LOGGER.warn(
+                "MineAstr 正在执行受控命令：requester={} approved_by={} approval_id={} command={}",
+                requester.auditName(), approvedBy.isEmpty() ? "public_allowlist" : approvedBy,
+                approvalId, command);
         currentServer.getCommands().performPrefixedCommand(source, command);
 
         JsonObject data = new JsonObject();
+        data.addProperty("status", "executed");
         data.addProperty("command", command);
         data.addProperty("requester", requester.auditName());
+        data.addProperty("approved_by", approvedBy);
+        data.addProperty("approval_id", approvalId);
+        data.addProperty("policy", approvedBy.isEmpty() ? "public_allowlist" : "administrator_approval");
         data.addProperty("success", capture.success);
         data.addProperty("result", capture.result);
         JsonArray output = new JsonArray();
@@ -978,14 +1118,22 @@ public final class MineAstrBridge implements WebSocket.Listener {
             }
             replacement.add(identity);
         }
+        long revision = Math.max(0L, getLong(payload, "revision", 0L));
+        long currentRevision = syncedTrustedCommandUsersRevision.get();
+        if (revision < currentRevision) {
+            sendQueryError(socket, messageId, "trusted_users", "stale_trusted_users_revision");
+            return;
+        }
         syncedTrustedCommandUsers.clear();
         syncedTrustedCommandUsers.addAll(replacement);
+        syncedTrustedCommandUsersRevision.set(revision);
         MineAstr.LOGGER.warn(
                 "MineAstr 已更新 AstrBot 同步命令可信名单：synced_count={} static_count={}",
                 replacement.size(),
                 MineAstrConfig.TRUSTED_COMMAND_USERS.get().size());
         JsonObject data = new JsonObject();
         data.addProperty("action", action);
+        data.addProperty("revision", revision);
         data.addProperty("synced_count", replacement.size());
         data.addProperty(
                 "static_count", MineAstrConfig.TRUSTED_COMMAND_USERS.get().size());
@@ -1587,6 +1735,17 @@ public final class MineAstrBridge implements WebSocket.Listener {
         return Math.max(min, Math.min(max, value));
     }
 
+    private static long getLong(JsonObject payload, String key, long defaultValue) {
+        if (!payload.has(key) || payload.get(key).isJsonNull()) {
+            return defaultValue;
+        }
+        try {
+            return payload.get(key).getAsLong();
+        } catch (RuntimeException ignored) {
+            return defaultValue;
+        }
+    }
+
     private static double getDouble(JsonObject payload, String key, double defaultValue, double min, double max) {
         double value = defaultValue;
         if (payload.has(key) && !payload.get(key).isJsonNull()) {
@@ -1646,6 +1805,9 @@ public final class MineAstrBridge implements WebSocket.Listener {
         if (activeSocketFailed) {
             clearPendingScreenshots(error);
             clearPendingLoginChecks(error);
+            pendingCommandApprovals.clear();
+            syncedTrustedCommandUsers.clear();
+            syncedTrustedCommandUsersRevision.set(-1L);
             if (reconnect) {
                 scheduleReconnect();
             }
@@ -1701,6 +1863,10 @@ public final class MineAstrBridge implements WebSocket.Listener {
                 identities.add(normalized);
             }
         }
+    }
+
+    private record PendingCommandApproval(
+            String command, Requester requester, long createdAtMs, long expiresAtMs) {
     }
 
     private static final class CommandCapture implements CommandSource {

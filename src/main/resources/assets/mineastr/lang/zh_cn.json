@@ -69,8 +69,11 @@
   "configuration.mineastr.enableRegionTool": "启用区域特征工具",
   "configuration.mineastr.regionMaxBlocks": "区域分析最大方块数",
   "configuration.mineastr.enableCommandTool": "启用服务器命令工具",
+  "configuration.mineastr.syncTrustedCommandUsers": "实时同步 Bot 管理员",
   "configuration.mineastr.trustedCommandUsers": "命令工具可信用户",
-  "configuration.mineastr.allowedCommandRules": "命令工具白名单规则",
+  "configuration.mineastr.allowedCommandRules": "公开命令白名单规则",
   "configuration.mineastr.commandPermissionLevel": "命令工具权限等级",
-  "configuration.mineastr.commandMaxLength": "命令最大长度"
+  "configuration.mineastr.commandMaxLength": "命令最大长度",
+  "configuration.mineastr.commandApprovalTimeoutSeconds": "命令审批有效期（秒）",
+  "configuration.mineastr.commandMaxPendingApprovals": "最大待审批命令数"
 }

@@ -23,12 +23,14 @@ public final class MineAstrConfig {
     public static final MineAstrConfigStore.IntValue REGION_MAX_BLOCKS = STORE.integer("regionMaxBlocks", 32768, 4096, 131072);
 
     public static final MineAstrConfigStore.BooleanValue ENABLE_COMMAND_TOOL = STORE.bool("enableCommandTool", false);
-    public static final MineAstrConfigStore.BooleanValue SYNC_TRUSTED_COMMAND_USERS = STORE.bool("syncTrustedCommandUsers", false);
+    public static final MineAstrConfigStore.BooleanValue SYNC_TRUSTED_COMMAND_USERS = STORE.bool("syncTrustedCommandUsers", true);
     public static final MineAstrConfigStore.StringListValue TRUSTED_COMMAND_USERS = STORE.stringList("trustedCommandUsers", List.of());
     public static final MineAstrConfigStore.StringListValue ALLOWED_COMMAND_RULES = STORE.stringList(
             "allowedCommandRules", List.of("list", "seed", "time query day", "time query daytime", "time query gametime"));
     public static final MineAstrConfigStore.IntValue COMMAND_PERMISSION_LEVEL = STORE.integer("commandPermissionLevel", 4, 0, 4);
     public static final MineAstrConfigStore.IntValue COMMAND_MAX_LENGTH = STORE.integer("commandMaxLength", 256, 1, 1024);
+    public static final MineAstrConfigStore.IntValue COMMAND_APPROVAL_TIMEOUT_SECONDS = STORE.integer("commandApprovalTimeoutSeconds", 300, 30, 3600);
+    public static final MineAstrConfigStore.IntValue COMMAND_MAX_PENDING_APPROVALS = STORE.integer("commandMaxPendingApprovals", 128, 1, 512);
 
     public static final MineAstrConfigStore.BooleanValue ENABLE_PLAYER_NOTIFICATIONS = STORE.bool("enablePlayerNotifications", true);
     public static final MineAstrConfigStore.BooleanValue NOTIFY_ACTION_BAR = STORE.bool("notifyActionBar", true);

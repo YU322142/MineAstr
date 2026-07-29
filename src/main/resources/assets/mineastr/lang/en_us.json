@@ -69,8 +69,11 @@
   "configuration.mineastr.enableRegionTool": "Enable region feature tool",
   "configuration.mineastr.regionMaxBlocks": "Region scan block limit",
   "configuration.mineastr.enableCommandTool": "Enable server command tool",
+  "configuration.mineastr.syncTrustedCommandUsers": "Synchronize Bot administrators in real time",
   "configuration.mineastr.trustedCommandUsers": "Trusted command users",
-  "configuration.mineastr.allowedCommandRules": "Allowed command rules",
+  "configuration.mineastr.allowedCommandRules": "Public command allowlist rules",
   "configuration.mineastr.commandPermissionLevel": "Command permission level",
-  "configuration.mineastr.commandMaxLength": "Command max length"
+  "configuration.mineastr.commandMaxLength": "Command max length",
+  "configuration.mineastr.commandApprovalTimeoutSeconds": "Command approval timeout (seconds)",
+  "configuration.mineastr.commandMaxPendingApprovals": "Maximum pending command approvals"
 }
