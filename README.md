@@ -16,17 +16,17 @@ MineAstr 将 Minecraft 1.21.11 Fabric 服务器接入 AstrBot、QQ/OneBot 与 Di
 
 ## 当前版本
 
-- AstrBot 插件：`0.6.12`
+- AstrBot 插件：`0.6.13`
 - MineAstr Fabric Mod：`0.6.11`
 - Minecraft：`1.21.11`
 - Fabric API：`0.141.4+1.21.11`
 
 成品请从 [GitHub Releases](https://github.com/YU322142/MineAstr/releases) 下载：
 
-- `astrbot_plugin_mineastr-v0.6.12.zip`
+- `astrbot_plugin_mineastr-v0.6.13.zip`
 - `mineastr-fabric-0.6.11.jar`
 
-v0.6.12 将翻译改为统一生成后分发：同一条源消息先合并游戏客户端及所有 QQ/Discord 接收频道需要的目标语言，只调用一次模型，再分别套用游戏模板、平台标签、语言选择与原文开关。翻译模型和术语表使用统一设置，旧的分平台/频道提示词会自动合并。该更新只需替换 AstrBot 插件，继续兼容 Fabric Mod 0.6.11。
+v0.6.13 改进高权限命令审批：管理员发送 `/mc approve` 即可获得带序号的待审批列表，再使用 `/mc approve <序号>` 或 `/mc reject <序号>` 操作；完整审批 ID 仍然兼容。新增 `mineastr_manage_command_approvals` 函数工具，但每次调用都会按当前真实用户重新检查 AstrBot/MineAstr 管理员身份，并且只执行 Mod 保存的原始命令。管理员同步现在会过滤 Mod 不接受的身份格式，并在审批前加入当前管理员的 `用户ID` 与 `平台ID:用户ID`，修复 `invalid_trusted_user` 导致整批同步失败的问题。该更新只需替换 AstrBot 插件，继续兼容 Fabric Mod 0.6.11。
 
 ## 连接方式
 
@@ -59,11 +59,11 @@ AstrBot 插件元数据的安装/更新源为本 Fork 的 [`astrbot-plugin`](htt
 
 完整安装和权限说明请查看两个工程分支的 README。
 
-需要使用服务器命令时开启 Mod `enableCommandTool=true`。`allowedCommandRules` 是所有人可立即执行的公开命令白名单，不应加入 `op *` 等管理命令；白名单外命令只生成待审批 ID。插件 `sync_command_admins_to_server=true` 与 Mod `syncTrustedCommandUsers=true` 会在审批前实时同步管理员，再由管理员使用 `/mc approve <审批 ID>` 执行 Mod 保存的原始命令。
+需要使用服务器命令时开启 Mod `enableCommandTool=true`。`allowedCommandRules` 是所有人可立即执行的公开命令白名单，不应加入 `op *` 等管理命令；白名单外命令只生成待审批 ID。插件 `sync_command_admins_to_server=true` 与 Mod `syncTrustedCommandUsers=true` 会在审批前实时同步管理员。管理员发送 `/mc approve` 查看列表后可按序号审批，也可明确要求机器人调用审批函数工具；两种方式都只执行 Mod 保存的原始命令。
 
 ## 构建验证
 
-- AstrBot 插件：70 个自动化测试通过，覆盖 fail-closed/常数时间鉴权、配置迁移、AstrBot Schema 类型兼容、QQ/Discord 自动化、游戏与平台共用单次翻译后分发、源语言去重、自定义术语表、命令审批、管理员实时同步、并发冷却和游戏内翻译协议。
+- AstrBot 插件：72 个自动化测试通过，覆盖 fail-closed/常数时间鉴权、配置迁移、AstrBot Schema 类型兼容、QQ/Discord 自动化、游戏与平台共用单次翻译后分发、源语言去重、自定义术语表、命令审批列表与函数工具、管理员身份过滤及实时同步、并发冷却和游戏内翻译协议。
 - Fabric Mod：Gradle `clean build` 通过。
 - 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证 Mixin 加载、离线后端收到正版客户端 UUID 时改用服务端真实离线 UUID、`whitelist_verified=true`，并实际通过原版白名单登录校验；既有解绑、管理员同步、可信命令和正常关服流程保持有效。
 
