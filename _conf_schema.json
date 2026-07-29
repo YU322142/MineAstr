@@ -105,16 +105,16 @@
         "default": 20
       },
       "translation_custom_instructions": {
-        "description": "全局翻译附加提示词 / 术语表",
+        "description": "统一翻译提示词 / 术语表",
         "type": "text",
-        "hint": "可逐行写专有名词、固定译名和风格要求，例如：Motiquies 固定译为 动静交映。作为服主可信规则加入提示词；MineAstr 仍会强制模型输出语言 JSON。最多使用前 4000 字。",
+        "hint": "QQ、Discord 及其所有频道统一使用此设置。可逐行写专有名词、固定译名和风格要求，例如：Motiquies 固定译为 动静交映。同一条消息会一次生成所有接收频道需要的语言，再分别分发；最多使用前 4000 字。",
         "obvious_hint": true,
         "default": ""
       },
       "discord_channel_settings": {
-        "description": "Discord 频道独立语言、翻译与通知设置",
+        "description": "Discord 频道语言分发与通知设置",
         "type": "template_list",
-        "hint": "可添加任意数量的频道配置。命中频道 ID 时优先使用该项；未命中的频道继续使用上方 Discord 平台设置。频道 ID 可从 /mc bridge_list 或 AstrBot 日志中的会话 ID 末尾取得。",
+        "hint": "可添加任意数量的频道配置。频道可选择自己接收的译文语言和是否显示原文，但翻译模型与提示词使用上方统一设置。同一条消息只统一翻译一次。",
         "obvious_hint": true,
         "default": [],
         "templates": {
@@ -130,7 +130,7 @@
               "chat_translation_enabled": {"description": "频道聊天自动翻译", "type": "bool", "default": false},
               "chat_translation_languages": {"description": "聊天翻译目标语言（每行一个）", "type": "text", "default": "en_us"},
               "chat_translation_show_original": {"description": "翻译后显示原文", "type": "bool", "default": true},
-              "chat_translation_custom_instructions": {"description": "频道翻译附加提示词 / 术语表", "type": "text", "default": ""},
+              "chat_translation_custom_instructions": {"description": "旧版频道翻译提示词（自动迁移）", "type": "text", "default": "", "invisible": true},
               "notifications_enabled": {"description": "事件通知总开关", "type": "bool", "default": true},
               "notify_server_start_enabled": {"description": "服务器连接通知", "type": "bool", "default": true},
               "notify_server_stop_enabled": {"description": "服务器断开通知", "type": "bool", "default": true},
@@ -307,7 +307,7 @@
           "chat_translation_enabled": {"description": "QQ 平台消息自动翻译", "type": "bool", "hint": "翻译从 Minecraft 或 Discord 转发到 QQ 的聊天消息；会调用上方配置的翻译模型。", "default": false},
           "chat_translation_languages": {"description": "QQ 聊天翻译目标语言（每行一个）", "type": "text", "hint": "使用 locale，例如 zh_cn、en_us、ja_jp；一行是单语，多行按顺序并列显示，最多 8 种。", "default": "zh_cn"},
           "chat_translation_show_original": {"description": "QQ 翻译后显示原文", "type": "bool", "default": true},
-          "chat_translation_custom_instructions": {"description": "QQ 翻译附加提示词 / 术语表", "type": "text", "hint": "只应用到发往 QQ 的聊天译文，并与上方全局术语表合并。", "default": ""},
+          "chat_translation_custom_instructions": {"description": "旧版 QQ 翻译提示词（自动迁移）", "type": "text", "default": "", "invisible": true},
           "notifications_enabled": {"description": "QQ 事件通知总开关", "type": "bool", "default": true},
           "notify_server_start_enabled": {"description": "QQ：服务器连接通知", "type": "bool", "default": true},
           "notify_server_stop_enabled": {"description": "QQ：服务器断开通知", "type": "bool", "default": true},
@@ -412,7 +412,7 @@
           "chat_translation_enabled": {"description": "Discord 平台消息自动翻译", "type": "bool", "hint": "翻译从 Minecraft 或 QQ 转发到 Discord 的聊天消息；会调用上方配置的翻译模型。", "default": false},
           "chat_translation_languages": {"description": "Discord 聊天翻译目标语言（每行一个）", "type": "text", "hint": "使用 locale，例如 zh_cn、en_us、ja_jp；一行是单语，多行按顺序并列显示，最多 8 种。", "default": "en_us"},
           "chat_translation_show_original": {"description": "Discord 翻译后显示原文", "type": "bool", "default": true},
-          "chat_translation_custom_instructions": {"description": "Discord 翻译附加提示词 / 术语表", "type": "text", "hint": "只应用到发往 Discord 的聊天译文，并与上方全局术语表合并。", "default": ""},
+          "chat_translation_custom_instructions": {"description": "旧版 Discord 翻译提示词（自动迁移）", "type": "text", "default": "", "invisible": true},
           "notifications_enabled": {"description": "Discord 事件通知总开关", "type": "bool", "default": true},
           "notify_server_start_enabled": {"description": "Discord：服务器连接通知", "type": "bool", "default": true},
           "notify_server_stop_enabled": {"description": "Discord：服务器断开通知", "type": "bool", "default": true},

@@ -5,7 +5,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, call
 
 
 def _identity_decorator(*args, **kwargs):
@@ -131,7 +131,7 @@ class ConfigLayoutTests(unittest.TestCase):
         )
 
         self.assertTrue(plugin._migrate_grouped_config())
-        self.assertEqual(plugin.config["config_layout_version"], 1)
+        self.assertEqual(plugin.config["config_layout_version"], 2)
         self.assertEqual(
             plugin.config["admin_command_settings"]["bridge_admin_users"],
             "default:42",
@@ -143,6 +143,43 @@ class ConfigLayoutTests(unittest.TestCase):
             plugin.config["qq_settings"]["qq_group_ids"], "10001\n10002"
         )
         self.assertFalse(plugin._migrate_grouped_config())
+
+    def test_translation_instructions_migrate_to_one_global_setting(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "config_layout_version": 1,
+            "bridge_settings": {
+                "translation_custom_instructions": "Global rule",
+                "discord_channel_settings": [
+                    {"chat_translation_custom_instructions": "Channel rule"}
+                ],
+            },
+            "qq_settings": {
+                "qq_notification_settings": {
+                    "chat_translation_custom_instructions": "QQ rule"
+                }
+            },
+            "discord_settings": {
+                "discord_notification_settings": {
+                    "chat_translation_custom_instructions": "Discord rule"
+                }
+            },
+        }
+
+        self.assertTrue(plugin._migrate_grouped_config())
+
+        self.assertEqual(
+            plugin.config["bridge_settings"]["translation_custom_instructions"],
+            "Global rule\n\nQQ rule\n\nDiscord rule\n\nChannel rule",
+        )
+        self.assertNotIn(
+            "chat_translation_custom_instructions",
+            plugin.config["qq_settings"]["qq_notification_settings"],
+        )
+        self.assertNotIn(
+            "chat_translation_custom_instructions",
+            plugin.config["bridge_settings"]["discord_channel_settings"][0],
+        )
 
     def test_grouped_values_take_precedence_and_are_updated_in_place(self):
         plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
@@ -395,7 +432,7 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
                 "chat_translation_enabled": True,
                 "chat_translation_languages": "en_us\nja_jp",
                 "chat_translation_show_original": True,
-                "chat_translation_custom_instructions": "Creeper 保留英文",
+                "chat_translation_custom_instructions": "旧版设置不应继续单独应用",
             }
         )
         plugin.config = {
@@ -434,7 +471,77 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
             "custom_instructions"
         ]
         self.assertIn("Motiquies=动静交映", custom_rules)
-        self.assertIn("Creeper 保留英文", custom_rules)
+        self.assertNotIn("旧版设置不应继续单独应用", custom_rules)
+
+    async def test_platform_translation_is_generated_once_then_distributed(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        discord_profile = MAIN.DISCORD_NOTIFICATION_DEFAULTS.copy()
+        discord_profile.update(
+            {
+                "chat_translation_enabled": True,
+                "chat_translation_languages": "en_us",
+                "chat_translation_show_original": False,
+            }
+        )
+        plugin.config = {
+            "bridge_settings": {
+                "translation_custom_instructions": "Unified terminology",
+                "max_relay_length": 500,
+                "discord_channel_settings": [
+                    {
+                        "enabled": True,
+                        "channel_ids": "20002",
+                        "chat_translation_enabled": True,
+                        "chat_translation_languages": "en_us",
+                        "chat_translation_show_original": False,
+                    },
+                    {
+                        "enabled": True,
+                        "channel_ids": "20003",
+                        "chat_translation_enabled": True,
+                        "chat_translation_languages": "ja_jp",
+                        "chat_translation_show_original": False,
+                    },
+                ],
+            },
+            "qq_settings": {
+                "qq_notification_settings": MAIN.QQ_NOTIFICATION_DEFAULTS.copy()
+            },
+            "discord_settings": {
+                "discord_notification_settings": discord_profile
+            },
+        }
+        plugin._relay_sessions = {
+            "discord:GroupMessage:20002",
+            "discord:GroupMessage:20003",
+        }
+        plugin._translate_text = AsyncMock(
+            return_value={
+                "source_language": "zh_cn",
+                "translations": {
+                    "en_us": "Hello",
+                    "ja_jp": "こんにちは",
+                },
+            }
+        )
+        plugin._send_to_relay_session = AsyncMock()
+
+        await plugin._send_to_relay_sessions(
+            "你好",
+            exclude="minecraft:FriendMessage:minecraft",
+        )
+
+        plugin._translate_text.assert_awaited_once()
+        self.assertEqual(
+            plugin._translate_text.await_args.args[1],
+            ("en_us", "ja_jp"),
+        )
+        plugin._send_to_relay_session.assert_has_awaits(
+            [
+                call("discord:GroupMessage:20002", "[en_us] Hello"),
+                call("discord:GroupMessage:20003", "[ja_jp] こんにちは"),
+            ]
+        )
 
     async def test_mentioned_player_message_and_bot_reply_are_relayed_to_game(self):
         plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)

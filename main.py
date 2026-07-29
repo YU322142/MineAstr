@@ -290,7 +290,7 @@ AQQBOT_DEFAULT_CONFIG: dict[str, Any] = {
     "login_reject_message": NOTIFICATION_PRESETS["zh_CN"]["login_reject_message"],
 }
 
-CONFIG_LAYOUT_VERSION = 1
+CONFIG_LAYOUT_VERSION = 2
 CONFIG_GROUP_KEYS: dict[str, tuple[str, ...]] = {
     "bridge_settings": (
         "bridge_enabled",
@@ -385,7 +385,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.6.11",
+    "0.6.12",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -507,7 +507,7 @@ class MineAstrPlugin(Star):
             return
 
     def _migrate_grouped_config(self) -> bool:
-        """Move the legacy flat GUI values into the grouped AstrBot schema once."""
+        """Migrate legacy GUI layouts and consolidate translation instructions."""
 
         try:
             if not any(
@@ -515,20 +515,60 @@ class MineAstrPlugin(Star):
                 for group_name in CONFIG_GROUP_KEYS
             ):
                 return False
-            if (
-                int(self.config.get("config_layout_version", 0) or 0)
-                >= CONFIG_LAYOUT_VERSION
-            ):
+            layout_version = int(self.config.get("config_layout_version", 0) or 0)
+            if layout_version >= CONFIG_LAYOUT_VERSION:
                 return False
-            for group_name, keys in CONFIG_GROUP_KEYS.items():
+            if layout_version < 1:
+                for group_name, keys in CONFIG_GROUP_KEYS.items():
+                    group = self.config.get(group_name)
+                    if not isinstance(group, dict):
+                        group = {}
+                        self.config[group_name] = group
+                    for key in keys:
+                        group[key] = self.config.get(
+                            key, AQQBOT_DEFAULT_CONFIG[key]
+                        )
+
+            bridge_settings = self.config.get("bridge_settings")
+            if not isinstance(bridge_settings, dict):
+                bridge_settings = {}
+                self.config["bridge_settings"] = bridge_settings
+            instruction_blocks: list[str] = []
+
+            def add_instructions(value: Any) -> None:
+                instructions = str(value or "").strip()
+                if instructions and instructions not in instruction_blocks:
+                    instruction_blocks.append(instructions)
+
+            add_instructions(
+                bridge_settings.get("translation_custom_instructions")
+            )
+            for group_name, profile_key in (
+                ("qq_settings", "qq_notification_settings"),
+                ("discord_settings", "discord_notification_settings"),
+            ):
                 group = self.config.get(group_name)
-                if not isinstance(group, dict):
-                    group = {}
-                    self.config[group_name] = group
-                for key in keys:
-                    group[key] = self.config.get(key, AQQBOT_DEFAULT_CONFIG[key])
+                profile = group.get(profile_key) if isinstance(group, dict) else None
+                if isinstance(profile, dict):
+                    add_instructions(
+                        profile.pop("chat_translation_custom_instructions", "")
+                    )
+            channel_settings = bridge_settings.get("discord_channel_settings")
+            if isinstance(channel_settings, list):
+                for profile in channel_settings:
+                    if isinstance(profile, dict):
+                        add_instructions(
+                            profile.pop(
+                                "chat_translation_custom_instructions", ""
+                            )
+                        )
+            bridge_settings["translation_custom_instructions"] = "\n\n".join(
+                instruction_blocks
+            )
             self.config["config_layout_version"] = CONFIG_LAYOUT_VERSION
-            logger.info("MineAstr 已把旧版平铺配置迁移到新版分组 GUI。")
+            logger.info(
+                "MineAstr 已迁移配置并把旧平台/频道翻译提示词合并到全局设置。"
+            )
             return True
         except (AttributeError, TypeError, ValueError):
             return False
@@ -1300,7 +1340,12 @@ class MineAstrPlugin(Star):
         }
 
     async def _platform_chat_message(
-        self, session: str, content: str, origin: str = ""
+        self,
+        session: str,
+        content: str,
+        origin: str = "",
+        *,
+        translation_result: dict[str, Any] | None = None,
     ) -> str:
         profile = self._platform_notification_profile(
             self._session_platform_id(session), session
@@ -1310,20 +1355,17 @@ class MineAstrPlugin(Star):
         languages = self._translation_languages(
             profile.get("chat_translation_languages")
         )
-        global_rules = str(self._cfg("translation_custom_instructions") or "").strip()
-        platform_rules = str(
-            profile.get("chat_translation_custom_instructions") or ""
-        ).strip()
-        custom_instructions = "\n".join(
-            rule for rule in (global_rules, platform_rules) if rule
-        )
-        result = await self._translate_text(
-            content,
-            languages,
-            origin,
-            custom_instructions=custom_instructions,
-            cache_scope=f"platform:{session}",
-        )
+        result = translation_result
+        if result is None:
+            result = await self._translate_text(
+                content,
+                languages,
+                origin,
+                custom_instructions=str(
+                    self._cfg("translation_custom_instructions") or ""
+                ),
+                cache_scope=f"platform-unified:{origin or session}",
+            )
         source_language, translations = self._translation_result_parts(result)
         if not translations and not any(
             self._same_translation_language(source_language, language)
@@ -1355,16 +1397,54 @@ class MineAstrPlugin(Star):
         exclude: str = "",
         source_platform: str = "",
     ) -> None:
-        for session in sorted(self._relay_sessions):
-            if session == exclude:
-                continue
-            if (
-                source_platform
-                and self._session_platform_id(session).casefold()
-                == source_platform.casefold()
+        sessions = [
+            session
+            for session in sorted(self._relay_sessions)
+            if session != exclude
+            and (
+                not source_platform
+                or self._session_platform_id(session).casefold()
+                != source_platform.casefold()
+            )
+        ]
+        languages: list[str] = []
+        for session in sessions:
+            profile = self._platform_notification_profile(
+                self._session_platform_id(session), session
+            )
+            if profile is None or not bool(
+                profile.get("chat_translation_enabled")
             ):
                 continue
-            message = await self._platform_chat_message(session, content, session)
+            for language in self._translation_languages(
+                profile.get("chat_translation_languages")
+            ):
+                if language not in languages:
+                    languages.append(language)
+
+        translation_result: dict[str, Any] | None = None
+        if languages:
+            translation_origin = (
+                exclude
+                if source_platform
+                else (sessions[0] if sessions else "")
+            )
+            translation_result = await self._translate_text(
+                content,
+                tuple(languages),
+                translation_origin,
+                custom_instructions=str(
+                    self._cfg("translation_custom_instructions") or ""
+                ),
+                cache_scope=f"platform-unified:{translation_origin}",
+            )
+
+        for session in sessions:
+            message = await self._platform_chat_message(
+                session,
+                content,
+                translation_result=translation_result,
+            )
             await self._send_to_relay_session(session, message)
 
     async def _send_to_relay_session(self, session: str, content: str) -> None:

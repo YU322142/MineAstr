@@ -44,13 +44,13 @@ class ConfigSchemaTests(unittest.TestCase):
         metadata_path = Path(__file__).resolve().parents[1] / "metadata.yaml"
         metadata = metadata_path.read_text(encoding="utf-8")
         self.assertIn("author: YU322142", metadata)
-        self.assertIn("version: v0.6.11", metadata)
+        self.assertIn("version: v0.6.12", metadata)
         self.assertIn(
             'repo: "https://github.com/YU322142/MineAstr/tree/astrbot-plugin"',
             metadata,
         )
         main = (metadata_path.parent / "main.py").read_text(encoding="utf-8")
-        self.assertIn('    "0.6.11",\n)', main)
+        self.assertIn('    "0.6.12",\n)', main)
 
     def test_newline_delimited_fields_use_astrbot_textarea_type(self):
         schema = self._schema()
@@ -217,8 +217,8 @@ class ConfigSchemaTests(unittest.TestCase):
         for key in ("qq_notification_settings", "discord_notification_settings"):
             items = self._visible_field(schema, key)["items"]
             self.assertEqual(items["chat_translation_languages"]["type"], "text")
-            self.assertEqual(
-                items["chat_translation_custom_instructions"]["type"], "text"
+            self.assertTrue(
+                items["chat_translation_custom_instructions"]["invisible"]
             )
 
     def test_command_admin_sync_is_explicit_and_enabled_for_approval_flow(self):
@@ -235,6 +235,9 @@ class ConfigSchemaTests(unittest.TestCase):
         items = field["templates"]["discord_channel"]["items"]
         self.assertEqual(items["channel_ids"]["type"], "text")
         self.assertEqual(items["chat_translation_languages"]["type"], "text")
+        self.assertTrue(
+            items["chat_translation_custom_instructions"]["invisible"]
+        )
         self.assertIn("localized_templates", items)
 
 

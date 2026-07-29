@@ -41,7 +41,7 @@ AstrBot 对该会话的文本回复会回传给所有已连接的 Minecraft 服�
 
 ## 安装包兼容性
 
-在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.11.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
+在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.12.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
 
 插件元数据中的安装/更新源固定为 Fork 分支 `https://github.com/YU322142/MineAstr/tree/astrbot-plugin`，不会再让 AstrBot 回到原项目或下载仅用于项目导航的 `main` 分支。
 
@@ -176,7 +176,7 @@ pip install -r requirements.txt
 | `game_translation_provider_id` | 空 | 留空使用当前会话文本模型，也可指定低成本翻译 Provider。 |
 | `game_translation_languages` | `zh_cn\nen_us` | 每行一个目标 Minecraft locale，最多 8 种，例如 `ja_jp`。 |
 | `game_translation_show_original` | `true` | 未安装同版客户端 Mod 时，译文下方是否默认附带原文。 |
-| `translation_custom_instructions` | 空 | 全局翻译附加提示词/术语表，支持多行专有名词固定译法；用于游戏内及平台翻译。 |
+| `translation_custom_instructions` | 空 | 统一翻译提示词/术语表；游戏内及所有 QQ/Discord 接收会话共同使用。 |
 | `relay_bot_conversations_to_game` | `true` | 把桥接会话中玩家 @机器人的消息及 AstrBot 最终纯文本回复同步到 MC。 |
 | `game_translation_timeout_seconds` | `20` | 翻译超时；超时直接发送原文，不阻塞后续聊天。 |
 | `binding_enabled` | `true` | 启用跨平台账号绑定。 |
@@ -200,9 +200,9 @@ pip install -r requirements.txt
 | `notifications_enabled` | `true` | 启用服务器与玩家事件通知。 |
 | `notification_language` | `zh_CN` | 预设通知语言，可选 `zh_CN` / `en_US`；自定义模板保持原文。 |
 | `notify_*_enabled` | `true` | 服务器连接/断开、玩家进入/离开/死亡各自的独立通知开关。 |
-| `qq_notification_settings` | QQ 独立设置 | QQ/OneBot 的平台 ID、聊天单/多语自动翻译、分平台术语表、逐行通知语言、事件开关和每种语言的通知样式。 |
-| `discord_notification_settings` | Discord 独立设置 | Discord 的平台 ID、聊天单/多语自动翻译、分平台术语表、逐行通知语言、事件开关和每种语言的通知样式。 |
-| `discord_channel_settings` | 空列表 | 可添加任意数量的 Discord 频道配置；命中频道时覆盖该频道的翻译、语言、事件开关和样式，未命中时回退上方 Discord 全局设置。 |
+| `qq_notification_settings` | QQ 独立设置 | QQ/OneBot 的平台 ID、聊天译文目标语言、是否显示原文、逐行通知语言、事件开关和每种语言的通知样式。 |
+| `discord_notification_settings` | Discord 独立设置 | Discord 的平台 ID、聊天译文目标语言、是否显示原文、逐行通知语言、事件开关和每种语言的通知样式。 |
+| `discord_channel_settings` | 空列表 | 可添加任意数量的 Discord 频道配置；频道只选择需要接收的译文语言、原文显示和通知样式，翻译提示词使用统一设置。 |
 
 配置页按群服互联、绑定、QQ、Discord、管理员/远程指令和通知分成六个可折叠区域；账号、群号、会话和过滤规则均使用多行输入框。升级时旧版平铺配置会自动迁移一次，不会重置现有设置。v0.6.9 起，QQ 与 Discord 的“通知语言”都是逐行列表：只写一行就是单语，写 `zh_CN` 和 `en_US` 两行就会按该顺序同时发送；“分语言自定义样式”可为每种语言单独填写多行模板，留空则使用内置预设。旧版通用模板非空时为兼容旧配置，只发送该模板一次。事件模板支持 `{server}`、`{server_id}`、`{player}`、`{binding}` 等占位符，死亡事件另支持 `{reason}`、`{death_type}`、`{attacker}`、`{direct_entity}` 和 `{weapon}`。平台适配器的 `host`、`port`、`path`、`token` 仍应在 AstrBot 的 `minecraft` 平台配置页修改。
 
@@ -210,7 +210,7 @@ pip install -r requirements.txt
 
 “启用游戏内消息自动翻译”处理的是聊天正文：QQ、Discord 和 AstrBot 回复进入游戏前会检测原文语言，并只生成与原文不同的目标语言译文；Mod 再按每位在线玩家的客户端 locale 分别选择。目标语言与原文一致时直接显示原文，不会重复显示同文译文。玩家安装 v0.6.7 客户端 Mod 后可在 F8 设置中关闭译文或关闭原文；没有匹配译文、模型失败或超时时始终显示原文。翻译提示把聊天正文当作不可信数据，不执行其中的指令，但仍建议为此功能使用独立、低成本的 Provider。
 
-“全局翻译附加提示词/术语表”会作为服主可信规则加入系统提示词，例如每行写 `Motiquies 固定译为 动静交映`。QQ 与 Discord 平台设置中还可分别开启聊天自动翻译、填写一个或多个目标 locale、决定是否附带原文，并追加只对该平台生效的术语。Discord 还可添加不限数量的频道独立配置，按频道 ID 覆盖上述字段。Minecraft 消息发往 QQ/Discord、以及 QQ 与 Discord 之间转发的玩家消息都会按目标会话配置处理；翻译失败仍发送原文。MineAstr 保留不可覆盖的源语言与译文 JSON 输出约束，因此术语表不需要也不应要求模型改变响应格式。
+“统一翻译提示词/术语表”会作为服主可信规则加入系统提示词，例如每行写 `Motiquies 固定译为 动静交映`。对于同一条发往多个 QQ/Discord 会话的消息，插件会先收集全部目标语言，只调用一次模型，再按各会话配置裁剪语言顺序并决定是否附带原文。QQ、Discord 和 Discord 频道仍可分别开关聊天翻译、选择一个或多个目标 locale，但不再各自调用模型或维护不同术语表。升级时旧的分平台/频道提示词会自动合并到统一设置。翻译失败时本批次全部回退原文。
 
 ## 机器人可调用工具
 
