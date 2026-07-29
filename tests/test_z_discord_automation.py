@@ -543,6 +543,90 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
             ]
         )
 
+    async def test_platform_and_game_share_one_translation_request(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        discord_profile = MAIN.DISCORD_NOTIFICATION_DEFAULTS.copy()
+        discord_profile.update(
+            {
+                "chat_translation_enabled": True,
+                "chat_translation_languages": "en_us",
+                "chat_translation_show_original": False,
+            }
+        )
+        plugin.config = {
+            "bridge_settings": {
+                "bridge_enabled": True,
+                "relay_bot_conversations_to_game": True,
+                "relay_wake_messages": False,
+                "relay_commands": False,
+                "relay_prefix": "",
+                "chat_to_game_filters": "",
+                "chat_to_game_template": "[{platform}] {message}",
+                "game_translation_enabled": True,
+                "game_translation_languages": "ja_jp",
+                "game_translation_show_original": True,
+                "translation_custom_instructions": "Unified terminology",
+                "max_relay_length": 500,
+                "discord_channel_settings": [],
+            },
+            "qq_settings": {
+                "qq_notification_settings": MAIN.QQ_NOTIFICATION_DEFAULTS.copy()
+            },
+            "discord_settings": {
+                "discord_notification_settings": discord_profile
+            },
+        }
+        plugin._relay_sessions = {
+            "default:GroupMessage:10001",
+            "discord:GroupMessage:20002",
+        }
+        plugin._translate_text = AsyncMock(
+            return_value={
+                "source_language": "zh_cn",
+                "translations": {
+                    "en_us": "Hello",
+                    "ja_jp": "こんにちは",
+                },
+            }
+        )
+        plugin._send_to_relay_session = AsyncMock()
+        plugin._notify_mentioned_players = AsyncMock()
+        adapter = types.SimpleNamespace(relay_chat=AsyncMock())
+        plugin._minecraft_adapter = lambda: adapter
+        stopped = []
+        event = types.SimpleNamespace(
+            unified_msg_origin="default:GroupMessage:10001",
+            message_str="你好",
+            is_at_or_wake_command=False,
+            get_platform_id=lambda: "default",
+            get_sender_id=lambda: "42",
+            get_sender_name=lambda: "Alice",
+            stop_event=lambda: stopped.append(True),
+        )
+
+        await plugin.mineastr_relay_message(event)
+
+        plugin._translate_text.assert_awaited_once()
+        self.assertEqual(plugin._translate_text.await_args.args[0], "你好")
+        self.assertEqual(
+            plugin._translate_text.await_args.args[1],
+            ("en_us", "ja_jp"),
+        )
+        plugin._send_to_relay_session.assert_awaited_once_with(
+            "discord:GroupMessage:20002",
+            "[en_us] [default/Alice] Hello",
+        )
+        adapter.relay_chat.assert_awaited_once_with(
+            "[default] 你好",
+            "default/Alice",
+            origin="default:GroupMessage:10001",
+            translation_options={
+                "translations": {"ja_jp": "[default] こんにちは"},
+                "show_original": True,
+            },
+        )
+        self.assertEqual(stopped, [True])
+
     async def test_mentioned_player_message_and_bot_reply_are_relayed_to_game(self):
         plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
         plugin.config = {

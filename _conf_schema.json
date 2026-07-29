@@ -107,14 +107,14 @@
       "translation_custom_instructions": {
         "description": "统一翻译提示词 / 术语表",
         "type": "text",
-        "hint": "QQ、Discord 及其所有频道统一使用此设置。可逐行写专有名词、固定译名和风格要求，例如：Motiquies 固定译为 动静交映。同一条消息会一次生成所有接收频道需要的语言，再分别分发；最多使用前 4000 字。",
+        "hint": "游戏内、QQ、Discord 及其所有频道统一使用此设置。可逐行写专有名词、固定译名和风格要求，例如：Motiquies 固定译为 动静交映。同一条源消息会一次生成所有接收端需要的语言，再分别分发；最多使用前 4000 字。",
         "obvious_hint": true,
         "default": ""
       },
       "discord_channel_settings": {
         "description": "Discord 频道语言分发与通知设置",
         "type": "template_list",
-        "hint": "可添加任意数量的频道配置。频道可选择自己接收的译文语言和是否显示原文，但翻译模型与提示词使用上方统一设置。同一条消息只统一翻译一次。",
+        "hint": "可添加任意数量的频道配置。频道可选择自己接收的译文语言和是否显示原文，但翻译模型与提示词使用上方统一设置。QQ、Discord 与游戏端合计只统一翻译一次。",
         "obvious_hint": true,
         "default": [],
         "templates": {

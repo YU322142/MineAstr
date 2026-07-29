@@ -176,7 +176,7 @@ pip install -r requirements.txt
 | `game_translation_provider_id` | 空 | 留空使用当前会话文本模型，也可指定低成本翻译 Provider。 |
 | `game_translation_languages` | `zh_cn\nen_us` | 每行一个目标 Minecraft locale，最多 8 种，例如 `ja_jp`。 |
 | `game_translation_show_original` | `true` | 未安装同版客户端 Mod 时，译文下方是否默认附带原文。 |
-| `translation_custom_instructions` | 空 | 统一翻译提示词/术语表；游戏内及所有 QQ/Discord 接收会话共同使用。 |
+| `translation_custom_instructions` | 空 | 统一翻译提示词/术语表；游戏内及所有 QQ/Discord 接收会话共同使用，同一条源消息合计只调用一次模型。 |
 | `relay_bot_conversations_to_game` | `true` | 把桥接会话中玩家 @机器人的消息及 AstrBot 最终纯文本回复同步到 MC。 |
 | `game_translation_timeout_seconds` | `20` | 翻译超时；超时直接发送原文，不阻塞后续聊天。 |
 | `binding_enabled` | `true` | 启用跨平台账号绑定。 |
@@ -210,7 +210,7 @@ pip install -r requirements.txt
 
 “启用游戏内消息自动翻译”处理的是聊天正文：QQ、Discord 和 AstrBot 回复进入游戏前会检测原文语言，并只生成与原文不同的目标语言译文；Mod 再按每位在线玩家的客户端 locale 分别选择。目标语言与原文一致时直接显示原文，不会重复显示同文译文。玩家安装 v0.6.7 客户端 Mod 后可在 F8 设置中关闭译文或关闭原文；没有匹配译文、模型失败或超时时始终显示原文。翻译提示把聊天正文当作不可信数据，不执行其中的指令，但仍建议为此功能使用独立、低成本的 Provider。
 
-“统一翻译提示词/术语表”会作为服主可信规则加入系统提示词，例如每行写 `Motiquies 固定译为 动静交映`。对于同一条发往多个 QQ/Discord 会话的消息，插件会先收集全部目标语言，只调用一次模型，再按各会话配置裁剪语言顺序并决定是否附带原文。QQ、Discord 和 Discord 频道仍可分别开关聊天翻译、选择一个或多个目标 locale，但不再各自调用模型或维护不同术语表。升级时旧的分平台/频道提示词会自动合并到统一设置。翻译失败时本批次全部回退原文。
+“统一翻译提示词/术语表”会作为服主可信规则加入系统提示词，例如每行写 `Motiquies 固定译为 动静交映`。对于同一条源消息，插件会先收集游戏客户端与所有 QQ/Discord 接收会话需要的目标语言，只调用一次模型翻译纯正文，再分别套用游戏模板、平台发送者标签、语言顺序和原文开关。QQ、Discord 和 Discord 频道仍可分别开关聊天翻译、选择一个或多个目标 locale，但不再各自调用模型或维护不同术语表。升级时旧的分平台/频道提示词会自动合并到统一设置。翻译失败时本批次全部回退原文。
 
 ## 机器人可调用工具
 

@@ -711,8 +711,25 @@ class MinecraftPlatformAdapter(Platform):
         server_id: str | None = None,
         *,
         origin: str = "",
+        translation_options: dict[str, Any] | None = None,
     ) -> None:
-        options = await self._chat_translation_options(content, origin)
+        if translation_options is None:
+            options = await self._chat_translation_options(content, origin)
+        else:
+            translations = _normalize_translations(
+                translation_options.get("translations"),
+                self.outbound_max_message_length,
+            )
+            options = (
+                {
+                    "translations": translations,
+                    "show_original": bool(
+                        translation_options.get("show_original", False)
+                    ),
+                }
+                if translations
+                else {}
+            )
         await self.connection_manager.send_chat(
             content, sender_name, server_id, **options
         )

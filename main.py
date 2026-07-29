@@ -6,7 +6,7 @@ import math
 import re
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter
@@ -1326,11 +1326,20 @@ class MineAstrPlugin(Star):
             custom_instructions=str(self._cfg("translation_custom_instructions")),
             cache_scope="game",
         )
+        return self._game_translation_options_from_result(result)
+
+    def _game_translation_options_from_result(
+        self, result: Any
+    ) -> dict[str, Any]:
+        if not self._cfg_bool("game_translation_enabled"):
+            return {}
         source_language, translations = self._translation_result_parts(result)
+        allowed_languages = set(self._game_translation_languages())
         translations = {
             language: text
             for language, text in translations.items()
-            if not self._same_translation_language(source_language, language)
+            if language in allowed_languages
+            and not self._same_translation_language(source_language, language)
         }
         if not translations:
             return {}
@@ -1338,6 +1347,81 @@ class MineAstrPlugin(Star):
             "translations": dict(translations),
             "show_original": self._cfg_bool("game_translation_show_original"),
         }
+
+    @staticmethod
+    def _transform_translation_result(
+        result: Any, transform: Callable[[str], str]
+    ) -> dict[str, Any]:
+        source_language, translations = MineAstrPlugin._translation_result_parts(
+            result
+        )
+        if not source_language and not translations:
+            return {}
+        return {
+            "source_language": source_language,
+            "translations": {
+                language: transform(text)
+                for language, text in translations.items()
+            },
+        }
+
+    def _relay_target_sessions(
+        self, exclude: str = "", source_platform: str = ""
+    ) -> list[str]:
+        return [
+            session
+            for session in sorted(self._relay_sessions)
+            if session != exclude
+            and (
+                not source_platform
+                or self._session_platform_id(session).casefold()
+                != source_platform.casefold()
+            )
+        ]
+
+    def _platform_translation_languages_for_sessions(
+        self, sessions: list[str]
+    ) -> list[str]:
+        languages: list[str] = []
+        for session in sessions:
+            profile = self._platform_notification_profile(
+                self._session_platform_id(session), session
+            )
+            if profile is None or not bool(
+                profile.get("chat_translation_enabled")
+            ):
+                continue
+            for language in self._translation_languages(
+                profile.get("chat_translation_languages")
+            ):
+                if language not in languages:
+                    languages.append(language)
+        return languages
+
+    async def _translate_relay_message(
+        self,
+        content: str,
+        sessions: list[str],
+        origin: str,
+        *,
+        include_game: bool = False,
+    ) -> dict[str, Any]:
+        languages = self._platform_translation_languages_for_sessions(sessions)
+        if include_game and self._cfg_bool("game_translation_enabled"):
+            for language in self._game_translation_languages():
+                if language not in languages:
+                    languages.append(language)
+        if not languages:
+            return {}
+        return await self._translate_text(
+            content,
+            tuple(languages),
+            origin,
+            custom_instructions=str(
+                self._cfg("translation_custom_instructions") or ""
+            ),
+            cache_scope=f"relay-unified:{origin}",
+        )
 
     async def _platform_chat_message(
         self,
@@ -1396,54 +1480,32 @@ class MineAstrPlugin(Star):
         *,
         exclude: str = "",
         source_platform: str = "",
+        sessions: list[str] | None = None,
+        translation_result: dict[str, Any] | None = None,
     ) -> None:
-        sessions = [
-            session
-            for session in sorted(self._relay_sessions)
-            if session != exclude
-            and (
-                not source_platform
-                or self._session_platform_id(session).casefold()
-                != source_platform.casefold()
+        target_sessions = sessions
+        if target_sessions is None:
+            target_sessions = self._relay_target_sessions(
+                exclude, source_platform
             )
-        ]
-        languages: list[str] = []
-        for session in sessions:
-            profile = self._platform_notification_profile(
-                self._session_platform_id(session), session
-            )
-            if profile is None or not bool(
-                profile.get("chat_translation_enabled")
-            ):
-                continue
-            for language in self._translation_languages(
-                profile.get("chat_translation_languages")
-            ):
-                if language not in languages:
-                    languages.append(language)
-
-        translation_result: dict[str, Any] | None = None
-        if languages:
+        result = translation_result
+        if result is None:
             translation_origin = (
                 exclude
                 if source_platform
-                else (sessions[0] if sessions else "")
+                else (target_sessions[0] if target_sessions else "")
             )
-            translation_result = await self._translate_text(
+            result = await self._translate_relay_message(
                 content,
-                tuple(languages),
+                target_sessions,
                 translation_origin,
-                custom_instructions=str(
-                    self._cfg("translation_custom_instructions") or ""
-                ),
-                cache_scope=f"platform-unified:{translation_origin}",
             )
 
-        for session in sessions:
+        for session in target_sessions:
             message = await self._platform_chat_message(
                 session,
                 content,
-                translation_result=translation_result,
+                translation_result=result,
             )
             await self._send_to_relay_session(session, message)
 
@@ -2079,29 +2141,59 @@ class MineAstrPlugin(Star):
             event.stop_event()
             return
         identity = self._identity(event)
-        content = format_template(
-            str(self._cfg("chat_to_game_template")),
-            {
-                "platform": identity["platform_id"],
-                "sender": identity["owner_display"],
-                "user_id": identity["user_id"],
-                "message": filtered,
-            },
+        game_template = str(self._cfg("chat_to_game_template"))
+        game_values = {
+            "platform": identity["platform_id"],
+            "sender": identity["owner_display"],
+            "user_id": identity["user_id"],
+        }
+
+        def game_content(message: str) -> str:
+            return format_template(
+                game_template,
+                {
+                    **game_values,
+                    "message": message,
+                },
+            )
+
+        platform_prefix = (
+            f"[{identity['platform_id']}/{identity['owner_display']}] "
         )
-        await self._send_to_relay_sessions(
-            f"[{identity['platform_id']}/{identity['owner_display']}] {filtered}",
-            exclude=event.unified_msg_origin,
-            source_platform=identity["platform_id"],
+        target_sessions = self._relay_target_sessions(
+            event.unified_msg_origin, identity["platform_id"]
         )
         adapter = self._minecraft_adapter()
-        if adapter is None or not hasattr(adapter, "relay_chat"):
+        has_game_target = adapter is not None and hasattr(adapter, "relay_chat")
+        translation_result = await self._translate_relay_message(
+            filtered,
+            target_sessions,
+            event.unified_msg_origin,
+            include_game=has_game_target,
+        )
+        await self._send_to_relay_sessions(
+            platform_prefix + filtered,
+            sessions=target_sessions,
+            translation_result=self._transform_translation_result(
+                translation_result,
+                lambda translated: platform_prefix + translated,
+            ),
+        )
+        if not has_game_target:
             logger.warning("MineAstr minecraft 平台适配器未启用，无法转发聊天。")
             return
+        content = game_content(filtered)
+        game_translation_result = self._transform_translation_result(
+            translation_result, game_content
+        )
         try:
             await adapter.relay_chat(
                 trim_message(content, self._cfg_int("max_relay_length")),
                 f"{identity['platform_id']}/{identity['owner_display']}",
                 origin=event.unified_msg_origin,
+                translation_options=self._game_translation_options_from_result(
+                    game_translation_result
+                ),
             )
             await self._notify_mentioned_players(event, filtered)
         except Exception as exc:

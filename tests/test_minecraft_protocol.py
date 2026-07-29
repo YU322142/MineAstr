@@ -460,6 +460,35 @@ class AdapterEventTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(websocket.sent[-1]["translations"], {"zh_cn": "回答"})
         self.assertTrue(websocket.sent[-1]["show_original"])
 
+    async def test_precomputed_relay_translation_skips_translation_handler(self):
+        adapter = MinecraftPlatformAdapter({}, {}, None)
+        websocket = FakeWebSocket()
+        await adapter.connection_manager.register(
+            websocket,
+            {"server_id": "trusted", "server_name": "Trusted Server"},
+        )
+        translate_calls = []
+
+        async def translate(content, origin):
+            translate_calls.append((content, origin))
+            return {"translations": {"en_us": "should not run"}}
+
+        adapter.set_chat_translation_handler(translate)
+        await adapter.relay_chat(
+            "你好",
+            "Alice",
+            origin="default:GroupMessage:1",
+            translation_options={
+                "translations": {"en_us": "Hello"},
+                "show_original": True,
+            },
+        )
+
+        self.assertEqual(translate_calls, [])
+        self.assertEqual(websocket.sent[-1]["content"], "你好")
+        self.assertEqual(websocket.sent[-1]["translations"], {"en_us": "Hello"})
+        self.assertTrue(websocket.sent[-1]["show_original"])
+
 
 if __name__ == "__main__":
     unittest.main()
