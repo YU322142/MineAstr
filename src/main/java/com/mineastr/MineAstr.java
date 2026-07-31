@@ -50,7 +50,8 @@ public final class MineAstr implements ModInitializer {
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> BRIDGE.forwardPlayerJoin(handler.player));
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             BRIDGE.forwardPlayerLeave(handler.player);
-            BRIDGE.unregisterClientCapability(handler.player);
+            MineAstrScreenshots.unregisterClient(handler.player);
+            MineAstrChat.unregisterPreference(handler.player);
         });
 
         ServerLivingEntityEvents.AFTER_DEATH.register((entity, damageSource) -> {
@@ -76,7 +77,19 @@ public final class MineAstr implements ModInitializer {
             synchronizer.waitFor(BRIDGE.checkPlayerLogin(playerName)
                     .thenAccept(result -> {
                         if (!result.allowed()) {
-                            handler.disconnect(result.component());
+                            net.minecraft.network.chat.Component disconnectMessage;
+                            if (!result.localizedCode().isEmpty()) {
+                                disconnectMessage = net.minecraft.network.chat.Component.translatableWithFallback(
+                                        "disconnect.mineastr.login.binding_code",
+                                        result.message(),
+                                        result.localizedCode());
+                            } else if (!result.messageKey().isEmpty()) {
+                                disconnectMessage = net.minecraft.network.chat.Component.translatableWithFallback(
+                                        result.messageKey(), result.message());
+                            } else {
+                                disconnectMessage = net.minecraft.network.chat.Component.literal(result.message());
+                            }
+                            handler.disconnect(disconnectMessage);
                         }
                     }));
         });

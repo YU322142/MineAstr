@@ -18,15 +18,15 @@ public final class MineAstrNetwork {
         PayloadTypeRegistry.playS2C().register(MineAstrPayloads.ScreenshotRequest.TYPE, MineAstrPayloads.ScreenshotRequest.CODEC);
 
         ServerPlayNetworking.registerGlobalReceiver(MineAstrPayloads.ClientHello.TYPE, (payload, context) ->
-                context.server().execute(() -> MineAstr.bridge().registerClientCapability(
+                context.server().execute(() -> MineAstrScreenshots.registerClient(
                         context.player(), payload.screenshotSupported(), payload.modVersion())));
         ServerPlayNetworking.registerGlobalReceiver(MineAstrPayloads.TranslationPreferences.TYPE, (payload, context) ->
-                context.server().execute(() -> MineAstr.bridge().registerTranslationPreference(
+                context.server().execute(() -> MineAstrChat.registerPreference(
                         context.player(), payload.translationsEnabled(), payload.showOriginal())));
         ServerPlayNetworking.registerGlobalReceiver(MineAstrPayloads.ScreenshotChunk.TYPE, (payload, context) ->
-                context.server().execute(() -> MineAstr.bridge().receiveScreenshotChunk(context.player(), payload)));
+                context.server().execute(() -> MineAstrScreenshots.receiveChunk(context.player(), payload)));
         ServerPlayNetworking.registerGlobalReceiver(MineAstrPayloads.ScreenshotError.TYPE, (payload, context) ->
-                context.server().execute(() -> MineAstr.bridge().receiveScreenshotError(
+                context.server().execute(() -> MineAstrScreenshots.receiveError(
                         context.player(), payload.code(), payload.message(), payload.requestId())));
     }
 
