@@ -211,7 +211,6 @@ public final class MineAstrScreenshots {
         pendingScreenshots.clear();
         pendingScreenshotByPlayer.clear();
         screenshotAssemblies.clear();
-        clientCapabilities.clear();
     }
 
     private static ScheduledFuture<?> scheduleTimeout(String requestId, ScheduledExecutorService executor) {

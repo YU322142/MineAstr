@@ -78,9 +78,11 @@ public final class MineAstr implements ModInitializer {
                     .thenAccept(result -> {
                         if (!result.allowed()) {
                             net.minecraft.network.chat.Component disconnectMessage;
-                            if (!result.messageKey().isEmpty() && !result.localizedCode().isEmpty()) {
+                            if (!result.localizedCode().isEmpty()) {
                                 disconnectMessage = net.minecraft.network.chat.Component.translatableWithFallback(
-                                        result.messageKey(), result.message(), result.localizedCode());
+                                        "disconnect.mineastr.login.binding_code",
+                                        result.message(),
+                                        result.localizedCode());
                             } else if (!result.messageKey().isEmpty()) {
                                 disconnectMessage = net.minecraft.network.chat.Component.translatableWithFallback(
                                         result.messageKey(), result.message());

@@ -267,7 +267,7 @@ public final class MineAstrWebSocket {
         @Override
         public void onError(WebSocket socket, Throwable error) {
             MineAstr.LOGGER.warn("MineAstr WebSocket 错误：{}", error.getMessage());
-            abortActiveSocket(socket, "WebSocket 错误：" + error.getMessage(), false);
+            abortActiveSocket(socket, "WebSocket 错误：" + error.getMessage(), true);
         }
 
         private void handleIncoming(WebSocket socket, String message) {

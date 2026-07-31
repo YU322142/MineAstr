@@ -38,7 +38,7 @@ public final class MineAstrQueryHandlers {
         server.execute(() -> {
             try {
                 switch (query) {
-                    case "status" -> MineAstrProtocol.sendQueryResult(socket, messageId, query, buildStatusData(server, executor));
+                    case "status" -> MineAstrProtocol.sendQueryResult(socket, messageId, query, buildStatusData(server, MineAstr.bridge().getStartedAtMs()));
                     case "players" -> MineAstrProtocol.sendQueryResult(socket, messageId, query, buildPlayersData(server));
                     case "player_state" -> handlePlayerStateQuery(socket, messageId, payload, server);
                     case "inventory" -> handleInventoryQuery(socket, messageId, payload, server);
@@ -186,7 +186,7 @@ public final class MineAstrQueryHandlers {
         MineAstrProtocol.sendQueryResult(socket, messageId, "notify_player", data);
     }
 
-    private static JsonObject buildStatusData(MinecraftServer server, ScheduledExecutorService executor) {
+    private static JsonObject buildStatusData(MinecraftServer server, long startedAtMs) {
         PlayerList playerList = server.getPlayerList();
         JsonObject data = new JsonObject();
         data.addProperty("server_id", MineAstrConfig.SERVER_ID.get());
@@ -194,6 +194,7 @@ public final class MineAstrQueryHandlers {
         data.addProperty("mod_version", MineAstr.MOD_VERSION);
         data.addProperty("minecraft_version", SharedConstants.getCurrentVersion().name());
         data.addProperty("dedicated", server.isDedicatedServer());
+        data.addProperty("uptime_ms", System.currentTimeMillis() - startedAtMs);
         data.addProperty("player_count", playerList.getPlayerCount());
         data.addProperty("max_players", playerList.getMaxPlayers());
         BlockPos spawn = server.overworld().getRespawnData().pos();

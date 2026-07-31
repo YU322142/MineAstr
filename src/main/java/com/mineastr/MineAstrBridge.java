@@ -21,6 +21,10 @@ public final class MineAstrBridge implements MineAstrWebSocket.MessageHandler {
     private volatile MinecraftServer server;
     private volatile long startedAtMs;
 
+    public long getStartedAtMs() {
+        return startedAtMs;
+    }
+
     public void start(MinecraftServer server) {
         this.server = server;
         this.startedAtMs = System.currentTimeMillis();
