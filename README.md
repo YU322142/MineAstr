@@ -16,17 +16,17 @@ MineAstr 将 Minecraft 1.21.11 Fabric 服务器接入 AstrBot、QQ/OneBot 与 Di
 
 ## 当前版本
 
-- AstrBot 插件：`0.6.13`
+- AstrBot 插件：`0.6.14`
 - MineAstr Fabric Mod：`0.6.11`
 - Minecraft：`1.21.11`
 - Fabric API：`0.141.4+1.21.11`
 
 成品请从 [GitHub Releases](https://github.com/YU322142/MineAstr/releases) 下载：
 
-- `astrbot_plugin_mineastr-v0.6.13.zip`
+- `astrbot_plugin_mineastr-v0.6.14.zip`
 - `mineastr-fabric-0.6.11.jar`
 
-v0.6.13 改进高权限命令审批：管理员发送 `/mc approve` 即可获得带序号的待审批列表，再使用 `/mc approve <序号>` 或 `/mc reject <序号>` 操作；完整审批 ID 仍然兼容。新增 `mineastr_manage_command_approvals` 函数工具，但每次调用都会按当前真实用户重新检查 AstrBot/MineAstr 管理员身份，并且只执行 Mod 保存的原始命令。管理员同步现在会过滤 Mod 不接受的身份格式，并在审批前加入当前管理员的 `用户ID` 与 `平台ID:用户ID`，修复 `invalid_trusted_user` 导致整批同步失败的问题。该更新只需替换 AstrBot 插件，继续兼容 Fabric Mod 0.6.11。
+v0.6.14 修复 Discord 消息编辑未进入 AstrBot 普通消息管线、因而无法同步到 Minecraft 的问题。插件现在直接监听 Pycord 的 `on_message_edit`：仅处理已桥接且允许的 Guild 频道，重新执行过滤与统一翻译，并以带 `[Edited]` 标记的新消息发送到 Minecraft 和其他桥接目标。Minecraft 聊天协议不能覆盖已经显示的历史行，因此旧内容仍会保留。该更新只需替换 AstrBot 插件，继续兼容 Fabric Mod 0.6.11。
 
 ## 连接方式
 
@@ -63,7 +63,7 @@ AstrBot 插件元数据的安装/更新源为本 Fork 的 [`astrbot-plugin`](htt
 
 ## 构建验证
 
-- AstrBot 插件：72 个自动化测试通过，覆盖 fail-closed/常数时间鉴权、配置迁移、AstrBot Schema 类型兼容、QQ/Discord 自动化、游戏与平台共用单次翻译后分发、源语言去重、自定义术语表、命令审批列表与函数工具、管理员身份过滤及实时同步、并发冷却和游戏内翻译协议。
+- AstrBot 插件：73 个自动化测试通过，覆盖 fail-closed/常数时间鉴权、配置迁移、AstrBot Schema 类型兼容、QQ/Discord 自动化及消息编辑同步、游戏与平台共用单次翻译后分发、源语言去重、自定义术语表、命令审批列表与函数工具、管理员身份过滤及实时同步、并发冷却和游戏内翻译协议。
 - Fabric Mod：Gradle `clean build` 通过。
 - 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证 Mixin 加载、离线后端收到正版客户端 UUID 时改用服务端真实离线 UUID、`whitelist_verified=true`，并实际通过原版白名单登录校验；既有解绑、管理员同步、可信命令和正常关服流程保持有效。
 
