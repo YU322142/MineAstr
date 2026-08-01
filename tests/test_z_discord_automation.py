@@ -941,6 +941,15 @@ class FakeMember:
         self.nick = nick
 
 
+class FakeDiscordMessage:
+    def __init__(self, content, author, guild, channel):
+        self.content = content
+        self.clean_content = content
+        self.author = author
+        self.guild = guild
+        self.channel = channel
+
+
 class FakeClient:
     def __init__(self, guilds):
         self.guilds = guilds
@@ -1027,10 +1036,39 @@ class DiscordAutomationTests(unittest.IsolatedAsyncioTestCase):
     async def test_member_remove_listener_attaches_to_astrbot_discord_client(self):
         await self.plugin._attach_discord_listeners_with_retry()
         self.assertIn("on_member_remove", self.adapter.client.listeners)
+        self.assertIn("on_message_edit", self.adapter.client.listeners)
         self.assertIn("discord-main", self.plugin._discord_listener_bindings)
 
         self.plugin._detach_discord_listeners()
         self.assertNotIn("on_member_remove", self.adapter.client.listeners)
+        self.assertNotIn("on_message_edit", self.adapter.client.listeners)
+
+    async def test_message_edit_relays_updated_text_to_minecraft(self):
+        self.plugin._relay_sessions = {"discord-main:GroupMessage:200"}
+        self.plugin._send_to_relay_sessions = AsyncMock()
+        adapter = types.SimpleNamespace(relay_chat=AsyncMock())
+        self.plugin._minecraft_adapter = lambda: adapter
+        author = types.SimpleNamespace(
+            id=42, display_name="Alice", name="alice", bot=False
+        )
+        channel = types.SimpleNamespace(id=200)
+        before = FakeDiscordMessage("old text", author, self.guild, channel)
+        after = FakeDiscordMessage("new text", author, self.guild, channel)
+
+        await self.plugin._attach_discord_listeners_with_retry()
+        await self.adapter.client.listeners["on_message_edit"](before, after)
+
+        adapter.relay_chat.assert_awaited_once_with(
+            "[Edited] new text",
+            "discord-main/Alice",
+            origin="discord-main:GroupMessage:200",
+            translation_options={},
+        )
+        self.plugin._send_to_relay_sessions.assert_awaited_once()
+        self.assertIn(
+            "[discord-main/Alice] [Edited] new text",
+            self.plugin._send_to_relay_sessions.await_args.args,
+        )
 
     async def test_member_leave_unbinds_all_and_syncs_each_record(self):
         await self._bind("Steve")

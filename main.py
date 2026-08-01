@@ -388,7 +388,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.6.13",
+    "0.6.14",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -420,7 +420,9 @@ class MineAstrPlugin(Star):
         self._relay_sessions: set[str] = set()
         self._listener_adapter: Any | None = None
         self._qq_listener_bindings: dict[str, tuple[Any, Any]] = {}
-        self._discord_listener_bindings: dict[str, tuple[Any, Any]] = {}
+        self._discord_listener_bindings: dict[
+            str, tuple[Any, Any | None, Any | None]
+        ] = {}
         self._discord_attach_task: asyncio.Task | None = None
         self._binding_reconcile_tasks: set[asyncio.Task] = set()
         self._command_admin_sync_lock = asyncio.Lock()
@@ -829,7 +831,10 @@ class MineAstrPlugin(Star):
         return adapters
 
     def _schedule_discord_listener_attach(self) -> None:
-        if not self._cfg_bool("discord_auto_unbind_on_leave"):
+        if not (
+            self._cfg_bool("discord_auto_unbind_on_leave")
+            or self._cfg_bool("bridge_enabled")
+        ):
             return
         if self._discord_attach_task is not None and not self._discord_attach_task.done():
             return
@@ -853,34 +858,58 @@ class MineAstrPlugin(Star):
                     if current is not None and current[0] is client:
                         continue
                     if current is not None:
-                        old_client, old_callback = current
-                        try:
-                            old_client.remove_listener(
-                                old_callback, "on_member_remove"
+                        self._remove_discord_listener_binding(current)
+
+                    member_callback: Any | None = None
+                    edit_callback: Any | None = None
+                    if self._cfg_bool("discord_auto_unbind_on_leave"):
+
+                        async def on_member_remove(
+                            member: Any, *, _platform_id: str = platform_id
+                        ) -> None:
+                            await self._on_discord_member_remove(_platform_id, member)
+
+                        client.add_listener(on_member_remove, "on_member_remove")
+                        member_callback = on_member_remove
+
+                    if self._cfg_bool("bridge_enabled"):
+
+                        async def on_message_edit(
+                            before: Any,
+                            after: Any,
+                            *,
+                            _platform_id: str = platform_id,
+                        ) -> None:
+                            await self._on_discord_message_edit(
+                                _platform_id, before, after
                             )
-                        except Exception:
-                            pass
 
-                    async def on_member_remove(
-                        member: Any, *, _platform_id: str = platform_id
-                    ) -> None:
-                        await self._on_discord_member_remove(_platform_id, member)
+                        client.add_listener(on_message_edit, "on_message_edit")
+                        edit_callback = on_message_edit
 
-                    client.add_listener(on_member_remove, "on_member_remove")
                     self._discord_listener_bindings[platform_id] = (
                         client,
-                        on_member_remove,
+                        member_callback,
+                        edit_callback,
                     )
                     logger.info(
-                        "MineAstr 已为 Discord 平台 %s 注册退群自动解绑监听。",
+                        "MineAstr Discord listeners registered: platform=%s events=%s",
                         platform_id,
+                        ", ".join(
+                            event_name
+                            for event_name, callback in (
+                                ("on_member_remove", member_callback),
+                                ("on_message_edit", edit_callback),
+                            )
+                            if callback is not None
+                        ),
                     )
                 if not waiting:
                     return
                 await asyncio.sleep(0.5)
             if self._discord_adapters():
                 logger.warning(
-                    "MineAstr 等待 Discord 客户端初始化超时，退群自动解绑监听尚未注册。"
+                    "MineAstr 等待 Discord 客户端初始化超时，Discord 监听尚未注册。"
                 )
         except asyncio.CancelledError:
             raise
@@ -888,12 +917,23 @@ class MineAstrPlugin(Star):
             logger.warning("MineAstr 注册 Discord 成员监听失败：%s", exc)
 
     def _detach_discord_listeners(self) -> None:
-        for client, callback in self._discord_listener_bindings.values():
+        for binding in self._discord_listener_bindings.values():
+            self._remove_discord_listener_binding(binding)
+        self._discord_listener_bindings.clear()
+
+    @staticmethod
+    def _remove_discord_listener_binding(binding: tuple[Any, ...]) -> None:
+        if not binding:
+            return
+        client = binding[0]
+        event_names = ("on_member_remove", "on_message_edit")
+        for index, callback in enumerate(binding[1:]):
+            if callback is None:
+                continue
             try:
-                client.remove_listener(callback, "on_member_remove")
+                client.remove_listener(callback, event_names[index])
             except Exception:
                 pass
-        self._discord_listener_bindings.clear()
 
     def _discord_guild_allowed(self, guild_id: str) -> bool:
         configured = set(parse_items(self._cfg("discord_guild_ids")))
@@ -1110,6 +1150,133 @@ class MineAstrPlugin(Star):
                 "MineAstr：Discord 退群解绑已写入本地，但有 %d 条 Minecraft 同步失败。",
                 len(failures),
             )
+
+    @staticmethod
+    def _discord_message_text(message: Any) -> str:
+        """Read the text Discord exposes for an edited message."""
+        clean_content = getattr(message, "clean_content", None)
+        content = clean_content if clean_content is not None else getattr(
+            message, "content", ""
+        )
+        return str(content or "").strip()
+
+    @staticmethod
+    def _discord_message_origin(platform_id: str, message: Any) -> str:
+        channel = getattr(message, "channel", None)
+        channel_id = str(getattr(channel, "id", "") or "").strip()
+        if not channel_id:
+            return ""
+        message_type = (
+            "GroupMessage" if getattr(message, "guild", None) else "FriendMessage"
+        )
+        return f"{platform_id}:{message_type}:{channel_id}"
+
+    async def _on_discord_message_edit(
+        self, platform_id: str, before: Any, after: Any
+    ) -> None:
+        """Relay Discord edits as a marked replacement message.
+
+        Minecraft chat packets have no message-edit operation. Sending the new
+        text again, with an explicit marker, is the only lossless behavior for
+        clients that already rendered the old chat line.
+        """
+        if not self._cfg_bool("bridge_enabled"):
+            return
+        author = getattr(after, "author", None)
+        if bool(getattr(author, "bot", False)) and not self._cfg_bool(
+            "relay_bot_conversations_to_game"
+        ):
+            return
+        guild = getattr(after, "guild", None)
+        guild_id = str(getattr(guild, "id", "") or "").strip()
+        if not guild_id or not self._discord_guild_allowed(guild_id):
+            return
+
+        origin = self._discord_message_origin(platform_id, after)
+        if not origin or origin not in self._relay_sessions:
+            return
+        previous_text = self._discord_message_text(before)
+        text = self._discord_message_text(after)
+        if not text or text == previous_text:
+            return
+        if self._is_mineastr_command(text):
+            return
+        if text.startswith("/") and not self._cfg_bool("relay_commands"):
+            return
+
+        prefix = str(self._cfg("relay_prefix"))
+        if prefix:
+            if not text.startswith(prefix):
+                return
+            text = text[len(prefix) :].lstrip()
+        if not text:
+            return
+        filtered = apply_aqqbot_filters(text, self._cfg("chat_to_game_filters"))
+        if filtered is None:
+            return
+
+        sender_id = str(getattr(author, "id", "unknown") or "unknown")
+        sender_name = str(
+            getattr(author, "display_name", None)
+            or getattr(author, "name", None)
+            or sender_id
+        ).strip()
+        target_sessions = self._relay_target_sessions(origin, platform_id)
+        adapter = self._minecraft_adapter()
+        has_game_target = adapter is not None and hasattr(adapter, "relay_chat")
+        translation_result = await self._translate_relay_message(
+            filtered,
+            target_sessions,
+            origin,
+            include_game=has_game_target,
+        )
+
+        edited_prefix = "[Edited] "
+        platform_prefix = f"[{platform_id}/{sender_name}] "
+        await self._send_to_relay_sessions(
+            platform_prefix + edited_prefix + filtered,
+            sessions=target_sessions,
+            translation_result=self._transform_translation_result(
+                translation_result,
+                lambda translated: platform_prefix + edited_prefix + translated,
+            ),
+        )
+        if not has_game_target:
+            logger.warning(
+                "MineAstr Minecraft adapter is unavailable; Discord edit was not sent to game"
+            )
+            return
+
+        game_template = str(self._cfg("chat_to_game_template"))
+        game_values = {
+            "platform": platform_id,
+            "sender": sender_name,
+            "user_id": sender_id,
+        }
+
+        def game_content(message: str) -> str:
+            return format_template(
+                game_template,
+                {**game_values, "message": message},
+            )
+
+        try:
+            await adapter.relay_chat(
+                trim_message(
+                    game_content(edited_prefix + filtered),
+                    self._cfg_int("max_relay_length"),
+                ),
+                f"{platform_id}/{sender_name}",
+                origin=origin,
+                translation_options=self._game_translation_options_from_result(
+                    self._transform_translation_result(
+                        translation_result,
+                        lambda translated: game_content(edited_prefix + translated),
+                    )
+                ),
+            )
+        except Exception as exc:
+            logger.warning("MineAstr failed to relay Discord edit to Minecraft: %s", exc)
 
     @filter.on_platform_loaded()
     async def mineastr_on_platform_loaded(self) -> None:
@@ -2952,12 +3119,17 @@ class MineAstrPlugin(Star):
                 getattr(getattr(client, "intents", None), "members", False)
             )
             guild_count = len(list(getattr(client, "guilds", ()) or ()))
-            listener = platform_id in self._discord_listener_bindings
+            binding = self._discord_listener_bindings.get(platform_id)
+            listener = bool(binding and len(binding) > 1 and binding[1] is not None)
+            edit_listener = bool(
+                binding and len(binding) > 2 and binding[2] is not None
+            )
             lines.append(
                 f"{platform_id}：{'在线' if ready else '未就绪'}，"
                 f"成员 Intent {'已申请' if members_intent else '未申请'}，"
                 f"退群监听 {'已注册' if listener else '未注册'}，"
                 f"可见服务器 {guild_count}"
+                f"，消息编辑同步 {'已注册' if edit_listener else '未注册'}"
             )
         lines.append(
             "注：指令只能确认客户端已申请成员 Intent；Developer Portal 开关需人工确认。"

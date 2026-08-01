@@ -41,7 +41,7 @@ AstrBot 对该会话的文本回复会回传给所有已连接的 Minecraft 服�
 
 ## 安装包兼容性
 
-在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.13.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
+在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.14.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
 
 插件元数据中的安装/更新源固定为 Fork 分支 `https://github.com/YU322142/MineAstr/tree/astrbot-plugin`，不会再让 AstrBot 回到原项目或下载仅用于项目导航的 `main` 分支。
 
@@ -70,6 +70,8 @@ Discord 不需要本插件自行登录 Discord；它复用 AstrBot 官方 Discor
 7. 把 `discord_guild_ids` 填为本服务器 Guild ID（建议生产环境明确填写），执行 `/mc discord_status` 检查成员 Intent、退群监听和服务器可见性。
 
 普通桥接消息会进入 Minecraft，但不会额外触发 LLM。v0.6.9 起默认开启 `relay_bot_conversations_to_game`：QQ/Discord 玩家 `@机器人` 的原消息会进入游戏并继续触发 AstrBot，最终纯文本回复也会进入游戏；工具调用前只有 Reply/At 的空中间消息不会转发。斜杠指令仍由 `relay_commands` 单独控制。
+
+Discord 编辑消息会由 AstrBot 的 Pycord 客户端直接监听。编辑后的正文会按照原桥接会话重新执行过滤、统一翻译并发送到 Minecraft 和其他目标会话，正文前带 `[Edited]` 标记；Minecraft 聊天协议无法修改已经显示的旧消息，因此不会尝试覆盖历史聊天行。机器人自己发送的编辑消息是否同步仍由 `relay_bot_conversations_to_game` 控制。
 
 ### MineAstr 指令
 

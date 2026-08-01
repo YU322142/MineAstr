@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.14
+
+- Discord now listens for `on_message_edit` on the AstrBot Pycord client. Edited messages in bridged guild channels are re-sent to Minecraft and other bridge targets with an `[Edited]` marker, using the same filters and unified translation result as the original relay.
+- Bot-authored edits follow `relay_bot_conversations_to_game`; unrelated guilds, unbridged channels, commands, and unchanged edits are ignored. Listener cleanup now removes both Discord event handlers.
+
 ## 0.6.13
 
 - `/mc approve` 与 `/mc reject` 不带参数时先校验管理员身份并显示带序号的待审批列表；可按序号或完整审批 ID 操作。
