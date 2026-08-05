@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.16
+
+- Synchronize the AstrBot plugin version with the Fabric Mod at `v0.6.16`.
+- Keep targeted sign overlays and normalized duplicate-text handling from the previous release line.
+
 ## 0.6.15
 
 - New release line for targeted Minecraft sign translation overlays and normalized duplicate-text handling.
