@@ -16,17 +16,17 @@ MineAstr 将 Minecraft 1.21.11 Fabric 服务器接入 AstrBot、QQ/OneBot 与 Di
 
 ## 当前版本
 
-- AstrBot 插件：`0.6.16`
-- MineAstr Fabric Mod：`0.6.16`
+- AstrBot 插件：`0.6.17`
+- MineAstr Fabric Mod：`0.6.17`
 - Minecraft：`1.21.11`
 - Fabric API：`0.141.4+1.21.11`
 
 成品请从 [GitHub Releases](https://github.com/YU322142/MineAstr/releases) 下载：
 
-- `astrbot_plugin_mineastr-v0.6.16.zip`
-  - `mineastr-fabric-0.6.16.jar`
+- `astrbot_plugin_mineastr-v0.6.17.zip`
+  - `mineastr-fabric-0.6.17.jar`
 
-v0.6.16 是两端同步的新版本线，AstrBot 插件和 Fabric Mod 使用同一个版本号，包含 Discord 消息编辑同步、QQ/Discord 同文去重，以及准星目标式告示牌世界浮选翻译。旧版 v0.6.15 / 0.6.12 保留不变。
+v0.6.17 是两端同步的新版本线，AstrBot 插件和 Fabric Mod 使用同一个版本号，包含可选频道路由、双向图片转发、可配置翻译上下文、用户名净化、引用/编辑/撤回同步，以及同文去重和准星目标式告示牌世界浮选翻译。旧版 v0.6.16 保留不变。
 
 当前翻译更新还包含两项行为：QQ/Discord 会先比较规范化后的原文与译文，AI 返回同文时只发送原文，不添加语言或 `[原文/Original]` 标签；Fabric 客户端只在准星指向告示牌时，在牌子旁显示世界空间译文浮选，不会进入服务器时批量刷聊天，翻译缓存继续保存在世界存档中。
 
