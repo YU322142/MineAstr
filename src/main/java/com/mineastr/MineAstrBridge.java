@@ -762,6 +762,25 @@ public final class MineAstrBridge implements WebSocket.Listener {
         if (senderName.isEmpty()) {
             senderName = trimFlatContent(MineAstrConfig.BOT_DISPLAY_NAME.get(), MAX_BROADCAST_SENDER_LENGTH);
         }
+        if (payload.has("media") && payload.get("media").isJsonArray()) {
+            StringBuilder mediaSuffix = new StringBuilder(content);
+            int count = 0;
+            for (JsonElement item : payload.getAsJsonArray("media")) {
+                if (count++ >= 8 || !item.isJsonObject()) {
+                    break;
+                }
+                JsonObject media = item.getAsJsonObject();
+                String mediaType = trimFlatContent(getString(media, "type", "image"), 16);
+                String mediaUrl = trimFlatContent(getString(media, "url", ""), 1024);
+                String marker = "[图片] " + mediaUrl;
+                if (!mediaUrl.isBlank()
+                        && "image".equalsIgnoreCase(mediaType)
+                        && !mediaSuffix.toString().contains(marker)) {
+                    mediaSuffix.append("\n[图片] ").append(mediaUrl);
+                }
+            }
+            content = trimFlatContent(mediaSuffix.toString(), MAX_BROADCAST_CONTENT_LENGTH);
+        }
         if (content.isBlank()) {
             return;
         }
@@ -785,13 +804,14 @@ public final class MineAstrBridge implements WebSocket.Listener {
         }
         boolean defaultShowOriginal = getBoolean(payload, "show_original", false);
         String finalSenderName = senderName;
+        String finalContent = content;
         currentServer.execute(() -> {
-            MineAstr.LOGGER.info("[{}] {}", finalSenderName, content);
+            MineAstr.LOGGER.info("[{}] {}", finalSenderName, finalContent);
             for (ServerPlayer player : currentServer.getPlayerList().getPlayers()) {
                 player.sendSystemMessage(renderTranslatedChat(
                         player,
                         finalSenderName,
-                        content,
+                        finalContent,
                         translations,
                         defaultShowOriginal));
             }

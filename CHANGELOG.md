@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.17
+
+- Added optional chat media forwarding from AstrBot to Minecraft and preserved image URLs in the in-game relay.
+- Synchronized the Fabric Mod with MineAstr plugin `v0.6.17`.
+
 ## 0.6.16
 
 - Synchronize the Fabric Mod version with the AstrBot plugin at `v0.6.16`.
