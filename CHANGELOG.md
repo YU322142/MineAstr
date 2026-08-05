@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.15
+
+- New release line for targeted Minecraft sign translation overlays and normalized duplicate-text handling.
+- QQ/Discord AI responses that repeat the source are emitted as the original text without locale or `[原文/Original]` labels.
+- Minecraft clients query and display only the sign under the crosshair; translations remain cached in the world save.
+
 ## 0.6.14
 
 - Discord now listens for `on_message_edit` on the AstrBot Pycord client. Edited messages in bridged guild channels are re-sent to Minecraft and other bridge targets with an `[Edited]` marker, using the same filters and unified translation result as the original relay.

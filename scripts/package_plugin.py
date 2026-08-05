@@ -76,7 +76,7 @@ def main() -> None:
         "output",
         nargs="?",
         type=Path,
-        default=Path("dist") / "astrbot_plugin_mineastr-v0.6.14.zip",
+        default=Path("dist") / "astrbot_plugin_mineastr-v0.6.15.zip",
     )
     args = parser.parse_args()
     repo_root = Path(__file__).resolve().parents[1]

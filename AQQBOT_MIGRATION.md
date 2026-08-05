@@ -6,7 +6,7 @@ MineAstr 的实现边界与 AQQBot 不同：AQQBot 是直接运行在 Bukkit/Fab
 
 ## 功能对照
 
-| AQQBot 功能 | MineAstr v0.6.11 | 说明 |
+| AQQBot 功能 | MineAstr v0.6.12 | 说明 |
 | --- | --- | --- |
 | QQ 与游戏双向聊天 | 已实现并扩展 | `relay_sessions` 支持 QQ、Discord 及其他能主动发消息的 AstrBot 平台，可桥接多个会话。 |
 | 最大转发长度 | 已实现 | `max_relay_length`，同时受平台和 Minecraft 适配器自身上限约束。 |
@@ -58,7 +58,7 @@ MineAstr 的实现边界与 AQQBot 不同：AQQBot 是直接运行在 Bukkit/Fab
 
 ## Minecraft Mod 实现状态
 
-配套 `mineastr-fabric-0.6.11.jar` 已在 Minecraft 1.21.11、Fabric API `0.141.4+1.21.11` 上实现 `performance`、`notify_player`、`binding`、重连对账、管理员实时同步、命令二次审批、玩家事件、验证码和异步登录检查。验证码绑定采用服务端认证的纯登录玩家名，不再套用 GROUP_NAME 手填正则，也不会混入登录连接的 IP/端口；白名单同步会按服务器认证模式解析 UUID、清理同名冲突项，并在原版登录校验前按真实身份二次对账。高权限命令工具默认保持关闭，需要按 README 开启。
+配套 `mineastr-fabric-0.6.12.jar` 已在 Minecraft 1.21.11、Fabric API `0.141.4+1.21.11` 上实现 `performance`、`notify_player`、`binding`、重连对账、管理员实时同步、命令二次审批、玩家事件、验证码和异步登录检查。验证码绑定采用服务端认证的纯登录玩家名，不再套用 GROUP_NAME 手填正则，也不会混入登录连接的 IP/端口；白名单同步会按服务器认证模式解析 UUID、清理同名冲突项，并在原版登录校验前按真实身份二次对账。高权限命令工具默认保持关闭，需要按 README 开启。
 
 ## 数据迁移
 
