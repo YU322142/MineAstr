@@ -41,7 +41,7 @@ AstrBot 对该会话的文本回复会回传给所有已连接的 Minecraft 服�
 
 ## 安装包兼容性
 
-在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.16.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
+在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.17.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
 
 插件元数据中的安装/更新源固定为 Fork 分支 `https://github.com/YU322142/MineAstr/tree/astrbot-plugin`，不会再让 AstrBot 回到原项目或下载仅用于项目导航的 `main` 分支。
 
@@ -56,6 +56,17 @@ QQ 复用 AstrBot 的 `aiocqhttp` 平台适配器，不需要 MineAstr 再登录
 3. 建议明确填写 `qq_group_ids`；留空会把该 QQ 实例收到的所有群退群事件都视为自动解绑来源。
 4. `qq_auto_unbind_on_leave` 与 `qq_auto_group_card` 默认开启；群名片修改要求机器人是群管理员或群主。
 5. 成功绑定提示必须显示真实玩家名；若显示六位数字，说明仍在 `GROUP_NAME` 模式。
+
+### 可选的频道同步范围
+
+`bridge_settings.relay_sessions` 先列出允许参与桥接的会话；如果还需要限制“哪两个频道互通”，可配置 `bridge_settings.relay_routes`，每行一条：
+
+```text
+discord:GroupMessage:10001 <-> discord:GroupMessage:10002
+discord:GroupMessage:10001 => default:GroupMessage:20001
+```
+
+`<->` 是双向，`=>` 是单向。留空时保持所有已加入桥接会话互通。Discord 频道、QQ 群和 Minecraft 会话都使用 unified message origin。
 
 ## Discord 支持
 
@@ -171,6 +182,7 @@ pip install -r requirements.txt
 | --- | --- | --- |
 | `bridge_enabled` | `true` | 启用跨平台群服互联。 |
 | `relay_sessions` | 空 | 每行一个 AstrBot unified message origin；推荐通过 `/mc bridge_add` 维护。 |
+| `relay_routes` | 空 | 可选频道路由：`channelA <-> channelB` 为双向，`source => target1,target2` 为单向。 |
 | `relay_prefix` | 空 | 非空时，只有以前缀开头的聊天平台消息才进入游戏。 |
 | `chat_to_game_template` | `{message}` | 聊天平台到游戏的正文模板；发送者标签由适配器另外携带。 |
 | `game_to_chat_template` | `[MC/{server}] {player}: {message}` | Minecraft 到 QQ/Discord 的模板。 |
@@ -182,6 +194,7 @@ pip install -r requirements.txt
 | `translation_custom_instructions` | 空 | 统一翻译提示词/术语表；游戏内及所有 QQ/Discord 接收会话共同使用，同一条源消息合计只调用一次模型。 |
 | `relay_bot_conversations_to_game` | `true` | 把桥接会话中玩家 @机器人的消息及 AstrBot 最终纯文本回复同步到 MC。 |
 | `game_translation_timeout_seconds` | `20` | 翻译超时；超时直接发送原文，不阻塞后续聊天。 |
+| `translation_context_messages` | `0` | 提供给 AstrBot 翻译模型的最近上下文条数，范围 0-20；只翻译当前消息正文。 |
 | `binding_enabled` | `true` | 启用跨平台账号绑定。 |
 | `binding_database` | `data/mineastr/bindings.sqlite3` | SQLite 绑定数据库；修改后重载插件。 |
 | `verify_method` | `GROUP_NAME` | `VERIFY_CODE` 需要新版 Mod 上报验证码。 |
@@ -267,7 +280,7 @@ pip install -r requirements.txt
 - 截图功能需要目标玩家安装客户端 Mod；只安装服务端 Mod 时基础聊天和查询可用，但截图不可用。
 - 命令工具的最终权限完全由 Minecraft Mod 的 `mineastr-common.json` 决定。默认 `enableCommandTool = false`。`allowedCommandRules` 是任何人可用的公开命令列表，不要把管理命令或单独的 `"*"` 放进去；白名单外命令由 `/mc approve` 审批。
 - AQQBot 兼容层的账号数据库在 AstrBot 侧；如果同时运行原 AQQBot，两套绑定数据不会自动合并，也不应同时负责登录白名单。
-- Fabric 0.6.16 Mod 支持 `performance`、玩家通知、验证码、登录拦截、按真实身份对账的白名单同步、管理员实时同步，以及公开命令白名单与白名单外指令二次审批；更老的 Mod 不支持完整审批扩展。
+- Fabric 0.6.17 Mod 支持 `performance`、玩家通知、验证码、登录拦截、按真实身份对账的白名单同步、管理员实时同步，以及公开命令白名单与白名单外指令二次审批；更老的 Mod 不支持完整审批扩展。
 - 本插件不会获取 `$url` 远程过滤词库，避免让聊天消息触发服务端任意 URL 请求；请把词库转换为本地 `$filter` / `$regex` 规则。
 - Discord 自动化直接挂接 AstrBot 官方 Pycord 客户端。管理员权限仍受 Discord 角色层级限制；多服务器部署应填写 `discord_guild_ids`，否则离开任一可见服务器都会触发该 Discord 平台账号的全局解绑。
 

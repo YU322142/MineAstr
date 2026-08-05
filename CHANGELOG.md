@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.17
+
+- Added configurable translation context history (`translation_context_messages`, 0-20).
+- Added bidirectional image relay, selectable channel routes, username-only relay prefixes, and recall/edit fallback synchronization.
+
 ## 0.6.16
 
 - Synchronize the AstrBot plugin version with the Fabric Mod at `v0.6.16`.

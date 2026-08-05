@@ -1,5 +1,6 @@
 import asyncio
 import importlib.util
+import json
 import sys
 import tempfile
 import types
@@ -464,7 +465,7 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
 
         plugin._send_to_relay_session.assert_awaited_once_with(
             "discord:GroupMessage:20002",
-            "[en_us] Hello\n[ja_jp] こんにちは\n"
+            "Hello\nこんにちは\n"
             "[原文/Original] [default/Alice] 你好",
         )
         custom_rules = plugin._translate_text.await_args.kwargs[
@@ -571,8 +572,8 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
         )
         plugin._send_to_relay_session.assert_has_awaits(
             [
-                call("discord:GroupMessage:20002", "[en_us] Hello"),
-                call("discord:GroupMessage:20003", "[ja_jp] こんにちは"),
+                call("discord:GroupMessage:20002", "Hello"),
+                call("discord:GroupMessage:20003", "こんにちは"),
             ]
         )
 
@@ -647,11 +648,11 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
         )
         plugin._send_to_relay_session.assert_awaited_once_with(
             "discord:GroupMessage:20002",
-            "[en_us] [default/Alice] Hello",
+            "[Alice] Hello",
         )
         adapter.relay_chat.assert_awaited_once_with(
             "[default] 你好",
-            "default/Alice",
+            "Alice",
             origin="default:GroupMessage:10001",
             translation_options={
                 "translations": {"ja_jp": "[default] こんにちは"},
@@ -700,7 +701,7 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(adapter.relay_chat.await_count, 2)
         self.assertEqual(
             adapter.relay_chat.await_args_list[0].args[:2],
-            ("现在有几个人？", "default/Alice"),
+            ("现在有几个人？", "Alice"),
         )
         self.assertEqual(
             adapter.relay_chat.await_args_list[1].args[:2],
@@ -1093,13 +1094,13 @@ class DiscordAutomationTests(unittest.IsolatedAsyncioTestCase):
 
         adapter.relay_chat.assert_awaited_once_with(
             "[Edited] new text",
-            "discord-main/Alice",
+            "Alice",
             origin="discord-main:GroupMessage:200",
             translation_options={},
         )
         self.plugin._send_to_relay_sessions.assert_awaited_once()
         self.assertIn(
-            "[discord-main/Alice] [Edited] new text",
+            "[Alice] [Edited] new text",
             self.plugin._send_to_relay_sessions.await_args.args,
         )
 
@@ -1133,6 +1134,82 @@ class DiscordAutomationTests(unittest.IsolatedAsyncioTestCase):
         ]
         self.assertEqual(
             self.plugin._discord_nickname(records), "FirstPlayer, SecondPlayer"
+        )
+
+
+class RelayScopeAndContextTests(unittest.IsolatedAsyncioTestCase):
+    def test_relay_routes_limit_delivery_to_selected_channels(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "bridge_settings": {
+                "relay_routes": (
+                    "discord:GroupMessage:10001 <-> "
+                    "discord:GroupMessage:10002\n"
+                    "discord:GroupMessage:10002 => "
+                    "default:GroupMessage:20001"
+                )
+            }
+        }
+        plugin._relay_sessions = {
+            "discord:GroupMessage:10001",
+            "discord:GroupMessage:10002",
+            "default:GroupMessage:20001",
+            "default:GroupMessage:20002",
+        }
+
+        self.assertEqual(
+            plugin._relay_target_sessions("discord:GroupMessage:10001"),
+            ["discord:GroupMessage:10002"],
+        )
+        self.assertEqual(
+            plugin._relay_target_sessions("discord:GroupMessage:10002"),
+            ["default:GroupMessage:20001", "discord:GroupMessage:10001"],
+        )
+        self.assertEqual(
+            plugin._relay_target_sessions("default:GroupMessage:20002"),
+            [],
+        )
+
+    async def test_translation_context_is_sent_to_astrbot_provider(self):
+        class Provider:
+            def __init__(self):
+                self.calls = []
+
+            async def text_chat(self, **kwargs):
+                self.calls.append(kwargs)
+                return types.SimpleNamespace(
+                    completion_text=(
+                        '{"source_language":"zh_cn",'
+                        '"translations":{"en_us":"translated"}}'
+                    )
+                )
+
+        provider = Provider()
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "bridge_settings": {
+                "game_translation_enabled": True,
+                "game_translation_languages": "en_us",
+                "game_translation_timeout_seconds": 5,
+                "translation_context_messages": 2,
+                "max_relay_length": 500,
+            }
+        }
+        plugin.context = types.SimpleNamespace(
+            get_using_provider=lambda origin: provider,
+            get_provider_by_id=lambda provider_id: None,
+        )
+        plugin._game_translation_cache = {}
+
+        await plugin._translate_game_message("第一句", "minecraft:GroupMessage:1")
+        await plugin._translate_game_message("第二句", "minecraft:GroupMessage:1")
+
+        self.assertEqual(len(provider.calls), 2)
+        payload = json.loads(provider.calls[1]["prompt"])
+        self.assertEqual(payload["text"], "第二句")
+        self.assertEqual(
+            payload["context"],
+            [{"speaker": "", "text": "第一句"}],
         )
 
 

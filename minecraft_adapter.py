@@ -290,6 +290,7 @@ class MinecraftConnectionManager:
         *,
         translations: dict[str, str] | None = None,
         show_original: bool = False,
+        media: list[dict[str, str]] | None = None,
     ) -> None:
         content = _trim_outbound_content(content, self._outbound_max_message_length)
         if not content:
@@ -306,6 +307,17 @@ class MinecraftConnectionManager:
         if localized:
             payload["translations"] = localized
             payload["show_original"] = bool(show_original)
+        normalized_media = [
+            {
+                "type": str(item.get("type") or "image"),
+                "url": str(item.get("url") or "").strip(),
+                "name": str(item.get("name") or "image").strip() or "image",
+            }
+            for item in (media or ())
+            if isinstance(item, dict) and str(item.get("url") or "").strip()
+        ][:8]
+        if normalized_media:
+            payload["media"] = normalized_media
         if server_id:
             ws, _ = await self._select_connection(server_id)
             await ws.send_str(json.dumps(payload, ensure_ascii=False))
@@ -725,6 +737,7 @@ class MinecraftPlatformAdapter(Platform):
         *,
         origin: str = "",
         translation_options: dict[str, Any] | None = None,
+        media: list[dict[str, str]] | None = None,
     ) -> None:
         if translation_options is None:
             options = await self._chat_translation_options(content, origin)
@@ -744,7 +757,7 @@ class MinecraftPlatformAdapter(Platform):
                 else {}
             )
         await self.connection_manager.send_chat(
-            content, sender_name, server_id, **options
+            content, sender_name, server_id, media=media, **options
         )
 
     async def query_status(self, server_id: str | None = None) -> dict[str, Any]:

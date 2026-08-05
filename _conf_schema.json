@@ -18,6 +18,12 @@
         "obvious_hint": true,
         "default": ""
       },
+      "relay_routes": {
+        "description": "妗ユ帴璺敱闄愬埗",
+        "type": "text",
+        "hint": "姣忚涓€鏉¤矾鐢憋細channelA <-> channelB锛屾垨 source => target1,target2锛涚暀绌轰负鎵€鏈夋潯鐩叏灏忓苟杩炴帴銆?",
+        "default": ""
+      },
       "relay_prefix": {
         "description": "聊天平台转游戏前缀",
         "type": "string",
@@ -103,6 +109,12 @@
         "type": "int",
         "hint": "超时后不阻塞聊天，直接发送原文。允许 1–60 秒。",
         "default": 20
+      },
+      "translation_context_messages": {
+        "description": "缈昏瘧鎼哄甫鐨勮繎鏈熻澧冩秷鎭暟",
+        "type": "int",
+        "hint": "0 琛ㄧず涓嶆惌甯︿笂涓嬫枃锛屾渶澶?20 鏉★紱涓婁笅鏂囧彧鐢ㄤ簬甯姪 AI 鐞嗚В褰撳墠娑堟伅锛屼笉浼氳缈昏瘧銆?",
+        "default": 0
       },
       "translation_custom_instructions": {
         "description": "统一翻译提示词 / 术语表",
