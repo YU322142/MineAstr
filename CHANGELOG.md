@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.12
+
+- New release line for targeted sign translation overlays and normalized duplicate-text handling.
+- The original sign remains unchanged; only the sign under the crosshair can show a world-space translation overlay.
+- Sign translations remain fingerprinted and persisted in the Minecraft world save.
+
 ## 0.6.11
 
 - `allowedCommandRules` 改为公开命令白名单：命中规则的指令任何真实聊天请求者都可立即执行。

@@ -6,9 +6,9 @@ MineAstr 是同一仓库中 AstrBot MineAstr 插件的 Minecraft 端，已适配
 - Fabric Loader `0.19.3`（最低 `0.18.1`）
 - Fabric API `0.141.4+1.21.11`
 - Java `21`
-- MineAstr `0.6.11`
+- MineAstr `0.6.12`
 
-同一个 `mineastr-fabric-0.6.11.jar` 可以放在独立服务端、客户端或两端。服务端只安装 Mod 即可使用聊天、事件、绑定、登录检查及查询；截图功能要求目标玩家客户端也安装该 JAR。
+同一个 `mineastr-fabric-0.6.12.jar` 可以放在独立服务端、客户端或两端。服务端只安装 Mod 即可使用聊天、事件、绑定、登录检查及查询；截图功能要求目标玩家客户端也安装该 JAR。
 
 ## 功能
 
@@ -31,13 +31,13 @@ MineAstr 是同一仓库中 AstrBot MineAstr 插件的 Minecraft 端，已适配
 .\gradlew.bat clean build
 ```
 
-产物位于 `build/libs/mineastr-fabric-0.6.11.jar`。
+产物位于 `build/libs/mineastr-fabric-0.6.12.jar`。
 
 ## 安装
 
 1. 为 Minecraft 1.21.11 安装 Fabric Loader。
 2. 把 `fabric-api-0.141.4+1.21.11.jar` 放入 `mods`。
-3. 把 `mineastr-fabric-0.6.11.jar` 放入 `mods`。
+3. 把 `mineastr-fabric-0.6.12.jar` 放入 `mods`。
 4. 启动一次，生成 `config/mineastr-common.json`。
 5. 把配置中的 `token` 改成与 AstrBot `minecraft` 平台适配器完全相同的随机字符串，然后重启。
 
