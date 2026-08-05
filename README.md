@@ -26,7 +26,9 @@ MineAstr 将 Minecraft 1.21.11 Fabric 服务器接入 AstrBot、QQ/OneBot 与 Di
 - `astrbot_plugin_mineastr-v0.6.14.zip`
 - `mineastr-fabric-0.6.11.jar`
 
-v0.6.14 修复 Discord 消息编辑未进入 AstrBot 普通消息管线、因而无法同步到 Minecraft 的问题。插件现在直接监听 Pycord 的 `on_message_edit`：仅处理已桥接且允许的 Guild 频道，重新执行过滤与统一翻译，并以带 `[Edited]` 标记的新消息发送到 Minecraft 和其他桥接目标。Minecraft 聊天协议不能覆盖已经显示的历史行，因此旧内容仍会保留。该更新只需替换 AstrBot 插件，继续兼容 Fabric Mod 0.6.11。
+v0.6.14 修复 Discord 消息编辑未进入 AstrBot 普通消息管线、因而无法同步到 Minecraft 的问题。插件现在直接监听 Pycord 的 `on_message_edit`：仅处理已桥接且允许的 Guild 频道，重新执行过滤与统一翻译，并以带 `[Edited]` 标记的新消息发送到 Minecraft 和其他桥接目标。Minecraft 聊天协议不能覆盖已经显示的历史行，因此旧内容仍会保留。
+
+当前翻译更新还包含两项行为：QQ/Discord 会先比较规范化后的原文与译文，AI 返回同文时只发送原文，不添加语言或 `[原文/Original]` 标签；Fabric 客户端只在准星指向告示牌时，在牌子旁显示世界空间译文浮选，不会进入服务器时批量刷聊天，翻译缓存继续保存在世界存档中。
 
 ## 连接方式
 
