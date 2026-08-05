@@ -7,14 +7,18 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import java.lang.management.ManagementFactory;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HexFormat;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
@@ -51,6 +55,9 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
+import net.minecraft.world.level.storage.LevelResource;
 
 public final class MineAstrBridge implements WebSocket.Listener {
     private static final Gson GSON = new Gson();
@@ -78,6 +85,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
     private final ConcurrentMap<String, ScreenshotAssembly> screenshotAssemblies = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, PendingLoginCheck> pendingLoginChecks = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, PendingCommandApproval> pendingCommandApprovals = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, PendingSignTranslation> pendingSignTranslations = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, SyncedBinding> syncedBindings = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, NameAndId> observedLoginIdentities = new ConcurrentHashMap<>();
     private final Set<String> syncedTrustedCommandUsers = ConcurrentHashMap.newKeySet();
@@ -88,9 +96,12 @@ public final class MineAstrBridge implements WebSocket.Listener {
     private volatile ScheduledFuture<?> reconnectTask;
     private volatile boolean stopping;
     private volatile long startedAtMs;
+    private volatile SignTranslationStore signTranslationStore = new SignTranslationStore();
 
     public void start(MinecraftServer server) {
         this.server = server;
+        signTranslationStore = new SignTranslationStore();
+        signTranslationStore.load(server.getWorldPath(LevelResource.ROOT));
         this.stopping = false;
         this.startedAtMs = System.currentTimeMillis();
         ensureReconnectExecutor();
@@ -109,6 +120,8 @@ public final class MineAstrBridge implements WebSocket.Listener {
         clearScreenshotState("Minecraft 服务器正在停止。");
         clearPendingLoginChecks("Minecraft 服务器正在停止。");
         pendingCommandApprovals.clear();
+        pendingSignTranslations.clear();
+        signTranslationStore.save();
         translationPreferences.clear();
         observedLoginIdentities.clear();
         syncedTrustedCommandUsers.clear();
@@ -314,6 +327,177 @@ public final class MineAstrBridge implements WebSocket.Listener {
                 showOriginal);
     }
 
+    public void handleSignTranslationQuery(
+            ServerPlayer player,
+            MineAstrPayloads.SignTranslationQuery query) {
+        if (player == null || query == null) {
+            return;
+        }
+        ServerLevel level = player.level();
+        BlockEntity entity = level.getBlockEntity(query.pos());
+        if (!(entity instanceof SignBlockEntity sign)) {
+            return;
+        }
+        requestSignTranslation(player, sign, query.front(), true);
+    }
+
+    public void translateSign(ServerPlayer player, SignBlockEntity sign, boolean front) {
+        if (player == null || sign == null) {
+            return;
+        }
+        // A current MineAstr client displays the translation as a targeted
+        // world overlay. Keep the old system-message behavior for clients
+        // that do not advertise the client capability.
+        if (clientCapabilities.containsKey(player.getUUID())) {
+            return;
+        }
+        requestSignTranslation(player, sign, front, false);
+    }
+
+    private void requestSignTranslation(
+            ServerPlayer player,
+            SignBlockEntity sign,
+            boolean front,
+            boolean clientOverlay) {
+        if (!(sign.getLevel() instanceof ServerLevel level)) {
+            return;
+        }
+        String source = signSource(sign, front);
+        if (source.isBlank()) {
+            return;
+        }
+        String signId = signId(level, sign.getBlockPos(), front);
+        String fingerprint = sha256(source);
+        var cached = signTranslationStore.find(signId, fingerprint);
+        if (cached.isPresent()) {
+            if (clientOverlay) {
+                sendSignTranslationResult(
+                        player,
+                        sign.getBlockPos(),
+                        front,
+                        fingerprint,
+                        cached.get().translations(),
+                        cached.get().showOriginal(),
+                        true);
+            } else {
+                sendTranslatedSign(player, source, cached.get().translations(), cached.get().showOriginal());
+            }
+            return;
+        }
+
+        WebSocket socket = webSocket.get();
+        if (socket == null || socket.isOutputClosed()) {
+            if (clientOverlay) {
+                sendSignTranslationResult(
+                        player, sign.getBlockPos(), front, fingerprint, Map.of(), false, false);
+            } else {
+                sendTranslatedSign(player, source, Map.of(), false);
+            }
+            return;
+        }
+        String messageId = UUID.randomUUID().toString();
+        PendingSignTranslation pending = new PendingSignTranslation(
+                socket,
+                messageId,
+                player.getUUID(),
+                sign.getBlockPos(),
+                front,
+                signId,
+                fingerprint,
+                source,
+                clientOverlay);
+        if (pendingSignTranslations.putIfAbsent(messageId, pending) != null) {
+            return;
+        }
+        JsonObject payload = new JsonObject();
+        payload.addProperty("type", "sign_translate_request");
+        payload.addProperty("message_id", messageId);
+        payload.addProperty("sign_id", signId);
+        payload.addProperty("source_fingerprint", fingerprint);
+        payload.addProperty("text", source);
+        sendJson(socket, payload);
+    }
+
+    private void sendSignTranslationResult(
+            ServerPlayer player,
+            BlockPos pos,
+            boolean front,
+            String fingerprint,
+            Map<String, String> translations,
+            boolean showOriginal,
+            boolean ok) {
+        MineAstrNetwork.sendSignTranslationResult(
+                player,
+                new MineAstrPayloads.SignTranslationResult(
+                        pos,
+                        front,
+                        fingerprint,
+                        translations == null ? Map.of() : Map.copyOf(translations),
+                        showOriginal,
+                        ok));
+    }
+
+    private void sendTranslatedSign(
+            ServerPlayer player,
+            String original,
+            Map<String, String> translations,
+            boolean defaultShowOriginal) {
+        TranslationPreference preference = translationPreferences.get(player.getUUID());
+        if (preference != null && !preference.translationsEnabled) {
+            player.sendSystemMessage(Component.literal(signLabel(player) + original));
+            return;
+        }
+        String language = player.clientInformation().language().strip()
+                .replace('-', '_').toLowerCase(Locale.ROOT);
+        String translated = selectTranslation(translations, language);
+        if (translated.isBlank() || sameSignText(original, translated)) {
+            player.sendSystemMessage(Component.literal(signLabel(player) + original));
+            return;
+        }
+        var component = Component.literal(signLabel(player) + translated);
+        boolean showOriginal = preference == null ? defaultShowOriginal : preference.showOriginal;
+        if (showOriginal) {
+            String fallback = language.startsWith("zh_") ? "[原文] " : "[Original] ";
+            component.append("\n");
+            component.append(Component.literal(fallback + original));
+        }
+        player.sendSystemMessage(component);
+    }
+
+    private static String signLabel(ServerPlayer player) {
+        String language = player.clientInformation().language().strip()
+                .replace('-', '_').toLowerCase(Locale.ROOT);
+        return language.startsWith("zh_") ? "[告示牌] " : "[Sign] ";
+    }
+
+    private static String signSource(SignBlockEntity sign, boolean front) {
+        Component[] messages = sign.getText(front).getMessages(false);
+        StringBuilder builder = new StringBuilder();
+        for (int index = 0; index < messages.length; index++) {
+            if (index > 0) {
+                builder.append('\n');
+            }
+            String line = messages[index] == null ? "" : messages[index].getString();
+            builder.append(line.replace('\r', ' ').replace('\u0000', ' '));
+        }
+        return builder.toString().strip();
+    }
+
+    private static String signId(ServerLevel level, BlockPos pos, boolean front) {
+        return level.dimension().identifier() + "/"
+                + pos.getX() + "," + pos.getY() + "," + pos.getZ() + "/"
+                + (front ? "front" : "back");
+    }
+
+    private static String sha256(String value) {
+        try {
+            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException exc) {
+            throw new IllegalStateException("SHA-256 不可用", exc);
+        }
+    }
+
     private void connectNow() {
         if (server == null || stopping || !MineAstrConfig.ENABLED.getAsBoolean() || isConnected() || !connecting.compareAndSet(false, true)) {
             return;
@@ -485,6 +669,8 @@ public final class MineAstrBridge implements WebSocket.Listener {
         String type = getString(payload, "type", "");
         if ("chat".equals(type)) {
             handleChat(payload);
+        } else if ("sign_translate_result".equals(type)) {
+            handleSignTranslationResult(socket, payload);
         } else if ("query".equals(type)) {
             handleQuery(socket, payload);
         } else if ("event_result".equals(type)) {
@@ -612,6 +798,75 @@ public final class MineAstrBridge implements WebSocket.Listener {
         });
     }
 
+    private void handleSignTranslationResult(WebSocket socket, JsonObject payload) {
+        String messageId = trimFlatContent(getString(payload, "message_id", ""), 64);
+        PendingSignTranslation pending = pendingSignTranslations.get(messageId);
+        if (pending == null || pending.socket != socket) {
+            MineAstr.LOGGER.warn("MineAstr 忽略未知或来源不匹配的告示牌翻译响应：{}", messageId);
+            return;
+        }
+        if (!pendingSignTranslations.remove(messageId, pending)) {
+            MineAstr.LOGGER.debug("MineAstr 已忽略重复的告示牌翻译响应：{}", messageId);
+            return;
+        }
+        MinecraftServer currentServer = server;
+        if (currentServer == null) {
+            return;
+        }
+        boolean ok = getBoolean(payload, "ok", false);
+        Map<String, String> translations = new HashMap<>();
+        if (ok
+                && payload.has("translations")
+                && payload.get("translations").isJsonObject()) {
+            for (var entry : payload.getAsJsonObject("translations").entrySet()) {
+                String language = entry.getKey().strip().replace('-', '_').toLowerCase(Locale.ROOT);
+                if (!language.matches("[a-z0-9_]{2,16}")
+                        || !entry.getValue().isJsonPrimitive()
+                        || !entry.getValue().getAsJsonPrimitive().isString()) {
+                    continue;
+                }
+                String translated = trimSignText(entry.getValue().getAsString());
+                if (!translated.isBlank()) {
+                    translations.put(language, translated);
+                }
+            }
+        }
+        boolean showOriginal = getBoolean(payload, "show_original", false);
+        currentServer.execute(() -> {
+            if (ok) {
+                signTranslationStore.put(
+                        pending.signId,
+                        pending.fingerprint,
+                        pending.source,
+                        translations,
+                        showOriginal);
+            }
+            ServerPlayer player = currentServer.getPlayerList().getPlayer(pending.playerUuid);
+            if (player != null) {
+                if (pending.clientOverlay) {
+                    sendSignTranslationResult(
+                            player,
+                            pending.pos,
+                            pending.front,
+                            pending.fingerprint,
+                            translations,
+                            showOriginal,
+                            ok);
+                } else {
+                    sendTranslatedSign(player, pending.source, translations, showOriginal);
+                }
+            }
+        });
+    }
+
+    private static String trimSignText(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.replace('\r', '\n').replace('\u0000', ' ').strip();
+        return normalized.length() <= 1024 ? normalized : normalized.substring(0, 1024);
+    }
+
     private Component renderTranslatedChat(
             ServerPlayer player,
             String senderName,
@@ -624,7 +879,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         }
         String language = player.clientInformation().language().strip().replace('-', '_').toLowerCase(Locale.ROOT);
         String translated = selectTranslation(translations, language);
-        if (translated.isBlank() || translated.equals(original)) {
+        if (translated.isBlank() || sameSignText(original, translated)) {
             return Component.literal("[" + senderName + "] " + original);
         }
         var component = Component.literal("[" + senderName + "] " + translated);
@@ -650,6 +905,50 @@ public final class MineAstrBridge implements WebSocket.Listener {
             if ((candidate.equals(family) || candidate.startsWith(family + "_"))
                     && entry.getValue().isJsonPrimitive()) {
                 return entry.getValue().getAsString();
+            }
+        }
+        return "";
+    }
+
+    private static boolean sameSignText(String original, String translated) {
+        return normalizeSignText(original).equals(normalizeSignText(translated));
+    }
+
+    private static String normalizeSignText(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String[] lines = value.replace("\r\n", "\n").replace('\r', '\n').split("\n", -1);
+        int last = lines.length - 1;
+        while (last >= 0 && lines[last].strip().isEmpty()) {
+            last--;
+        }
+        if (last < 0) {
+            return "";
+        }
+        StringBuilder normalized = new StringBuilder();
+        for (int index = 0; index <= last; index++) {
+            if (index > 0) {
+                normalized.append('\n');
+            }
+            normalized.append(lines[index].strip());
+        }
+        return normalized.toString();
+    }
+
+    private static String selectTranslation(Map<String, String> translations, String language) {
+        String exact = translations.get(language);
+        if (exact != null && !exact.isBlank()) {
+            return exact;
+        }
+        int separator = language.indexOf('_');
+        String family = separator > 0 ? language.substring(0, separator) : language;
+        for (var entry : translations.entrySet()) {
+            String candidate = entry.getKey();
+            if ((candidate.equals(family) || candidate.startsWith(family + "_"))
+                    && entry.getValue() != null
+                    && !entry.getValue().isBlank()) {
+                return entry.getValue();
             }
         }
         return "";
@@ -1924,6 +2223,18 @@ public final class MineAstrBridge implements WebSocket.Listener {
             WebSocket socket,
             String playerName,
             CompletableFuture<LoginCheckResult> future) {
+    }
+
+    private record PendingSignTranslation(
+            WebSocket socket,
+            String messageId,
+            UUID playerUuid,
+            BlockPos pos,
+            boolean front,
+            String signId,
+            String fingerprint,
+            String source,
+            boolean clientOverlay) {
     }
 
     private record SyncedBinding(

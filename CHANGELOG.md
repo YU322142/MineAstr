@@ -7,6 +7,8 @@
 - 新增 `commandApprovalTimeoutSeconds` 与 `commandMaxPendingApprovals`，并为申请、审批、拒绝和执行写入 WARN 审计日志。
 - 管理员同步新增 revision 防倒序覆盖，并在 WebSocket 断线时同时清除动态管理员与待审批命令。
 - 新安装默认开启 `syncTrustedCommandUsers`；静态 `trustedCommandUsers` 仍与动态名单取并集且不会被覆盖。
+- 告示牌翻译改为准星目标式世界浮选：不再进入服务器时批量查询或刷聊天，原始牌面保持不变，译文只显示在准星指向的告示牌旁。
+- 服务端继续把告示牌译文按指纹持久化到世界存档；翻译前后规范化文本一致时保留原文，不添加重复译文或原文标签。
 
 ## 0.6.10
 

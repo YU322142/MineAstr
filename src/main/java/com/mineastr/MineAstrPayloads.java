@@ -1,5 +1,8 @@
 package com.mineastr;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -10,6 +13,9 @@ public final class MineAstrPayloads {
     public static final int MAX_ERROR_LENGTH = 512;
     public static final int MAX_MIME_LENGTH = 64;
     public static final int MAX_CHUNK_BYTES = 24 * 1024;
+    public static final int MAX_SIGN_FINGERPRINT_LENGTH = 128;
+    public static final int MAX_SIGN_TRANSLATION_ENTRIES = 32;
+    public static final int MAX_SIGN_TRANSLATION_TEXT_LENGTH = 512;
 
     private MineAstrPayloads() {
     }
@@ -52,6 +58,71 @@ public final class MineAstrPayloads {
         private void write(RegistryFriendlyByteBuf buffer) {
             buffer.writeBoolean(translationsEnabled);
             buffer.writeBoolean(showOriginal);
+        }
+
+        @Override
+        public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record SignTranslationQuery(
+            BlockPos pos,
+            boolean front,
+            String sourceFingerprint) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<SignTranslationQuery> TYPE =
+                MineAstrPayloads.type("sign_translation_query");
+        public static final StreamCodec<RegistryFriendlyByteBuf, SignTranslationQuery> CODEC =
+                StreamCodec.ofMember(SignTranslationQuery::write, SignTranslationQuery::read);
+
+        private static SignTranslationQuery read(RegistryFriendlyByteBuf buffer) {
+            return new SignTranslationQuery(
+                    BlockPos.STREAM_CODEC.decode(buffer),
+                    buffer.readBoolean(),
+                    buffer.readUtf(MAX_SIGN_FINGERPRINT_LENGTH));
+        }
+
+        private void write(RegistryFriendlyByteBuf buffer) {
+            BlockPos.STREAM_CODEC.encode(buffer, pos);
+            buffer.writeBoolean(front);
+            buffer.writeUtf(sourceFingerprint, MAX_SIGN_FINGERPRINT_LENGTH);
+        }
+
+        @Override
+        public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record SignTranslationResult(
+            BlockPos pos,
+            boolean front,
+            String sourceFingerprint,
+            Map<String, String> translations,
+            boolean showOriginal,
+            boolean ok) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<SignTranslationResult> TYPE =
+                MineAstrPayloads.type("sign_translation_result");
+        public static final StreamCodec<RegistryFriendlyByteBuf, SignTranslationResult> CODEC =
+                StreamCodec.ofMember(SignTranslationResult::write, SignTranslationResult::read);
+
+        private static SignTranslationResult read(RegistryFriendlyByteBuf buffer) {
+            return new SignTranslationResult(
+                    BlockPos.STREAM_CODEC.decode(buffer),
+                    buffer.readBoolean(),
+                    buffer.readUtf(MAX_SIGN_FINGERPRINT_LENGTH),
+                    readTranslations(buffer),
+                    buffer.readBoolean(),
+                    buffer.readBoolean());
+        }
+
+        private void write(RegistryFriendlyByteBuf buffer) {
+            BlockPos.STREAM_CODEC.encode(buffer, pos);
+            buffer.writeBoolean(front);
+            buffer.writeUtf(sourceFingerprint, MAX_SIGN_FINGERPRINT_LENGTH);
+            writeTranslations(buffer, translations);
+            buffer.writeBoolean(showOriginal);
+            buffer.writeBoolean(ok);
         }
 
         @Override
@@ -159,6 +230,36 @@ public final class MineAstrPayloads {
         @Override
         public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
             return TYPE;
+        }
+    }
+
+    private static Map<String, String> readTranslations(RegistryFriendlyByteBuf buffer) {
+        int count = buffer.readVarInt();
+        if (count < 0 || count > MAX_SIGN_TRANSLATION_ENTRIES) {
+            throw new IllegalArgumentException("告示牌翻译条目数量超出限制");
+        }
+        Map<String, String> translations = new LinkedHashMap<>();
+        for (int index = 0; index < count; index++) {
+            String language = buffer.readUtf(32).strip().replace('-', '_').toLowerCase(java.util.Locale.ROOT);
+            String text = buffer.readUtf(MAX_SIGN_TRANSLATION_TEXT_LENGTH);
+            if (!language.isBlank() && !text.isBlank()) {
+                translations.put(language, text);
+            }
+        }
+        return Map.copyOf(translations);
+    }
+
+    private static void writeTranslations(RegistryFriendlyByteBuf buffer, Map<String, String> translations) {
+        Map<String, String> safe = translations == null ? Map.of() : translations;
+        int count = Math.min(MAX_SIGN_TRANSLATION_ENTRIES, safe.size());
+        buffer.writeVarInt(count);
+        int written = 0;
+        for (var entry : safe.entrySet()) {
+            if (written++ >= count) {
+                break;
+            }
+            buffer.writeUtf(entry.getKey(), 32);
+            buffer.writeUtf(entry.getValue(), MAX_SIGN_TRANSLATION_TEXT_LENGTH);
         }
     }
 }

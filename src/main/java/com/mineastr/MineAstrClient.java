@@ -8,11 +8,18 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ConcurrentMap;
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
@@ -21,14 +28,26 @@ import javax.imageio.stream.MemoryCacheImageOutputStream;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Screenshot;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.MultiBufferSource;
+import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
+import net.minecraft.world.level.block.entity.SignText;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import org.lwjgl.glfw.GLFW;
 
 public final class MineAstrClient implements ClientModInitializer {
@@ -40,6 +59,14 @@ public final class MineAstrClient implements ClientModInitializer {
         return thread;
     });
     private static String pendingPromptRequestId;
+    private static final ConcurrentMap<SignCacheKey, MineAstrPayloads.SignTranslationResult> SIGN_TRANSLATIONS =
+            new ConcurrentHashMap<>();
+    private static final Set<SignCacheKey> PENDING_SIGN_TRANSLATIONS = ConcurrentHashMap.newKeySet();
+    private static final ConcurrentMap<SignCacheKey, Long> SIGN_TRANSLATION_RETRY_AT = new ConcurrentHashMap<>();
+    private static final long SIGN_TRANSLATION_RETRY_DELAY_MS = 5_000L;
+    private static final int MAX_OVERLAY_WIDTH = 180;
+    private static final float OVERLAY_SCALE = 0.025F;
+    private static volatile TargetedSign TARGETED_SIGN;
     private static final KeyMapping OPEN_CONFIG_KEY = KeyBindingHelper.registerKeyBinding(new KeyMapping(
             "key.mineastr.open_config",
             InputConstants.Type.KEYSYM,
@@ -51,16 +78,30 @@ public final class MineAstrClient implements ClientModInitializer {
         MineAstrClientConfig.load();
         ClientPlayNetworking.registerGlobalReceiver(MineAstrPayloads.ScreenshotRequest.TYPE, (request, context) ->
                 context.client().execute(() -> handleScreenshotRequestOnClientThread(context.client(), request)));
+        ClientPlayNetworking.registerGlobalReceiver(MineAstrPayloads.SignTranslationResult.TYPE, (result, context) ->
+                context.client().execute(() -> applySignTranslationResult(context.client(), result)));
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            SIGN_TRANSLATIONS.clear();
+            PENDING_SIGN_TRANSLATIONS.clear();
+            SIGN_TRANSLATION_RETRY_AT.clear();
+            TARGETED_SIGN = null;
             sendPayloadToServer(new MineAstrPayloads.ClientHello(MineAstr.MOD_VERSION, true));
             sendTranslationPreferences();
         });
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> pendingPromptRequestId = null);
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            pendingPromptRequestId = null;
+            SIGN_TRANSLATIONS.clear();
+            PENDING_SIGN_TRANSLATIONS.clear();
+            SIGN_TRANSLATION_RETRY_AT.clear();
+            TARGETED_SIGN = null;
+        });
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (OPEN_CONFIG_KEY.consumeClick()) {
                 client.setScreen(new MineAstrConfigScreen(client.screen));
             }
+            updateTargetedSign(client);
         });
+        WorldRenderEvents.AFTER_ENTITIES.register(MineAstrClient::renderTargetedSignOverlay);
     }
 
     public static void handleScreenshotRequest(MineAstrPayloads.ScreenshotRequest request) {
@@ -92,6 +133,253 @@ public final class MineAstrClient implements ClientModInitializer {
                 sendTranslationPreferences();
             });
         });
+    }
+
+    /**
+     * Only the sign currently under the crosshair is eligible for translation.
+     * The original sign render state is deliberately left untouched.
+     */
+    private static void updateTargetedSign(Minecraft minecraft) {
+        if (!MineAstrClientConfig.GAME_TRANSLATIONS_ENABLED.getAsBoolean()
+                || minecraft.level == null
+                || minecraft.player == null
+                || minecraft.screen != null
+                || !(minecraft.hitResult instanceof BlockHitResult hit)
+                || hit.getType() != HitResult.Type.BLOCK
+                || !(minecraft.level.getBlockEntity(hit.getBlockPos()) instanceof SignBlockEntity sign)) {
+            TARGETED_SIGN = null;
+            return;
+        }
+
+        boolean front = sign.isFacingFrontText(minecraft.player);
+        SignText text = sign.getText(front);
+        String source = signSource(text);
+        if (source.isBlank()) {
+            TARGETED_SIGN = null;
+            return;
+        }
+
+        SignCacheKey key = new SignCacheKey(
+                signId(sign, front),
+                sha256(source),
+                front);
+        MineAstrPayloads.SignTranslationResult result = SIGN_TRANSLATIONS.get(key);
+        if (result == null) {
+            requestSignTranslation(sign, front, key);
+            TARGETED_SIGN = null;
+            return;
+        }
+
+        String translated = selectTranslation(
+                result.translations(),
+                normalizeLanguage(minecraft.getLanguageManager().getSelected()));
+        if (translated.isBlank() || sameSignText(source, translated)) {
+            TARGETED_SIGN = null;
+            return;
+        }
+
+        TARGETED_SIGN = new TargetedSign(sign.getBlockPos(), front, key, translated);
+    }
+
+    private static void requestSignTranslation(SignBlockEntity sign, boolean front, SignCacheKey key) {
+        long now = System.currentTimeMillis();
+        Long retryAt = SIGN_TRANSLATION_RETRY_AT.get(key);
+        if (retryAt != null && retryAt > now) {
+            return;
+        }
+        if (!PENDING_SIGN_TRANSLATIONS.add(key)) {
+            return;
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.getConnection() == null
+                || !ClientPlayNetworking.canSend(MineAstrPayloads.SignTranslationQuery.TYPE)) {
+            PENDING_SIGN_TRANSLATIONS.remove(key);
+            SIGN_TRANSLATION_RETRY_AT.put(key, now + SIGN_TRANSLATION_RETRY_DELAY_MS);
+            return;
+        }
+        sendPayloadToServer(new MineAstrPayloads.SignTranslationQuery(
+                sign.getBlockPos(),
+                front,
+                key.fingerprint()));
+    }
+
+    private static void applySignTranslationResult(
+            Minecraft minecraft,
+            MineAstrPayloads.SignTranslationResult result) {
+        if (minecraft.level == null || result == null) {
+            return;
+        }
+        String signId = signId(minecraft.level.dimension().identifier().toString(), result.pos(), result.front());
+        SignCacheKey key = new SignCacheKey(signId, result.sourceFingerprint(), result.front());
+        PENDING_SIGN_TRANSLATIONS.remove(key);
+        if (result.ok()) {
+            SIGN_TRANSLATIONS.put(key, result);
+            SIGN_TRANSLATION_RETRY_AT.remove(key);
+        } else {
+            SIGN_TRANSLATION_RETRY_AT.put(
+                    key,
+                    System.currentTimeMillis() + SIGN_TRANSLATION_RETRY_DELAY_MS);
+        }
+    }
+
+    private static void renderTargetedSignOverlay(WorldRenderContext context) {
+        TargetedSign targeted = TARGETED_SIGN;
+        Minecraft minecraft = Minecraft.getInstance();
+        if (targeted == null
+                || minecraft.level == null
+                || minecraft.player == null
+                || minecraft.screen != null
+                || !(minecraft.level.getBlockEntity(targeted.pos()) instanceof SignBlockEntity)) {
+            return;
+        }
+
+        var camera = minecraft.gameRenderer.getMainCamera();
+        Vec3 cameraPosition = camera.position();
+        var left = camera.leftVector();
+        Vec3 sideOffset = new Vec3(-left.x(), -left.y(), -left.z()).scale(0.72D);
+        Vec3 anchor = Vec3.atCenterOf(targeted.pos())
+                .add(0.0D, 1.05D, 0.0D)
+                .add(sideOffset);
+
+        Font font = minecraft.font;
+        List<net.minecraft.util.FormattedCharSequence> lines = wrapOverlayText(font, targeted.translation());
+        if (lines.isEmpty()) {
+            return;
+        }
+
+        PoseStack matrices = context.matrices();
+        MultiBufferSource buffers = context.consumers();
+        matrices.pushPose();
+        matrices.translate(
+                anchor.x() - cameraPosition.x(),
+                anchor.y() - cameraPosition.y(),
+                anchor.z() - cameraPosition.z());
+        matrices.mulPose(camera.rotation());
+        matrices.scale(-OVERLAY_SCALE, -OVERLAY_SCALE, OVERLAY_SCALE);
+
+        int totalHeight = lines.size() * font.lineHeight;
+        int y = -totalHeight / 2;
+        for (var line : lines) {
+            int width = font.width(line);
+            font.drawInBatch(
+                    line,
+                    -width / 2.0F,
+                    y,
+                    0xFFFFFFFF,
+                    false,
+                    matrices.last().pose(),
+                    buffers,
+                    Font.DisplayMode.NORMAL,
+                    0xA0000000,
+                    LightTexture.FULL_BRIGHT);
+            y += font.lineHeight;
+        }
+        matrices.popPose();
+    }
+
+    private static List<net.minecraft.util.FormattedCharSequence> wrapOverlayText(Font font, String translation) {
+        List<net.minecraft.util.FormattedCharSequence> lines = new java.util.ArrayList<>();
+        String normalized = normalizeSignText(translation);
+        for (String rawLine : normalized.split("\n", -1)) {
+            List<net.minecraft.util.FormattedCharSequence> wrapped =
+                    font.split(Component.literal(rawLine), MAX_OVERLAY_WIDTH);
+            if (wrapped.isEmpty()) {
+                lines.add(Component.literal("").getVisualOrderText());
+            } else {
+                lines.addAll(wrapped);
+            }
+        }
+        return lines;
+    }
+
+    private static boolean sameSignText(String source, String translated) {
+        return normalizeSignText(source).equals(normalizeSignText(translated));
+    }
+
+    private static String normalizeSignText(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String[] lines = value.replace("\r\n", "\n").replace('\r', '\n').split("\n", -1);
+        int last = lines.length - 1;
+        while (last >= 0 && lines[last].strip().isEmpty()) {
+            last--;
+        }
+        if (last < 0) {
+            return "";
+        }
+        StringBuilder normalized = new StringBuilder();
+        for (int index = 0; index <= last; index++) {
+            if (index > 0) {
+                normalized.append('\n');
+            }
+            normalized.append(lines[index].strip());
+        }
+        return normalized.toString();
+    }
+
+    private static String selectTranslation(Map<String, String> translations, String language) {
+        if (translations == null || translations.isEmpty()) {
+            return "";
+        }
+        String exact = translations.get(language);
+        if (exact != null && !exact.isBlank()) {
+            return exact;
+        }
+        int separator = language.indexOf('_');
+        if (separator > 0) {
+            String family = language.substring(0, separator);
+            for (var entry : translations.entrySet()) {
+                String candidate = normalizeLanguage(entry.getKey());
+                if ((candidate.equals(family) || candidate.startsWith(family + "_"))
+                        && !entry.getValue().isBlank()) {
+                    return entry.getValue();
+                }
+            }
+        }
+        return "";
+    }
+
+    private static String signSource(SignText text) {
+        Component[] messages = text.getMessages(false);
+        StringBuilder builder = new StringBuilder();
+        for (int index = 0; index < messages.length; index++) {
+            if (index > 0) {
+                builder.append('\n');
+            }
+            Component message = messages[index];
+            builder.append(message == null ? "" : message.getString().replace('\r', ' ').replace('\u0000', ' '));
+        }
+        return builder.toString().strip();
+    }
+
+    private static String signId(SignBlockEntity sign, boolean front) {
+        if (sign.getLevel() == null) {
+            return "";
+        }
+        return signId(sign.getLevel().dimension().identifier().toString(), sign.getBlockPos(), front);
+    }
+
+    private static String signId(String dimension, BlockPos pos, boolean front) {
+        return dimension + "/"
+                + pos.getX() + "," + pos.getY() + "," + pos.getZ() + "/"
+                + (front ? "front" : "back");
+    }
+
+    private static String normalizeLanguage(String language) {
+        return language == null
+                ? ""
+                : language.strip().replace('-', '_').toLowerCase(Locale.ROOT);
+    }
+
+    private static String sha256(String value) {
+        try {
+            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            return java.util.HexFormat.of().formatHex(
+                    digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException exc) {
+            throw new IllegalStateException("SHA-256 不可用", exc);
+        }
     }
 
     private static void handleScreenshotRequestOnClientThread(Minecraft minecraft, MineAstrPayloads.ScreenshotRequest request) {
@@ -321,5 +609,15 @@ public final class MineAstrClient implements ClientModInitializer {
     }
 
     private record RawScreenshot(int width, int height, int[] pixels) {
+    }
+
+    private record SignCacheKey(String signId, String fingerprint, boolean front) {
+    }
+
+    private record TargetedSign(
+            BlockPos pos,
+            boolean front,
+            SignCacheKey key,
+            String translation) {
     }
 }

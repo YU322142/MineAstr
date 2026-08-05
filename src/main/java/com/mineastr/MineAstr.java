@@ -10,8 +10,13 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerLoginConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
 import org.slf4j.Logger;
 
 public final class MineAstr implements ModInitializer {
@@ -46,6 +51,19 @@ public final class MineAstr implements ModInitializer {
 
         ServerMessageEvents.CHAT_MESSAGE.register(
                 (message, sender, params) -> BRIDGE.forwardChat(sender, message.signedContent()));
+
+        UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
+            if (world.isClientSide()
+                    || hand != InteractionHand.MAIN_HAND
+                    || !(player instanceof ServerPlayer serverPlayer)) {
+                return InteractionResult.PASS;
+            }
+            BlockEntity entity = world.getBlockEntity(hitResult.getBlockPos());
+            if (entity instanceof SignBlockEntity sign) {
+                BRIDGE.translateSign(serverPlayer, sign, sign.isFacingFrontText(player));
+            }
+            return InteractionResult.PASS;
+        });
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> BRIDGE.forwardPlayerJoin(handler.player));
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
