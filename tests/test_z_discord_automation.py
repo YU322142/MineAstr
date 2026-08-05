@@ -1212,6 +1212,89 @@ class RelayScopeAndContextTests(unittest.IsolatedAsyncioTestCase):
             [{"speaker": "", "text": "第一句"}],
         )
 
+    async def test_sign_translation_request_uses_game_translation_pipeline(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "bridge_settings": {
+                "game_translation_enabled": True,
+                "game_translation_languages": "en_us",
+                "game_translation_show_original": True,
+                "max_relay_length": 500,
+            }
+        }
+        plugin._translate_text = AsyncMock(
+            return_value={
+                "source_language": "zh_cn",
+                "translations": {"en_us": "Welcome"},
+            }
+        )
+
+        result = await plugin._translate_sign_request(
+            {
+                "server_id": "survival",
+                "sign_id": "minecraft:overworld/1,64,2/front",
+                "source_fingerprint": "fingerprint",
+                "text": "欢迎\n来到服务器",
+            }
+        )
+
+        self.assertEqual(result["sign_id"], "minecraft:overworld/1,64,2/front")
+        self.assertEqual(result["source_fingerprint"], "fingerprint")
+        self.assertEqual(result["translations"], {"en_us": "Welcome"})
+        self.assertTrue(result["show_original"])
+        plugin._translate_text.assert_awaited_once()
+        self.assertEqual(
+            plugin._translate_text.await_args.kwargs["cache_scope"],
+            "game-sign",
+        )
+
+    async def test_reply_quote_is_translated_for_discord_target(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        discord_profile = MAIN.DISCORD_NOTIFICATION_DEFAULTS.copy()
+        discord_profile.update(
+            {
+                "chat_translation_enabled": True,
+                "chat_translation_languages": "en_us",
+                "chat_translation_show_original": False,
+            }
+        )
+        plugin.config = {
+            "bridge_settings": {"max_relay_length": 500},
+            "discord_settings": {
+                "discord_notification_settings": discord_profile
+            },
+            "qq_settings": {
+                "qq_notification_settings": MAIN.QQ_NOTIFICATION_DEFAULTS.copy()
+            },
+        }
+        plugin._translate_relay_message = AsyncMock(
+            return_value={
+                "source_language": "zh_cn",
+                "translations": {"en_us": "quoted in English"},
+            }
+        )
+        plugin._send_to_relay_session = AsyncMock()
+
+        await plugin._send_to_relay_sessions(
+            "原消息",
+            sessions=["discord:GroupMessage:20002"],
+            translation_result={
+                "source_language": "zh_cn",
+                "translations": {"en_us": "main in English"},
+            },
+            reply_context={"sender": "Alice", "text": "引用原文"},
+        )
+
+        plugin._send_to_relay_session.assert_awaited_once_with(
+            "discord:GroupMessage:20002",
+            "main in English",
+            media=None,
+            reply_context={
+                "sender": "Alice",
+                "text": "quoted in English",
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

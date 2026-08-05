@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.18
+
+- Translate quoted/replied message text independently for each Discord/QQ target instead of forwarding the original quote unchanged.
+- Translate AstrBot replies explicitly before sending them to Minecraft, avoiding an untranslated reply racing the translated message.
+
 ## 0.6.17
 
 - Added configurable translation context history (`translation_context_messages`, 0-20).

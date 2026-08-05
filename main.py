@@ -407,7 +407,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.6.17",
+    "0.6.18",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -2163,6 +2163,35 @@ class MineAstrPlugin(Star):
             messages.append(f"[原文/Original] {content}")
         return "\n".join(dict.fromkeys(message for message in messages if message))
 
+    def _platform_translation_only(
+        self,
+        session: str,
+        content: str,
+        translation_result: dict[str, Any] | None,
+    ) -> str:
+        """Render a quoted fragment without adding an original-text label."""
+
+        profile = self._platform_notification_profile(
+            self._session_platform_id(session), session
+        )
+        if profile is None or not bool(profile.get("chat_translation_enabled")):
+            return content
+        languages = self._translation_languages(
+            profile.get("chat_translation_languages")
+        )
+        source_language, translations = self._translation_result_parts(
+            translation_result
+        )
+        messages: list[str] = []
+        for language in languages:
+            if self._same_translation_language(source_language, language):
+                continue
+            translated = translations.get(language)
+            if not translated or self._same_translation_text(content, translated):
+                continue
+            messages.append(translated)
+        return "\n".join(dict.fromkeys(messages)) or content
+
     async def _send_to_relay_sessions(
         self,
         content: str,
@@ -2179,13 +2208,20 @@ class MineAstrPlugin(Star):
             target_sessions = self._relay_target_sessions(
                 exclude, source_platform
             )
+        translation_origin = exclude or (target_sessions[0] if target_sessions else "")
         result = translation_result
         if result is None:
-            translation_origin = (
-                exclude or (target_sessions[0] if target_sessions else "")
-            )
             result = await self._translate_relay_message(
                 content,
+                target_sessions,
+                translation_origin,
+            )
+
+        reply_result: dict[str, Any] = {}
+        quoted_text = str((reply_context or {}).get("text") or "").strip()
+        if quoted_text and target_sessions:
+            reply_result = await self._translate_relay_message(
+                quoted_text,
                 target_sessions,
                 translation_origin,
             )
@@ -2196,12 +2232,22 @@ class MineAstrPlugin(Star):
                 content,
                 translation_result=result,
             )
-            if media or reply_context:
+            session_reply_context = reply_context
+            if quoted_text and reply_result:
+                translated_quote = self._platform_translation_only(
+                    session,
+                    quoted_text,
+                    reply_result,
+                )
+                if translated_quote != quoted_text:
+                    session_reply_context = dict(reply_context or {})
+                    session_reply_context["text"] = translated_quote
+            if media or session_reply_context:
                 await self._send_to_relay_session(
                     session,
                     message,
                     media=media,
-                    reply_context=reply_context,
+                    reply_context=session_reply_context,
                 )
             else:
                 await self._send_to_relay_session(session, message)
@@ -3011,10 +3057,15 @@ class MineAstrPlugin(Star):
             logger.warning("MineAstr minecraft 平台适配器未启用，无法转发机器人回复。")
             return
         try:
+            translation_options = await self._translate_game_message(
+                text,
+                event.unified_msg_origin,
+            )
             await adapter.relay_chat(
                 text,
                 str(getattr(adapter, "bot_display_name", "AstrBot") or "AstrBot"),
                 origin=event.unified_msg_origin,
+                translation_options=translation_options,
             )
         except Exception as exc:
             logger.warning("MineAstr 转发机器人回复到 Minecraft 失败：%s", exc)

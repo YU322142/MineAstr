@@ -41,7 +41,7 @@ AstrBot 对该会话的文本回复会回传给所有已连接的 Minecraft 服�
 
 ## 安装包兼容性
 
-在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.17.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
+在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.18.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
 
 插件元数据中的安装/更新源固定为 Fork 分支 `https://github.com/YU322142/MineAstr/tree/astrbot-plugin`，不会再让 AstrBot 回到原项目或下载仅用于项目导航的 `main` 分支。
 
@@ -280,7 +280,7 @@ pip install -r requirements.txt
 - 截图功能需要目标玩家安装客户端 Mod；只安装服务端 Mod 时基础聊天和查询可用，但截图不可用。
 - 命令工具的最终权限完全由 Minecraft Mod 的 `mineastr-common.json` 决定。默认 `enableCommandTool = false`。`allowedCommandRules` 是任何人可用的公开命令列表，不要把管理命令或单独的 `"*"` 放进去；白名单外命令由 `/mc approve` 审批。
 - AQQBot 兼容层的账号数据库在 AstrBot 侧；如果同时运行原 AQQBot，两套绑定数据不会自动合并，也不应同时负责登录白名单。
-- Fabric 0.6.17 Mod 支持 `performance`、玩家通知、验证码、登录拦截、按真实身份对账的白名单同步、管理员实时同步，以及公开命令白名单与白名单外指令二次审批；更老的 Mod 不支持完整审批扩展。
+- Fabric 0.6.18 Mod 支持 `performance`、玩家通知、验证码、登录拦截、按真实身份对账的白名单同步、管理员实时同步，以及公开命令白名单与白名单外指令二次审批；更老的 Mod 不支持完整审批扩展。
 - 本插件不会获取 `$url` 远程过滤词库，避免让聊天消息触发服务端任意 URL 请求；请把词库转换为本地 `$filter` / `$regex` 规则。
 - Discord 自动化直接挂接 AstrBot 官方 Pycord 客户端。管理员权限仍受 Discord 角色层级限制；多服务器部署应填写 `discord_guild_ids`，否则离开任一可见服务器都会触发该 Discord 平台账号的全局解绑。
 
