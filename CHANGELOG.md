@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.18
+
+- Add a reliable server-side sign translation trigger when a player interacts with a sign.
+- Keep modern client overlays and legacy chat fallback working, with duplicate pending-request suppression and diagnostic logs.
+
 ## 0.6.17
 
 - Added optional chat media forwarding from AstrBot to Minecraft and preserved image URLs in the in-game relay.

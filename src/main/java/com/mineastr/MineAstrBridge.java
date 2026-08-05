@@ -338,6 +338,11 @@ public final class MineAstrBridge implements WebSocket.Listener {
         if (!(entity instanceof SignBlockEntity sign)) {
             return;
         }
+        MineAstr.LOGGER.debug(
+                "MineAstr received sign translation query: player={} pos={} front={}",
+                player.getGameProfile().name(),
+                query.pos(),
+                query.front());
         requestSignTranslation(player, sign, query.front(), true);
     }
 
@@ -345,13 +350,18 @@ public final class MineAstrBridge implements WebSocket.Listener {
         if (player == null || sign == null) {
             return;
         }
-        // A current MineAstr client displays the translation as a targeted
-        // world overlay. Keep the old system-message behavior for clients
-        // that do not advertise the client capability.
-        if (clientCapabilities.containsKey(player.getUUID())) {
-            return;
-        }
-        requestSignTranslation(player, sign, front, false);
+        /*
+         * Do not return early for clients that advertised the screenshot
+         * capability. Older versions used that capability as a proxy for the
+         * sign overlay and therefore skipped the only server-side trigger
+         * when the client-side crosshair query was unavailable. A right-click
+         * is a reliable fallback trigger; modern clients still receive the
+         * result as an overlay, while legacy clients receive the old chat
+         * fallback.
+         */
+        boolean clientOverlay = clientCapabilities.containsKey(player.getUUID())
+                && MineAstrNetwork.canSendSignTranslationResult(player);
+        requestSignTranslation(player, sign, front, clientOverlay);
     }
 
     private void requestSignTranslation(
@@ -387,6 +397,10 @@ public final class MineAstrBridge implements WebSocket.Listener {
 
         WebSocket socket = webSocket.get();
         if (socket == null || socket.isOutputClosed()) {
+            MineAstr.LOGGER.debug(
+                    "MineAstr sign translation skipped because the AstrBot WebSocket is unavailable: sign={} player={}",
+                    signId,
+                    player.getGameProfile().name());
             if (clientOverlay) {
                 sendSignTranslationResult(
                         player, sign.getBlockPos(), front, fingerprint, Map.of(), false, false);
@@ -394,6 +408,15 @@ public final class MineAstrBridge implements WebSocket.Listener {
                 sendTranslatedSign(player, source, Map.of(), false);
             }
             return;
+        }
+        for (PendingSignTranslation pending : pendingSignTranslations.values()) {
+            if (pending.socket() == socket
+                    && pending.playerUuid().equals(player.getUUID())
+                    && pending.pos().equals(sign.getBlockPos())
+                    && pending.front() == front
+                    && pending.fingerprint().equals(fingerprint)) {
+                return;
+            }
         }
         String messageId = UUID.randomUUID().toString();
         PendingSignTranslation pending = new PendingSignTranslation(
@@ -415,6 +438,11 @@ public final class MineAstrBridge implements WebSocket.Listener {
         payload.addProperty("sign_id", signId);
         payload.addProperty("source_fingerprint", fingerprint);
         payload.addProperty("text", source);
+        MineAstr.LOGGER.debug(
+                "MineAstr requesting sign translation: sign={} player={} overlay={}",
+                signId,
+                player.getGameProfile().name(),
+                clientOverlay);
         sendJson(socket, payload);
     }
 

@@ -195,6 +195,10 @@ public final class MineAstrClient implements ClientModInitializer {
                 || !ClientPlayNetworking.canSend(MineAstrPayloads.SignTranslationQuery.TYPE)) {
             PENDING_SIGN_TRANSLATIONS.remove(key);
             SIGN_TRANSLATION_RETRY_AT.put(key, now + SIGN_TRANSLATION_RETRY_DELAY_MS);
+            MineAstr.LOGGER.debug(
+                    "MineAstr sign translation query unavailable: connected={} channel={}",
+                    minecraft.getConnection() != null,
+                    ClientPlayNetworking.canSend(MineAstrPayloads.SignTranslationQuery.TYPE));
             return;
         }
         sendPayloadToServer(new MineAstrPayloads.SignTranslationQuery(
