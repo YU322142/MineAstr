@@ -473,6 +473,39 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Motiquies=动静交映", custom_rules)
         self.assertNotIn("旧版设置不应继续单独应用", custom_rules)
 
+    async def test_platform_translation_same_text_returns_original_without_labels(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        discord_profile = MAIN.DISCORD_NOTIFICATION_DEFAULTS.copy()
+        discord_profile.update(
+            {
+                "chat_translation_enabled": True,
+                "chat_translation_languages": "zh_cn",
+                "chat_translation_show_original": True,
+            }
+        )
+        plugin.config = {
+            "bridge_settings": {"max_relay_length": 500},
+            "qq_settings": {
+                "qq_notification_settings": MAIN.QQ_NOTIFICATION_DEFAULTS.copy()
+            },
+            "discord_settings": {
+                "discord_notification_settings": discord_profile
+            },
+        }
+
+        message = await plugin._platform_chat_message(
+            "discord:GroupMessage:20002",
+            "Welcome\n",
+            translation_result={
+                "source_language": "fr_fr",
+                "translations": {"zh_cn": " Welcome "},
+            },
+        )
+
+        self.assertEqual(message, "Welcome\n")
+        self.assertNotIn("[zh_cn]", message)
+        self.assertNotIn("[原文/Original]", message)
+
     async def test_platform_translation_is_generated_once_then_distributed(self):
         plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
         discord_profile = MAIN.DISCORD_NOTIFICATION_DEFAULTS.copy()

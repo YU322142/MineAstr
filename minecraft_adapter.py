@@ -564,6 +564,9 @@ class MinecraftPlatformAdapter(Platform):
         self._chat_translation_handler: Callable[
             [str, str], Awaitable[dict[str, Any]] | dict[str, Any]
         ] | None = None
+        self._sign_translation_handler: Callable[
+            [dict[str, Any]], Awaitable[dict[str, Any] | None] | dict[str, Any] | None
+        ] | None = None
 
     def set_chat_translation_handler(
         self,
@@ -572,6 +575,16 @@ class MinecraftPlatformAdapter(Platform):
         ] | None,
     ) -> None:
         self._chat_translation_handler = handler
+
+    def set_sign_translation_handler(
+        self,
+        handler: Callable[
+            [dict[str, Any]],
+            Awaitable[dict[str, Any] | None] | dict[str, Any] | None,
+        ]
+        | None,
+    ) -> None:
+        self._sign_translation_handler = handler
 
     async def _chat_translation_options(
         self, content: str, origin: str
@@ -1150,6 +1163,14 @@ class MinecraftPlatformAdapter(Platform):
                     return
                 await self.connection_manager.mark_seen(ws)
                 await self._handle_bridge_event(ws, payload)
+            elif payload_type == "sign_translate_request":
+                if not await self.connection_manager.is_registered(ws):
+                    await self.connection_manager.send_error(
+                        ws, "请先发送 hello 完成注册"
+                    )
+                    return
+                await self.connection_manager.mark_seen(ws)
+                await self._handle_sign_translate_request(ws, payload)
             else:
                 await self.connection_manager.send_error(
                     ws, f"不支持的消息类型：{payload_type}"
@@ -1157,6 +1178,42 @@ class MinecraftPlatformAdapter(Platform):
         except (TypeError, ValueError, RuntimeError) as exc:
             logger.warning("MineAstr 处理 WebSocket 消息失败：%s", exc)
             await self.connection_manager.send_error(ws, str(exc))
+
+    async def _handle_sign_translate_request(
+        self, ws: web.WebSocketResponse, payload: dict[str, Any]
+    ) -> None:
+        metadata = await self.connection_manager.metadata_for(ws)
+        if not metadata:
+            raise RuntimeError("Minecraft 服务器尚未注册")
+        message_id = _trim_content(payload.get("message_id"), 64)
+        if not message_id:
+            raise ValueError("sign_translate_request 缺少 message_id")
+        handler = self._sign_translation_handler
+        result: dict[str, Any] | None = None
+        if handler is not None:
+            enriched = dict(payload)
+            enriched.update(
+                {
+                    "type": "sign_translate_request",
+                    "server_id": metadata.get("server_id", "minecraft"),
+                    "server_name": metadata.get("server_name", "Minecraft Server"),
+                }
+            )
+            value = handler(enriched)
+            if inspect.isawaitable(value):
+                value = await value
+            if isinstance(value, dict):
+                result = value
+        response: dict[str, Any] = {
+            "type": "sign_translate_result",
+            "message_id": message_id,
+            "ok": bool(result),
+        }
+        if result:
+            response.update(result)
+        else:
+            response["error"] = "sign_translation_unavailable"
+        await ws.send_str(json.dumps(response, ensure_ascii=False))
 
     async def _handle_hello(
         self, ws: web.WebSocketResponse, payload: dict[str, Any]

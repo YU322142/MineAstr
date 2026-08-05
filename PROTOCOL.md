@@ -1,6 +1,6 @@
 # MineAstr WebSocket 协议
 
-本文描述 AstrBot 插件 `v0.6.11` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
+本文描述 AstrBot 插件 `v0.6.14` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
 
 ## 连接与认证
 
@@ -62,6 +62,46 @@ Authorization: Bearer <token>
 `translations` 与 `show_original` 均为 v0.6.7 可选扩展。v0.6.11 AstrBot 翻译器先检测原文语言，不会为与源语言相同的目标 locale 写入重复译文；对应玩家自然回退显示 `content`。Mod 应按每位在线玩家的 `clientInformation().language()` 选择精确 locale，找不到时可回退到同语言族；仍找不到、译文无效或玩家关闭翻译时显示 `content`。安装同版客户端 Mod 的玩家可通过单独的 C2S 偏好包覆盖 `show_original` 并关闭译文；不要修改旧版客户端能力包的 codec，以免协议不匹配导致断线。
 
 AstrBot 插件只发送纯文本，不把译文解析为命令或 JSON 组件。目标语言数量、文本长度和模型等待时间都必须受限；翻译模型失败时不得丢弃原文。
+
+### Minecraft 告示牌翻译
+
+服务端 Mod 可在玩家交互告示牌时请求 AstrBot 使用同一套游戏内消息翻译配置：
+
+```json
+{
+  "type": "sign_translate_request",
+  "message_id": "uuid",
+  "sign_id": "minecraft:overworld/1,64,2/front",
+  "source_fingerprint": "sha256-or-stable-fingerprint",
+  "text": "Welcome\nTo the server"
+}
+```
+
+AstrBot 返回按 locale 聚合的纯文本译文；`show_original`、目标语言、模型、超时和统一术语提示词均沿用游戏内消息设置：
+
+```json
+{
+  "type": "sign_translate_result",
+  "message_id": "uuid",
+  "ok": true,
+  "sign_id": "minecraft:overworld/1,64,2/front",
+  "source_fingerprint": "sha256-or-stable-fingerprint",
+  "source_language": "en_us",
+  "translations": {
+    "zh_cn": "欢迎\n来到服务器"
+  },
+  "show_original": true
+}
+```
+
+Mod 必须把 `source_fingerprint` 与译文一起持久化到 Minecraft 世界存档。告示牌原文改变后，旧缓存不得复用；翻译失败或翻译前后规范化文本一致时显示原文。
+
+安装了同版 MineAstr 客户端 Mod 时，客户端只在准星指向某一面告示牌时发送可选的
+`mineastr:sign_translation_query` C2S 包（位置、正反面和原文指纹）。服务端先查世界缓存，
+再按上面的 WebSocket 流程请求 AstrBot，最后通过 `mineastr:sign_translation_result` S2C
+包返回 locale 译文。客户端保持原始告示牌文字不变，仅在告示牌旁绘制世界空间浮选译文；
+准星移开后立即隐藏，不会向聊天栏发送进入服务器时的批量翻译消息。未安装客户端 Mod
+的玩家仍使用旧的系统消息回退。
 
 ### 查询
 

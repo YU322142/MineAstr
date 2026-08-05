@@ -4,6 +4,8 @@
 
 - Discord now listens for `on_message_edit` on the AstrBot Pycord client. Edited messages in bridged guild channels are re-sent to Minecraft and other bridge targets with an `[Edited]` marker, using the same filters and unified translation result as the original relay.
 - Bot-authored edits follow `relay_bot_conversations_to_game`; unrelated guilds, unbridged channels, commands, and unchanged edits are ignored. Listener cleanup now removes both Discord event handlers.
+- QQ/Discord translation output now compares normalized source and translated text before adding locale or `[原文/Original]` labels; an AI response that repeats the source is emitted as the original text only.
+- Minecraft sign translation now uses targeted world-space floating text: only the sign under the crosshair is queried and displayed, while the original sign text remains unchanged and cached translations persist in the world save.
 
 ## 0.6.13
 

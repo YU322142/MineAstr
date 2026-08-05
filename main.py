@@ -484,6 +484,10 @@ class MineAstrPlugin(Star):
             self._listener_adapter, "set_chat_translation_handler"
         ):
             self._listener_adapter.set_chat_translation_handler(None)
+        if self._listener_adapter is not None and hasattr(
+            self._listener_adapter, "set_sign_translation_handler"
+        ):
+            self._listener_adapter.set_sign_translation_handler(None)
         self._listener_adapter = None
         _ACTIVE_RELAY_SESSIONS.difference_update(self._relay_sessions)
         logger.info("MineAstr 插件已终止。")
@@ -626,6 +630,10 @@ class MineAstrPlugin(Star):
             if hasattr(adapter, "set_chat_translation_handler"):
                 adapter.set_chat_translation_handler(
                     self._translate_game_message
+                )
+            if hasattr(adapter, "set_sign_translation_handler"):
+                adapter.set_sign_translation_handler(
+                    self._translate_sign_request
                 )
             self._listener_adapter = adapter
 
@@ -1347,6 +1355,17 @@ class MineAstrPlugin(Star):
         )
 
     @staticmethod
+    def _same_translation_text(source: Any, translated: Any) -> bool:
+        def normalize(value: Any) -> str:
+            text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+            lines = text.split("\n")
+            while lines and not lines[-1].strip():
+                lines.pop()
+            return "\n".join(line.strip() for line in lines)
+
+        return normalize(source) == normalize(translated)
+
+    @staticmethod
     def _parse_translation_response(
         raw: Any, languages: tuple[str, ...], max_length: int
     ) -> dict[str, Any]:
@@ -1499,6 +1518,62 @@ class MineAstrPlugin(Star):
         )
         return self._game_translation_options_from_result(result)
 
+    async def _translate_sign_request(
+        self, request: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Translate a sign through the same AstrBot game-message pipeline.
+
+        The Fabric side persists the returned locale map in the Minecraft world.
+        Keeping this method on the plugin side means provider selection, timeout,
+        locale filtering, source-language de-duplication, and terminology rules
+        remain identical to normal in-game messages.
+        """
+
+        if not self._cfg_bool("game_translation_enabled"):
+            # Let the adapter return ``ok=false`` so the Fabric side does not
+            # persist an empty result while translation is disabled.  An empty
+            # cache entry would otherwise suppress a later request after the
+            # administrator enables the shared game-translation pipeline.
+            return {}
+        source = trim_message(
+            request.get("text"), self._cfg_int("max_relay_length")
+        )
+        if not source:
+            return {}
+        server_id = trim_message(request.get("server_id"), 64)
+        sign_instructions = (
+            str(self._cfg("translation_custom_instructions") or "").strip()
+        )
+        preserve_lines = (
+            "This is Minecraft sign text. Preserve explicit line breaks and "
+            "return the same number of lines whenever possible; do not add "
+            "explanations outside the translated text."
+        )
+        if sign_instructions:
+            sign_instructions = f"{sign_instructions}\n\n{preserve_lines}"
+        else:
+            sign_instructions = preserve_lines
+        result = await self._translate_text(
+            source,
+            self._game_translation_languages(),
+            f"minecraft://{server_id}" if server_id else "minecraft",
+            custom_instructions=sign_instructions,
+            cache_scope="game-sign",
+        )
+        options = self._game_translation_options_from_result(result)
+        return {
+            "sign_id": trim_message(request.get("sign_id"), 128),
+            "source_fingerprint": trim_message(
+                request.get("source_fingerprint"), 128
+            ),
+            "source_language": self._translation_result_parts(result)[0],
+            "translations": options.get("translations", {}),
+            "show_original": options.get(
+                "show_original",
+                self._cfg_bool("game_translation_show_original"),
+            ),
+        }
+
     def _game_translation_options_from_result(
         self, result: Any
     ) -> dict[str, Any]:
@@ -1632,14 +1707,13 @@ class MineAstrPlugin(Star):
         for language in languages:
             if self._same_translation_language(source_language, language):
                 original_in_targets = True
-                messages.append(f"[{language}] {content}")
             elif language in translations:
-                messages.append(f"[{language}] {translations[language]}")
-        if (
-            len(messages) == 1
-            and original_in_targets
-            and len(languages) == 1
-        ):
+                translated = translations[language]
+                if self._same_translation_text(content, translated):
+                    original_in_targets = True
+                    continue
+                messages.append(f"[{language}] {translated}")
+        if not messages:
             return content
         if bool(profile.get("chat_translation_show_original")) and not original_in_targets:
             messages.append(f"[原文/Original] {content}")
