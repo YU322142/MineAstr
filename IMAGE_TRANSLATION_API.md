@@ -1,6 +1,6 @@
 # MineAstr 图片翻译接口
 
-MineAstr `v0.6.21` 提供 `image_translate_request` WebSocket 请求。Fabric 客户端
+MineAstr `v0.6.22` 提供 `image_translate_request` WebSocket 请求。Fabric 客户端
 通过 `MineAstrClient.requestImageTranslation(...)` 发起请求，AstrBot 使用当前会话
 的多模态 Provider 识别图片文字并返回 JSON 译文。
 
