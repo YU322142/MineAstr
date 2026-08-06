@@ -318,7 +318,7 @@ public final class MineAstrClient implements ClientModInitializer {
         BlockHitResult result = minecraft.level.clip(new ClipContext(
                 start,
                 end,
-                ClipContext.Block.COLLIDER,
+                ClipContext.Block.OUTLINE,
                 ClipContext.Fluid.NONE,
                 cameraEntity));
         return result.getType() == HitResult.Type.BLOCK ? result : null;
