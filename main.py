@@ -2091,9 +2091,9 @@ class MineAstrPlugin(Star):
                         )
                 except (json.JSONDecodeError, TypeError):
                     pass
-            if not result.get("translations"):
-                raise RuntimeError("多模态模型没有返回有效的图片翻译 JSON")
             result["source_text"] = parsed_source
+            if not result.get("translations") and not parsed_source:
+                raise RuntimeError("多模态模型没有返回有效的图片翻译 JSON")
             result["show_original"] = self._cfg_bool(
                 "game_translation_show_original"
             )
@@ -3045,6 +3045,10 @@ class MineAstrPlugin(Star):
             filtered = apply_aqqbot_filters(text, self._cfg("game_to_chat_filters"))
             if filtered is not None:
                 filtered = strip_minecraft_colors(filtered)
+                target_sessions = self._relay_target_sessions(
+                    event.unified_msg_origin,
+                    source_platform="minecraft",
+                )
                 values = {
                     "server": str(
                         raw.get("server_name") or raw.get("server_id") or "Minecraft"
@@ -3056,9 +3060,28 @@ class MineAstrPlugin(Star):
                     "player_uuid": str(raw.get("player_uuid") or event.get_sender_id()),
                     "message": filtered,
                 }
+                template = str(self._cfg("game_to_chat_template"))
+                content = format_template(template, values)
+                translation_result = await self._translate_relay_message(
+                    filtered,
+                    target_sessions,
+                    event.unified_msg_origin,
+                )
+                translated_result = self._transform_translation_result(
+                    translation_result,
+                    lambda translated: format_template(
+                        template,
+                        {
+                            **values,
+                            "message": translated,
+                        },
+                    ),
+                )
                 await self._send_to_relay_sessions(
-                    format_template(str(self._cfg("game_to_chat_template")), values),
+                    content,
                     exclude=event.unified_msg_origin,
+                    sessions=target_sessions,
+                    translation_result=translated_result,
                 )
             if (
                 not raw.get("minecraft_mentioned_bot")

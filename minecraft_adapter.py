@@ -1240,8 +1240,13 @@ class MinecraftPlatformAdapter(Platform):
                 result = value
         usable = bool(
             isinstance(result, dict)
-            and isinstance(result.get("translations"), dict)
-            and result.get("translations")
+            and (
+                (
+                    isinstance(result.get("translations"), dict)
+                    and result.get("translations")
+                )
+                or result.get("source_text")
+            )
         )
         response: dict[str, Any] = {
             "type": "sign_translate_result",
