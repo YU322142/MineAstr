@@ -1999,6 +1999,9 @@ class MineAstrPlugin(Star):
         if not image_bytes or len(image_bytes) > 768 * 1024:
             logger.warning("MineAstr 图片翻译请求超过 768 KiB 安全上限。")
             return {}
+        mime_type = str(request.get("mime_type") or "image/jpeg").strip().lower()
+        if not re.fullmatch(r"[a-z0-9.+-]+/[a-z0-9.+-]+", mime_type):
+            mime_type = "image/jpeg"
 
         languages = self._translation_languages(
             request.get("target_languages") or self._game_translation_languages()
@@ -2062,7 +2065,9 @@ class MineAstrPlugin(Star):
                 provider.text_chat(
                     prompt=prompt,
                     system_prompt=system_prompt,
-                    image_urls=[f"base64://{encoded}"],
+                    image_urls=[
+                        f"data:{mime_type};base64,{encoded}"
+                    ],
                     session_id=f"mineastr-image-translation-{time.monotonic_ns()}",
                     persist=False,
                 ),
