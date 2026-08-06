@@ -38,8 +38,6 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -257,7 +255,10 @@ public final class MineAstrClient implements ClientModInitializer {
                 || minecraft.level == null
                 || minecraft.player == null
                 || minecraft.screen != null
-                || !(findTargetedBlock(minecraft) instanceof BlockHitResult hit)
+                || !(minecraft.hitResult instanceof BlockHitResult hit)
+                || hit.getType() != HitResult.Type.BLOCK
+                || hit.getLocation().distanceToSqr(minecraft.player.getEyePosition())
+                        > Math.pow(MineAstrClientConfig.SIGN_TRANSLATION_MAX_DISTANCE.getAsInt(), 2)
                 || !(minecraft.level.getBlockState(hit.getBlockPos()).getBlock() instanceof SignBlock)
                 || !(minecraft.level.getBlockEntity(hit.getBlockPos()) instanceof SignBlockEntity sign)) {
             TARGETED_SIGN = null;
@@ -307,23 +308,6 @@ public final class MineAstrClient implements ClientModInitializer {
         TARGETED_SIGN = new TargetedSign(sign.getBlockPos(), front, key, translated);
     }
 
-    private static BlockHitResult findTargetedBlock(Minecraft minecraft) {
-        Entity cameraEntity = minecraft.getCameraEntity();
-        if (cameraEntity == null || minecraft.level == null) {
-            return null;
-        }
-        double distance = MineAstrClientConfig.SIGN_TRANSLATION_MAX_DISTANCE.getAsInt();
-        Vec3 start = cameraEntity.getEyePosition();
-        Vec3 end = start.add(cameraEntity.getViewVector(1.0F).scale(distance));
-        BlockHitResult result = minecraft.level.clip(new ClipContext(
-                start,
-                end,
-                ClipContext.Block.OUTLINE,
-                ClipContext.Fluid.NONE,
-                cameraEntity));
-        return result.getType() == HitResult.Type.BLOCK ? result : null;
-    }
-
     private static void requestSignTranslation(SignBlockEntity sign, boolean front, SignCacheKey key) {
         long now = System.currentTimeMillis();
         Long retryAt = SIGN_TRANSLATION_RETRY_AT.get(key);
@@ -364,6 +348,12 @@ public final class MineAstrClient implements ClientModInitializer {
         String signId = signId(minecraft.level.dimension().identifier().toString(), result.pos(), result.front());
         SignCacheKey key = new SignCacheKey(signId, result.sourceFingerprint(), result.front());
         PENDING_SIGN_TRANSLATIONS.remove(key);
+        MineAstr.LOGGER.info(
+                "MineAstr sign translation result: pos={} front={} ok={} languages={}",
+                result.pos(),
+                result.front(),
+                result.ok(),
+                result.translations() == null ? 0 : result.translations().size());
         if (result.ok() && result.translations() != null && !result.translations().isEmpty()) {
             SIGN_TRANSLATIONS.put(key, result);
             SIGN_TRANSLATION_RETRY_AT.remove(key);
