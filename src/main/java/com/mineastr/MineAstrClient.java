@@ -216,7 +216,7 @@ public final class MineAstrClient implements ClientModInitializer {
         String signId = signId(minecraft.level.dimension().identifier().toString(), result.pos(), result.front());
         SignCacheKey key = new SignCacheKey(signId, result.sourceFingerprint(), result.front());
         PENDING_SIGN_TRANSLATIONS.remove(key);
-        if (result.ok()) {
+        if (result.ok() && result.translations() != null && !result.translations().isEmpty()) {
             SIGN_TRANSLATIONS.put(key, result);
             SIGN_TRANSLATION_RETRY_AT.remove(key);
         } else {

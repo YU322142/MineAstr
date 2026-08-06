@@ -379,7 +379,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         String signId = signId(level, sign.getBlockPos(), front);
         String fingerprint = sha256(source);
         var cached = signTranslationStore.find(signId, fingerprint);
-        if (cached.isPresent()) {
+        if (cached.isPresent() && !cached.get().translations().isEmpty()) {
             if (clientOverlay) {
                 sendSignTranslationResult(
                         player,
@@ -393,6 +393,13 @@ public final class MineAstrBridge implements WebSocket.Listener {
                 sendTranslatedSign(player, source, cached.get().translations(), cached.get().showOriginal());
             }
             return;
+        }
+        if (cached.isPresent()) {
+            MineAstr.LOGGER.debug(
+                    "MineAstr ignoring empty sign translation cache and retrying: sign={} player={}",
+                    signId,
+                    player.getGameProfile().name());
+            signTranslationStore.remove(signId, fingerprint);
         }
 
         WebSocket socket = webSocket.get();
@@ -880,8 +887,9 @@ public final class MineAstrBridge implements WebSocket.Listener {
             }
         }
         boolean showOriginal = getBoolean(payload, "show_original", false);
+        boolean usable = ok && !translations.isEmpty();
         currentServer.execute(() -> {
-            if (ok) {
+            if (usable) {
                 signTranslationStore.put(
                         pending.signId,
                         pending.fingerprint,
@@ -899,7 +907,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
                             pending.fingerprint,
                             translations,
                             showOriginal,
-                            ok);
+                            usable);
                 } else {
                     sendTranslatedSign(player, pending.source, translations, showOriginal);
                 }

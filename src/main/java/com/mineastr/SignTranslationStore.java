@@ -65,6 +65,14 @@ public final class SignTranslationStore {
         return Optional.of(entry);
     }
 
+    public void remove(String id, String fingerprint) {
+        Entry entry = entries.get(id);
+        if (entry != null && entry.fingerprint().equals(fingerprint)) {
+            entries.remove(id);
+            save();
+        }
+    }
+
     public void put(
             String id,
             String fingerprint,

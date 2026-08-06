@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.19
+
+- Never cache empty sign results, remove legacy empty cache entries, and retry failed client overlay requests.
+
 ## 0.6.18
 
 - Add a reliable server-side sign translation trigger when a player interacts with a sign.
