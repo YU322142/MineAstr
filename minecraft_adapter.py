@@ -579,6 +579,9 @@ class MinecraftPlatformAdapter(Platform):
         self._sign_translation_handler: Callable[
             [dict[str, Any]], Awaitable[dict[str, Any] | None] | dict[str, Any] | None
         ] | None = None
+        self._image_translation_handler: Callable[
+            [dict[str, Any]], Awaitable[dict[str, Any] | None] | dict[str, Any] | None
+        ] | None = None
 
     def set_chat_translation_handler(
         self,
@@ -597,6 +600,16 @@ class MinecraftPlatformAdapter(Platform):
         | None,
     ) -> None:
         self._sign_translation_handler = handler
+
+    def set_image_translation_handler(
+        self,
+        handler: Callable[
+            [dict[str, Any]],
+            Awaitable[dict[str, Any] | None] | dict[str, Any] | None,
+        ]
+        | None,
+    ) -> None:
+        self._image_translation_handler = handler
 
     async def _chat_translation_options(
         self, content: str, origin: str
@@ -1184,6 +1197,14 @@ class MinecraftPlatformAdapter(Platform):
                     return
                 await self.connection_manager.mark_seen(ws)
                 await self._handle_sign_translate_request(ws, payload)
+            elif payload_type == "image_translate_request":
+                if not await self.connection_manager.is_registered(ws):
+                    await self.connection_manager.send_error(
+                        ws, "请先发送 hello 完成注册"
+                    )
+                    return
+                await self.connection_manager.mark_seen(ws)
+                await self._handle_image_translate_request(ws, payload)
             else:
                 await self.connection_manager.send_error(
                     ws, f"不支持的消息类型：{payload_type}"
@@ -1231,6 +1252,50 @@ class MinecraftPlatformAdapter(Platform):
             response.update(result)
         else:
             response["error"] = "sign_translation_unavailable"
+        await ws.send_str(json.dumps(response, ensure_ascii=False))
+
+    async def _handle_image_translate_request(
+        self, ws: web.WebSocketResponse, payload: dict[str, Any]
+    ) -> None:
+        metadata = await self.connection_manager.metadata_for(ws)
+        if not metadata:
+            raise RuntimeError("Minecraft 服务器尚未注册")
+        message_id = _trim_content(payload.get("message_id"), 64)
+        if not message_id:
+            raise ValueError("image_translate_request 缺少 message_id")
+        image_base64 = _trim_content(payload.get("image_base64"), 1_000_000)
+        if not image_base64:
+            raise ValueError("image_translate_request 缺少 image_base64")
+        handler = self._image_translation_handler
+        result: dict[str, Any] | None = None
+        if handler is not None:
+            enriched = dict(payload)
+            enriched.update(
+                {
+                    "type": "image_translate_request",
+                    "server_id": metadata.get("server_id", "minecraft"),
+                    "server_name": metadata.get("server_name", "Minecraft Server"),
+                }
+            )
+            value = handler(enriched)
+            if inspect.isawaitable(value):
+                value = await value
+            if isinstance(value, dict):
+                result = value
+        usable = bool(
+            isinstance(result, dict)
+            and isinstance(result.get("translations"), dict)
+            and result.get("translations")
+        )
+        response: dict[str, Any] = {
+            "type": "image_translate_result",
+            "message_id": message_id,
+            "ok": usable,
+        }
+        if result:
+            response.update(result)
+        else:
+            response["error"] = "image_translation_unavailable"
         await ws.send_str(json.dumps(response, ensure_ascii=False))
 
     async def _handle_hello(

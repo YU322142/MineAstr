@@ -19,9 +19,9 @@
         "default": ""
       },
       "relay_routes": {
-        "description": "妗ユ帴璺敱闄愬埗",
+        "description": "桥接路由限制",
         "type": "text",
-        "hint": "姣忚涓€鏉¤矾鐢憋細channelA <-> channelB锛屾垨 source => target1,target2锛涚暀绌轰负鎵€鏈夋潯鐩叏灏忓苟杩炴帴銆?",
+        "hint": "每行一条路由：channelA <-> channelB，或 source => target1,target2；留空表示所有桥接会话互相连接。",
         "default": ""
       },
       "relay_prefix": {
@@ -120,6 +120,13 @@
         "description": "统一翻译提示词 / 术语表",
         "type": "text",
         "hint": "游戏内、QQ、Discord 及其所有频道统一使用此设置。可逐行写专有名词、固定译名和风格要求，例如：Motiquies 固定译为 动静交映。同一条源消息会一次生成所有接收端需要的语言，再分别分发；最多使用前 4000 字。",
+        "obvious_hint": true,
+        "default": ""
+      },
+      "image_translation_prompt": {
+        "description": "图片翻译专用提示词",
+        "type": "text",
+        "hint": "只用于沉浸画框等外部图片翻译请求，会与图片一起发送给 AstrBot 多模态模型；可填写 OCR 方向、专有名词和输出格式要求，最多 4000 字。",
         "obvious_hint": true,
         "default": ""
       },
@@ -603,6 +610,7 @@
   "game_translation_show_original": {"type": "bool", "default": true, "invisible": true},
   "game_translation_timeout_seconds": {"type": "int", "default": 20, "invisible": true},
   "translation_custom_instructions": {"type": "text", "default": "", "invisible": true},
+  "image_translation_prompt": {"type": "text", "default": "", "invisible": true},
   "binding_enabled": {"type": "bool", "default": true, "invisible": true},
   "binding_database": {"type": "string", "default": "data/mineastr/bindings.sqlite3", "invisible": true},
   "verify_method": {"type": "string", "default": "GROUP_NAME", "invisible": true},

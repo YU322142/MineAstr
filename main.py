@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import copy
+import hashlib
 import json
 import math
 import re
@@ -266,6 +267,7 @@ AQQBOT_DEFAULT_CONFIG: dict[str, Any] = {
     "game_translation_timeout_seconds": 20,
     "translation_context_messages": 0,
     "translation_custom_instructions": "",
+    "image_translation_prompt": "",
     "binding_enabled": True,
     "binding_database": DEFAULT_BINDING_DATABASE,
     "verify_method": "GROUP_NAME",
@@ -332,6 +334,7 @@ CONFIG_GROUP_KEYS: dict[str, tuple[str, ...]] = {
         "game_translation_timeout_seconds",
         "translation_context_messages",
         "translation_custom_instructions",
+        "image_translation_prompt",
         "discord_channel_settings",
     ),
     "binding_settings": (
@@ -407,7 +410,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.6.20",
+    "0.6.21",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -452,6 +455,7 @@ class MineAstrPlugin(Star):
             tuple[str, str, tuple[str, ...], str, tuple[tuple[str, str], ...]],
             dict[str, Any],
         ] = {}
+        self._image_translation_cache: dict[tuple[Any, ...], dict[str, Any]] = {}
         self._translation_contexts: dict[str, deque[dict[str, str]]] = {}
         self._relay_message_media: dict[str, list[dict[str, str]]] = {}
         self._relay_message_records: dict[str, dict[str, Any]] = {}
@@ -511,6 +515,10 @@ class MineAstrPlugin(Star):
             self._listener_adapter, "set_sign_translation_handler"
         ):
             self._listener_adapter.set_sign_translation_handler(None)
+        if self._listener_adapter is not None and hasattr(
+            self._listener_adapter, "set_image_translation_handler"
+        ):
+            self._listener_adapter.set_image_translation_handler(None)
         self._listener_adapter = None
         _ACTIVE_RELAY_SESSIONS.difference_update(self._relay_sessions)
         logger.info("MineAstr 插件已终止。")
@@ -657,6 +665,10 @@ class MineAstrPlugin(Star):
             if hasattr(adapter, "set_sign_translation_handler"):
                 adapter.set_sign_translation_handler(
                     self._translate_sign_request
+                )
+            if hasattr(adapter, "set_image_translation_handler"):
+                adapter.set_image_translation_handler(
+                    self._translate_image_request
                 )
             self._listener_adapter = adapter
 
@@ -1963,6 +1975,132 @@ class MineAstrPlugin(Star):
                 self._cfg_bool("game_translation_show_original"),
             ),
         }
+
+    async def _translate_image_request(
+        self, request: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Translate an external image through AstrBot's multimodal provider."""
+
+        if not self._cfg_bool("game_translation_enabled"):
+            logger.info(
+                "MineAstr 图片翻译请求被跳过：bridge_settings.game_translation_enabled=false"
+            )
+            return {}
+        encoded = str(request.get("image_base64") or "").strip()
+        if encoded.startswith("data:") and ";base64," in encoded:
+            encoded = encoded.split(";base64,", 1)[1].strip()
+        if not encoded or len(encoded) > 1_000_000:
+            return {}
+        try:
+            image_bytes = base64.b64decode(encoded, validate=True)
+        except (ValueError, TypeError):
+            logger.warning("MineAstr 图片翻译请求包含无效的 Base64 图片。")
+            return {}
+        if not image_bytes or len(image_bytes) > 768 * 1024:
+            logger.warning("MineAstr 图片翻译请求超过 768 KiB 安全上限。")
+            return {}
+
+        languages = self._translation_languages(
+            request.get("target_languages") or self._game_translation_languages()
+        )
+        if not languages:
+            return {}
+        prompt_instructions = trim_message(
+            str(
+                request.get("prompt")
+                or self._cfg("image_translation_prompt")
+                or ""
+            ).strip(),
+            4000,
+        )
+        context = trim_message(str(request.get("context") or "").strip(), 2000)
+        cache_key = (
+            hashlib.sha256(image_bytes).hexdigest(),
+            languages,
+            prompt_instructions,
+            context,
+        )
+        cached = self._image_translation_cache.get(cache_key)
+        if cached is not None:
+            return copy.deepcopy(cached)
+
+        try:
+            provider_id = str(self._cfg("game_translation_provider_id")).strip()
+            provider = (
+                self.context.get_provider_by_id(provider_id)
+                if provider_id
+                else self.context.get_using_provider(
+                    f"minecraft://{str(request.get('server_id') or 'minecraft')}"
+                )
+            )
+            if provider is None or not hasattr(provider, "text_chat"):
+                raise RuntimeError("没有可用的 AstrBot 多模态模型提供商")
+            prompt = json.dumps(
+                {
+                    "target_languages": list(languages),
+                    "context": context,
+                    "task": "从图片中识别所有可见文字并翻译",
+                },
+                ensure_ascii=False,
+            )
+            system_prompt = (
+                "You are a strict multimodal image translation engine. Read visible text "
+                "from the supplied image, preserve line breaks when they are meaningful, "
+                "and translate into every requested locale. Do not describe the image or "
+                "add explanations. Return only JSON in this exact shape: "
+                '{"source_language":"locale","source_text":"recognized text",'
+                '"translations":{"target_locale":"translated text"}}. '
+                "Use normalized lowercase locale codes and omit a translation whose "
+                "language is the same as the detected source language."
+            )
+            if prompt_instructions:
+                system_prompt += (
+                    "\nApply these image-translation instructions while keeping the JSON "
+                    "shape: " + json.dumps(prompt_instructions, ensure_ascii=False)
+                )
+            response = await asyncio.wait_for(
+                provider.text_chat(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    image_urls=[f"base64://{encoded}"],
+                    session_id=f"mineastr-image-translation-{time.monotonic_ns()}",
+                    persist=False,
+                ),
+                timeout=max(
+                    1, min(60, self._cfg_int("game_translation_timeout_seconds"))
+                ),
+            )
+            raw = getattr(response, "completion_text", "")
+            result = self._parse_translation_response(
+                raw, languages, self._cfg_int("max_relay_length")
+            )
+            parsed_source = ""
+            match = re.search(r"\{.*\}", str(raw or "").strip(), flags=re.DOTALL)
+            if match:
+                try:
+                    parsed = json.loads(match.group(0))
+                    if isinstance(parsed, dict):
+                        parsed_source = trim_message(
+                            parsed.get("source_text") or parsed.get("ocr_text"),
+                            self._cfg_int("max_relay_length"),
+                        )
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            if not result.get("translations"):
+                raise RuntimeError("多模态模型没有返回有效的图片翻译 JSON")
+            result["source_text"] = parsed_source
+            result["show_original"] = self._cfg_bool(
+                "game_translation_show_original"
+            )
+            self._image_translation_cache[cache_key] = copy.deepcopy(result)
+            while len(self._image_translation_cache) > 128:
+                self._image_translation_cache.pop(
+                    next(iter(self._image_translation_cache))
+                )
+            return result
+        except Exception as exc:
+            logger.warning("MineAstr 图片多模态翻译失败：%s", exc)
+            return {}
 
     def _game_translation_options_from_result(
         self, result: Any
