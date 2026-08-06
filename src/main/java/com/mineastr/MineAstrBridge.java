@@ -750,15 +750,35 @@ public final class MineAstrBridge implements WebSocket.Listener {
             codeEvent.addProperty("player_name", pending.playerName);
             codeEvent.addProperty("code", code);
             sendJson(socket, codeEvent);
-            String codeMessage = MineAstrConfig.LOGIN_CODE_MESSAGE.get().replace("{code}", code);
-            message = message.isBlank() ? "[MC] 该账号尚未绑定。" : message;
-            if (MineAstrConfig.DEFAULT_LOGIN_CODE_MESSAGE.equals(MineAstrConfig.LOGIN_CODE_MESSAGE.get())) {
+            boolean astrbotProvidedCodePrompt = containsBindingCodePlaceholder(message);
+            if (astrbotProvidedCodePrompt) {
+                // AstrBot 自定义的拒绝消息是完整绑定提示时，以它为准。
+                // 这样既能替换 {code}，也不会再额外追加一份 Mod 默认提示。
+                message = replaceBindingCodePlaceholders(message, code);
+                messageKey = "";
+            } else if (MineAstrConfig.DEFAULT_LOGIN_CODE_MESSAGE.equals(MineAstrConfig.LOGIN_CODE_MESSAGE.get())) {
+                message = message.isBlank() ? "[MC] 该账号尚未绑定。" : message;
                 localizedCode = code;
             } else {
-                message += codeMessage;
+                String codeMessage = replaceBindingCodePlaceholders(
+                        MineAstrConfig.LOGIN_CODE_MESSAGE.get(), code);
+                message = (message.isBlank() ? "[MC] 该账号尚未绑定。" : message) + codeMessage;
+                messageKey = "";
             }
         }
         pending.future.complete(new LoginCheckResult(allowed, message, messageKey, localizedCode));
+    }
+
+    private static boolean containsBindingCodePlaceholder(String message) {
+        return message != null
+                && (message.contains("{code}") || message.contains("<验证码>"));
+    }
+
+    private static String replaceBindingCodePlaceholders(String message, String code) {
+        if (message == null || message.isBlank()) {
+            return message == null ? "" : message;
+        }
+        return message.replace("{code}", code).replace("<验证码>", code);
     }
 
     private static boolean isKnownUnboundMessage(String message) {

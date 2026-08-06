@@ -4,7 +4,7 @@ import java.util.List;
 
 public final class MineAstrConfig {
     public static final String DEFAULT_LOGIN_CODE_MESSAGE =
-            "\n绑定验证码：{code}\n请在 Discord/聊天平台使用 /mc bind {code}";
+            "\n绑定验证码：{code}\n请在 QQ/Discord 使用 /mc bind {code}";
     private static final MineAstrConfigStore STORE = new MineAstrConfigStore("mineastr-common.json");
 
     public static final MineAstrConfigStore.BooleanValue ENABLED = STORE.bool("enabled", true);

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.20
+
+- Synchronize the Fabric Mod with AstrBot plugin `v0.6.20`.
+- Replace `{code}` in AstrBot-provided binding prompts and avoid duplicated default code messages.
+- Use the synchronized `QQ/Discord` default binding instruction.
+
 ## 0.6.19
 
 - Never cache empty sign results, remove legacy empty cache entries, and retry failed client overlay requests.

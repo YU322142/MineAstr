@@ -38,5 +38,5 @@
   "loginCheckFailOpen": true,
   "generateBindingCodeOnReject": true,
   "verifyCodeLength": 6,
-  "loginCodeMessage": "\n绑定验证码：{code}\n请在 Discord/聊天平台使用 /mc bind {code}"
+  "loginCodeMessage": "\n绑定验证码：{code}\n请在 QQ/Discord 使用 /mc bind {code}"
 }
