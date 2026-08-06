@@ -38,9 +38,13 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.block.SignBlock;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.block.entity.SignText;
 import net.fabricmc.api.ClientModInitializer;
@@ -176,6 +180,18 @@ public final class MineAstrClient implements ClientModInitializer {
         return MineAstrClientConfig.SHOW_ORIGINAL_TRANSLATED_MESSAGES.getAsBoolean();
     }
 
+    public static boolean areFloatingTranslationOverlaysEnabled() {
+        return MineAstrClientConfig.SIGN_TRANSLATIONS_ENABLED.getAsBoolean();
+    }
+
+    public static double floatingTranslationMaxDistance() {
+        return MineAstrClientConfig.SIGN_TRANSLATION_MAX_DISTANCE.getAsInt();
+    }
+
+    public static float floatingTranslationScale() {
+        return (float) MineAstrClientConfig.SIGN_TRANSLATION_SCALE.getAsDouble();
+    }
+
     private static void applyImageTranslationResult(MineAstrPayloads.ImageTranslationResult result) {
         CompletableFuture<MineAstrPayloads.ImageTranslationResult> future =
                 IMAGE_TRANSLATION_REQUESTS.get(result.requestId());
@@ -237,19 +253,33 @@ public final class MineAstrClient implements ClientModInitializer {
      */
     private static void updateTargetedSign(Minecraft minecraft) {
         if (!MineAstrClientConfig.GAME_TRANSLATIONS_ENABLED.getAsBoolean()
+                || !MineAstrClientConfig.SIGN_TRANSLATIONS_ENABLED.getAsBoolean()
                 || minecraft.level == null
                 || minecraft.player == null
                 || minecraft.screen != null
-                || !(minecraft.hitResult instanceof BlockHitResult hit)
-                || hit.getType() != HitResult.Type.BLOCK
+                || !(findTargetedBlock(minecraft) instanceof BlockHitResult hit)
+                || !(minecraft.level.getBlockState(hit.getBlockPos()).getBlock() instanceof SignBlock)
                 || !(minecraft.level.getBlockEntity(hit.getBlockPos()) instanceof SignBlockEntity sign)) {
             TARGETED_SIGN = null;
             return;
         }
 
         boolean front = sign.isFacingFrontText(minecraft.player);
-        SignText text = sign.getText(front);
-        String source = signSource(text);
+        String source = signSource(sign.getText(front));
+        /*
+         * 1.21.11 stores front_text and back_text independently for every
+         * standing, wall, and hanging sign. If the side selected by the
+         * vanilla orientation helper is empty, fall back to the other side.
+         * This is important for commands/data packs that only populate
+         * front_text (the common case for wall signs).
+         */
+        if (source.isBlank()) {
+            String alternate = signSource(sign.getText(!front));
+            if (!alternate.isBlank()) {
+                front = !front;
+                source = alternate;
+            }
+        }
         if (source.isBlank()) {
             TARGETED_SIGN = null;
             return;
@@ -277,6 +307,23 @@ public final class MineAstrClient implements ClientModInitializer {
         TARGETED_SIGN = new TargetedSign(sign.getBlockPos(), front, key, translated);
     }
 
+    private static BlockHitResult findTargetedBlock(Minecraft minecraft) {
+        Entity cameraEntity = minecraft.getCameraEntity();
+        if (cameraEntity == null || minecraft.level == null) {
+            return null;
+        }
+        double distance = MineAstrClientConfig.SIGN_TRANSLATION_MAX_DISTANCE.getAsInt();
+        Vec3 start = cameraEntity.getEyePosition();
+        Vec3 end = start.add(cameraEntity.getViewVector(1.0F).scale(distance));
+        BlockHitResult result = minecraft.level.clip(new ClipContext(
+                start,
+                end,
+                ClipContext.Block.COLLIDER,
+                ClipContext.Fluid.NONE,
+                cameraEntity));
+        return result.getType() == HitResult.Type.BLOCK ? result : null;
+    }
+
     private static void requestSignTranslation(SignBlockEntity sign, boolean front, SignCacheKey key) {
         long now = System.currentTimeMillis();
         Long retryAt = SIGN_TRANSLATION_RETRY_AT.get(key);
@@ -297,6 +344,11 @@ public final class MineAstrClient implements ClientModInitializer {
                     ClientPlayNetworking.canSend(MineAstrPayloads.SignTranslationQuery.TYPE));
             return;
         }
+        MineAstr.LOGGER.info(
+                "MineAstr sign translation query: pos={} front={} fingerprint={}",
+                sign.getBlockPos(),
+                front,
+                key.fingerprint());
         sendPayloadToServer(new MineAstrPayloads.SignTranslationQuery(
                 sign.getBlockPos(),
                 front,
@@ -333,12 +385,19 @@ public final class MineAstrClient implements ClientModInitializer {
             return;
         }
 
+        BlockState state = minecraft.level.getBlockState(targeted.pos());
+        if (!(state.getBlock() instanceof SignBlock signBlock)) {
+            return;
+        }
         var camera = minecraft.gameRenderer.getMainCamera();
         Vec3 cameraPosition = camera.position();
         var left = camera.leftVector();
         Vec3 sideOffset = new Vec3(-left.x(), -left.y(), -left.z()).scale(0.72D);
-        Vec3 anchor = Vec3.atCenterOf(targeted.pos())
-                .add(0.0D, 1.05D, 0.0D)
+        Vec3 anchor = new Vec3(
+                targeted.pos().getX(),
+                targeted.pos().getY(),
+                targeted.pos().getZ())
+                .add(signBlock.getSignHitboxCenterPosition(state))
                 .add(sideOffset);
 
         Font font = minecraft.font;
@@ -355,7 +414,8 @@ public final class MineAstrClient implements ClientModInitializer {
                 anchor.y() - cameraPosition.y(),
                 anchor.z() - cameraPosition.z());
         matrices.mulPose(camera.rotation());
-        matrices.scale(-OVERLAY_SCALE, -OVERLAY_SCALE, OVERLAY_SCALE);
+        float overlayScale = OVERLAY_SCALE * floatingTranslationScale();
+        matrices.scale(-overlayScale, -overlayScale, overlayScale);
 
         int totalHeight = lines.size() * font.lineHeight;
         int y = -totalHeight / 2;

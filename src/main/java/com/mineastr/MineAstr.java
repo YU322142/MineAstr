@@ -15,13 +15,14 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.level.block.SignBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
 import org.slf4j.Logger;
 
 public final class MineAstr implements ModInitializer {
     public static final String MODID = "mineastr";
-    public static final String MOD_VERSION = "0.6.21";
+    public static final String MOD_VERSION = "0.6.22";
     public static final Logger LOGGER = LogUtils.getLogger();
 
     private static final MineAstrBridge BRIDGE = new MineAstrBridge();
@@ -59,7 +60,8 @@ public final class MineAstr implements ModInitializer {
                 return InteractionResult.PASS;
             }
             BlockEntity entity = world.getBlockEntity(hitResult.getBlockPos());
-            if (entity instanceof SignBlockEntity sign) {
+            if (world.getBlockState(hitResult.getBlockPos()).getBlock() instanceof SignBlock
+                    && entity instanceof SignBlockEntity sign) {
                 BRIDGE.translateSign(serverPlayer, sign, sign.isFacingFrontText(player));
             }
             return InteractionResult.PASS;

@@ -14,6 +14,12 @@ public final class MineAstrClientConfig {
             STORE.bool("gameTranslationsEnabled", true);
     public static final MineAstrConfigStore.BooleanValue SHOW_ORIGINAL_TRANSLATED_MESSAGES =
             STORE.bool("showOriginalTranslatedMessages", true);
+    public static final MineAstrConfigStore.BooleanValue SIGN_TRANSLATIONS_ENABLED =
+            STORE.bool("signTranslationsEnabled", true);
+    public static final MineAstrConfigStore.IntValue SIGN_TRANSLATION_MAX_DISTANCE =
+            STORE.integer("signTranslationMaxDistance", 8, 1, 32);
+    public static final MineAstrConfigStore.DoubleValue SIGN_TRANSLATION_SCALE =
+            STORE.decimal("signTranslationScale", 1.0, 0.50, 2.0);
     public static final MineAstrConfigStore.EnumValue<ScreenshotMode> SCREENSHOT_MODE =
             STORE.enumValue("screenshotMode", ScreenshotMode.ASK, ScreenshotMode.class);
     public static final MineAstrConfigStore.IntValue SCREENSHOT_MAX_WIDTH = STORE.integer("screenshotMaxWidth", 240, 64, 1024);

@@ -31,7 +31,6 @@ public final class MineAstrDisplayApi {
     private static final ConcurrentMap<String, DisplayEntry> ENTRIES = new ConcurrentHashMap<>();
     private static final int MAX_OVERLAY_WIDTH = 180;
     private static final float OVERLAY_SCALE = 0.025F;
-    private static final double MAX_DISTANCE_SQUARED = 32.0D * 32.0D;
 
     private MineAstrDisplayApi() {
     }
@@ -112,16 +111,20 @@ public final class MineAstrDisplayApi {
         if (minecraft.level == null
                 || minecraft.player == null
                 || minecraft.screen != null
+                || !com.mineastr.MineAstrClient.areFloatingTranslationOverlaysEnabled()
                 || ENTRIES.isEmpty()) {
             return;
         }
         var camera = minecraft.gameRenderer.getMainCamera();
         Vec3 cameraPosition = camera.position();
         Font font = minecraft.font;
+        double maxDistance = com.mineastr.MineAstrClient.floatingTranslationMaxDistance();
+        double maxDistanceSquared = maxDistance * maxDistance;
+        float overlayScale = OVERLAY_SCALE * com.mineastr.MineAstrClient.floatingTranslationScale();
         for (DisplayEntry entry : ENTRIES.values()) {
             Vec3 anchor = entry.resolveAnchor(minecraft);
             if (anchor == null
-                    || minecraft.player.position().distanceToSqr(anchor) > MAX_DISTANCE_SQUARED
+                    || minecraft.player.position().distanceToSqr(anchor) > maxDistanceSquared
                     || (entry.onlyWhenTargeted() && !isTargeted(minecraft, entry, anchor))) {
                 continue;
             }
@@ -138,7 +141,7 @@ public final class MineAstrDisplayApi {
                     anchor.y() - cameraPosition.y(),
                     anchor.z() - cameraPosition.z());
             matrices.mulPose(camera.rotation());
-            matrices.scale(-OVERLAY_SCALE, -OVERLAY_SCALE, OVERLAY_SCALE);
+            matrices.scale(-overlayScale, -overlayScale, overlayScale);
 
             int totalHeight = lines.size() * font.lineHeight;
             int y = -totalHeight / 2;

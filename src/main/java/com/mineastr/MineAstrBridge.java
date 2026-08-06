@@ -55,6 +55,7 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.SignBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.storage.LevelResource;
@@ -337,15 +338,17 @@ public final class MineAstrBridge implements WebSocket.Listener {
         }
         ServerLevel level = player.level();
         BlockEntity entity = level.getBlockEntity(query.pos());
-        if (!(entity instanceof SignBlockEntity sign)) {
+        if (!(level.getBlockState(query.pos()).getBlock() instanceof SignBlock)
+                || !(entity instanceof SignBlockEntity sign)) {
             return;
         }
+        boolean front = resolveSignSide(sign, query.front());
         MineAstr.LOGGER.debug(
                 "MineAstr received sign translation query: player={} pos={} front={}",
                 player.getGameProfile().name(),
                 query.pos(),
-                query.front());
-        requestSignTranslation(player, sign, query.front(), true);
+                front);
+        requestSignTranslation(player, sign, front, true);
     }
 
     /**
@@ -431,6 +434,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         if (player == null || sign == null) {
             return;
         }
+        front = resolveSignSide(sign, front);
         /*
          * Do not return early for clients that advertised the screenshot
          * capability. Older versions used that capability as a proxy for the
@@ -597,6 +601,22 @@ public final class MineAstrBridge implements WebSocket.Listener {
             builder.append(line.replace('\r', ' ').replace('\u0000', ' '));
         }
         return builder.toString().strip();
+    }
+
+    /**
+     * 1.21.11 keeps independent front_text/back_text values on every vanilla
+     * standing, wall, and hanging sign. Prefer the side selected by the
+     * player's facing, but transparently use the other side when data packs
+     * or commands only populated one side.
+     */
+    private static boolean resolveSignSide(SignBlockEntity sign, boolean preferredFront) {
+        if (!signSource(sign, preferredFront).isBlank()) {
+            return preferredFront;
+        }
+        if (!signSource(sign, !preferredFront).isBlank()) {
+            return !preferredFront;
+        }
+        return preferredFront;
     }
 
     private static String signId(ServerLevel level, BlockPos pos, boolean front) {
