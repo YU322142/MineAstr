@@ -1245,6 +1245,7 @@ class MinecraftPlatformAdapter(Platform):
                     isinstance(result.get("translations"), dict)
                     and result.get("translations")
                 )
+                or result.get("already_bilingual") is True
                 or result.get("source_text")
             )
         )

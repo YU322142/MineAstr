@@ -223,6 +223,42 @@ class ConnectionManagerTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AdapterEventTests(unittest.IsolatedAsyncioTestCase):
+    async def test_sign_bilingual_skip_marker_is_a_usable_result(self):
+        adapter = MinecraftPlatformAdapter({}, {}, None)
+        websocket = FakeWebSocket()
+        await adapter.connection_manager.register(
+            websocket,
+            {"server_id": "survival", "server_name": "Survival"},
+        )
+
+        async def translate_sign(payload):
+            return {
+                "sign_id": payload["sign_id"],
+                "source_fingerprint": payload["source_fingerprint"],
+                "source_language": "multilingual",
+                "translations": {},
+                "already_bilingual": True,
+                "show_original": False,
+            }
+
+        adapter.set_sign_translation_handler(translate_sign)
+        await adapter._handle_sign_translate_request(
+            websocket,
+            {
+                "message_id": "sign-1",
+                "sign_id": "minecraft:overworld/1,64,2/front",
+                "source_fingerprint": "fingerprint",
+                "text": "出生点仓库\nSpawn Warehouse",
+            },
+        )
+
+        response = websocket.sent[-1]
+        self.assertEqual(response["type"], "sign_translate_result")
+        self.assertEqual(response["message_id"], "sign-1")
+        self.assertTrue(response["ok"])
+        self.assertTrue(response["already_bilingual"])
+        self.assertEqual(response["translations"], {})
+
     async def test_reconnect_replaces_server_binding_cache(self):
         adapter = MinecraftPlatformAdapter({}, {}, None)
         websocket = FakeWebSocket()

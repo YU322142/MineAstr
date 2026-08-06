@@ -41,7 +41,7 @@ AstrBot 对该会话的文本回复会回传给所有已连接的 Minecraft 服�
 
 ## 安装包兼容性
 
-在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.20.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
+在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.25.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
 
 插件元数据中的安装/更新源固定为 Fork 分支 `https://github.com/YU322142/MineAstr/tree/astrbot-plugin`，不会再让 AstrBot 回到原项目或下载仅用于项目导航的 `main` 分支。
 
@@ -191,7 +191,8 @@ pip install -r requirements.txt
 | `game_translation_provider_id` | 空 | 留空使用当前会话文本模型，也可指定低成本翻译 Provider。 |
 | `game_translation_languages` | `zh_cn\nen_us` | 每行一个目标 Minecraft locale，最多 8 种，例如 `ja_jp`。 |
 | `game_translation_show_original` | `true` | 未安装同版客户端 Mod 时，译文下方是否默认附带原文。 |
-| `translation_custom_instructions` | 空 | 统一翻译提示词/术语表；游戏内及所有 QQ/Discord 接收会话共同使用，同一条源消息合计只调用一次模型。 |
+| `translation_custom_instructions` | 空 | 统一翻译提示词/术语表，最多 40000 字；游戏内及所有 QQ/Discord 接收会话共同使用，同一条源消息合计只调用一次模型。 |
+| `image_translation_prompt` | 空 | 沉浸画框等外部图片翻译专用提示词，最多 40000 字；与截图一起交给 AstrBot 多模态模型。 |
 | `relay_bot_conversations_to_game` | `true` | 把桥接会话中玩家 @机器人的消息及 AstrBot 最终纯文本回复同步到 MC。 |
 | `game_translation_timeout_seconds` | `20` | 翻译超时；超时直接发送原文，不阻塞后续聊天。 |
 | `translation_context_messages` | `0` | 提供给 AstrBot 翻译模型的最近上下文条数，范围 0-20；只翻译当前消息正文。 |

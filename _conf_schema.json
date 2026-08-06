@@ -119,14 +119,14 @@
       "translation_custom_instructions": {
         "description": "统一翻译提示词 / 术语表",
         "type": "text",
-        "hint": "游戏内、QQ、Discord 及其所有频道统一使用此设置。可逐行写专有名词、固定译名和风格要求，例如：Motiquies 固定译为 动静交映。同一条源消息会一次生成所有接收端需要的语言，再分别分发；最多使用前 4000 字。",
+        "hint": "游戏内、QQ、Discord 及其所有频道统一使用此设置。可逐行写专有名词、固定译名和风格要求，例如：Motiquies 固定译为 动静交映。同一条源消息会一次生成所有接收端需要的语言，再分别分发；最多使用前 40000 字。",
         "obvious_hint": true,
         "default": ""
       },
       "image_translation_prompt": {
         "description": "图片翻译专用提示词",
         "type": "text",
-        "hint": "只用于沉浸画框等外部图片翻译请求，会与图片一起发送给 AstrBot 多模态模型；可填写 OCR 方向、专有名词和输出格式要求，最多 4000 字。",
+        "hint": "只用于沉浸画框等外部图片翻译请求，会与图片一起发送给 AstrBot 多模态模型；可填写 OCR 方向、专有名词和输出格式要求，最多 40000 字。",
         "obvious_hint": true,
         "default": ""
       },

@@ -97,6 +97,21 @@ AstrBot 返回按 locale 聚合的纯文本译文；`show_original`、目标语�
 ```
 
 Mod 必须把 `source_fingerprint` 与译文一起持久化到 Minecraft 世界存档。告示牌原文改变后，旧缓存不得复用；翻译失败或翻译前后规范化文本一致时显示原文。
+如果告示牌同时包含中文和英文，AstrBot 会让模型判断两部分是否表达相近含义。命中时不再生成普通译文；插件缓存该判断，并显式返回 `"already_bilingual": true` 和空的 `"translations": {}`。Mod 应把它持久化为 `skipTranslation`，准星再次指向时不请求模型，也不显示翻译浮层。该判断仅用于告示牌，不影响聊天或图片翻译。
+
+```json
+{
+  "type": "sign_translate_result",
+  "message_id": "uuid",
+  "ok": true,
+  "sign_id": "minecraft:overworld/1,64,2/front",
+  "source_fingerprint": "sha256-or-stable-fingerprint",
+  "source_language": "multilingual",
+  "translations": {},
+  "already_bilingual": true,
+  "show_original": false
+}
+```
 
 安装了同版 MineAstr 客户端 Mod 时，客户端只在准星指向某一面告示牌时发送可选的
 `mineastr:sign_translation_query` C2S 包（位置、正反面和原文指纹）。服务端先查世界缓存，

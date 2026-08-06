@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import importlib.util
 import json
 import sys
@@ -425,6 +426,98 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Motiquies", provider.calls[0]["system_prompt"])
         self.assertIn("动静交映", provider.calls[0]["system_prompt"])
 
+    async def test_text_translation_prompt_limit_is_forty_thousand(self):
+        class Provider:
+            def __init__(self):
+                self.call = None
+
+            async def text_chat(self, **kwargs):
+                self.call = kwargs
+                return types.SimpleNamespace(
+                    completion_text=(
+                        '{"source_language":"en_us",'
+                        '"translations":{"zh_cn":"你好"}}'
+                    )
+                )
+
+        provider = Provider()
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "bridge_settings": {
+                "game_translation_provider_id": "",
+                "game_translation_timeout_seconds": 5,
+                "max_relay_length": 500,
+            }
+        }
+        plugin.context = types.SimpleNamespace(
+            get_using_provider=lambda origin: provider,
+            get_provider_by_id=lambda provider_id: None,
+        )
+        plugin._game_translation_cache = {}
+        instructions = "x" * 40_100
+
+        result = await plugin._translate_text(
+            "Hello",
+            ("zh_cn",),
+            custom_instructions=instructions,
+        )
+
+        self.assertEqual(MAIN.TRANSLATION_PROMPT_MAX_LENGTH, 40_000)
+        self.assertEqual(result["translations"], {"zh_cn": "你好"})
+        expected = "x" * 39_999 + "…"
+        self.assertIn(
+            json.dumps(expected, ensure_ascii=False), provider.call["system_prompt"]
+        )
+        self.assertNotIn("x" * 40_000, provider.call["system_prompt"])
+
+    async def test_image_translation_prompt_limit_is_forty_thousand(self):
+        class Provider:
+            def __init__(self):
+                self.call = None
+
+            async def text_chat(self, **kwargs):
+                self.call = kwargs
+                return types.SimpleNamespace(
+                    completion_text=(
+                        '{"source_language":"zh_cn","source_text":"仓库",'
+                        '"translations":{"en_us":"Warehouse"}}'
+                    )
+                )
+
+        provider = Provider()
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "bridge_settings": {
+                "game_translation_enabled": True,
+                "game_translation_provider_id": "",
+                "game_translation_languages": "en_us",
+                "game_translation_show_original": False,
+                "game_translation_timeout_seconds": 5,
+                "image_translation_prompt": "y" * 40_100,
+                "max_relay_length": 500,
+            }
+        }
+        plugin.context = types.SimpleNamespace(
+            get_using_provider=lambda origin: provider,
+            get_provider_by_id=lambda provider_id: None,
+        )
+        plugin._image_translation_cache = {}
+
+        result = await plugin._translate_image_request(
+            {
+                "server_id": "survival",
+                "image_base64": base64.b64encode(b"image").decode("ascii"),
+                "mime_type": "image/png",
+            }
+        )
+
+        self.assertEqual(result["translations"], {"en_us": "Warehouse"})
+        expected = "y" * 39_999 + "…"
+        self.assertIn(
+            json.dumps(expected, ensure_ascii=False), provider.call["system_prompt"]
+        )
+        self.assertNotIn("y" * 40_000, provider.call["system_prompt"])
+
     async def test_target_platform_can_translate_one_or_multiple_languages(self):
         plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
         discord_profile = MAIN.DISCORD_NOTIFICATION_DEFAULTS.copy()
@@ -733,6 +826,58 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
                 "source_language": "zh_cn",
                 "translations": {"en_us": "Hello"},
             },
+        )
+
+    def test_translation_parser_only_accepts_bilingual_marker_when_enabled(self):
+        raw = (
+            '{"source_language":"multilingual","already_bilingual":true,'
+            '"translations":{}}'
+        )
+
+        ordinary = MAIN.MineAstrPlugin._parse_translation_response(
+            raw, ("zh_cn", "en_us"), 100
+        )
+        sign = MAIN.MineAstrPlugin._parse_translation_response(
+            raw,
+            ("zh_cn", "en_us"),
+            100,
+            allow_already_bilingual=True,
+        )
+
+        self.assertNotIn("already_bilingual", ordinary)
+        self.assertTrue(sign["already_bilingual"])
+
+    def test_translation_parser_rejects_contradictory_bilingual_markers(self):
+        wrong_language = MAIN.MineAstrPlugin._parse_translation_response(
+            '{"source_language":"zh_cn","already_bilingual":true,'
+            '"translations":{}}',
+            ("zh_cn", "en_us"),
+            100,
+            allow_already_bilingual=True,
+        )
+        with_translation = MAIN.MineAstrPlugin._parse_translation_response(
+            '{"source_language":"multilingual","already_bilingual":true,'
+            '"translations":{"en_us":"Warehouse"}}',
+            ("zh_cn", "en_us"),
+            100,
+            allow_already_bilingual=True,
+        )
+
+        self.assertNotIn("already_bilingual", wrong_language)
+        self.assertNotIn("already_bilingual", with_translation)
+        self.assertEqual(with_translation["translations"], {"en_us": "Warehouse"})
+
+    def test_bilingual_review_requires_both_han_and_latin_scripts(self):
+        self.assertTrue(
+            MAIN.MineAstrPlugin._contains_han_and_latin_candidate(
+                "出生点仓库\nSpawn Warehouse"
+            )
+        )
+        self.assertFalse(
+            MAIN.MineAstrPlugin._contains_han_and_latin_candidate("出生点仓库")
+        )
+        self.assertFalse(
+            MAIN.MineAstrPlugin._contains_han_and_latin_candidate("Spawn Warehouse")
         )
 
     async def test_same_source_language_uses_original_without_duplicate_line(self):
@@ -1247,6 +1392,144 @@ class RelayScopeAndContextTests(unittest.IsolatedAsyncioTestCase):
             plugin._translate_text.await_args.kwargs["cache_scope"],
             "game-sign",
         )
+        self.assertTrue(
+            plugin._translate_text.await_args.kwargs[
+                "detect_bilingual_equivalence"
+            ]
+        )
+
+    async def test_equivalent_bilingual_sign_returns_persistable_skip_marker(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "bridge_settings": {
+                "game_translation_enabled": True,
+                "game_translation_languages": "zh_cn\nen_us\nja_jp",
+                "game_translation_show_original": True,
+                "max_relay_length": 500,
+            }
+        }
+        plugin._translate_text = AsyncMock(
+            return_value={
+                "source_language": "multilingual",
+                "translations": {},
+                "already_bilingual": True,
+            }
+        )
+        source = "出生点仓库\nSpawn Warehouse"
+
+        result = await plugin._translate_sign_request(
+            {
+                "server_id": "survival",
+                "sign_id": "minecraft:overworld/1,64,2/front",
+                "source_fingerprint": "fingerprint",
+                "text": source,
+            }
+        )
+
+        self.assertEqual(result["source_language"], "multilingual")
+        self.assertEqual(result["translations"], {})
+        self.assertTrue(result["already_bilingual"])
+        self.assertFalse(result["show_original"])
+
+    async def test_bilingual_equivalence_decision_is_cached_in_memory(self):
+        class Provider:
+            def __init__(self):
+                self.calls = []
+
+            async def text_chat(self, **kwargs):
+                self.calls.append(kwargs)
+                return types.SimpleNamespace(
+                    completion_text=(
+                        '{"source_language":"multilingual",'
+                        '"already_bilingual":true,"translations":{}}'
+                    )
+                )
+
+        provider = Provider()
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "bridge_settings": {
+                "game_translation_provider_id": "",
+                "game_translation_timeout_seconds": 5,
+                "max_relay_length": 500,
+            }
+        }
+        plugin.context = types.SimpleNamespace(
+            get_using_provider=lambda origin: provider,
+            get_provider_by_id=lambda provider_id: None,
+        )
+        plugin._game_translation_cache = {}
+        source = "出生点仓库\nSpawn Warehouse"
+
+        first = await plugin._translate_text(
+            source,
+            ("zh_cn", "en_us"),
+            cache_scope="game-sign",
+            detect_bilingual_equivalence=True,
+        )
+        second = await plugin._translate_text(
+            source,
+            ("zh_cn", "en_us"),
+            cache_scope="game-sign",
+            detect_bilingual_equivalence=True,
+        )
+
+        self.assertEqual(first, second)
+        self.assertTrue(first["already_bilingual"])
+        self.assertEqual(len(provider.calls), 1)
+        prompt = json.loads(provider.calls[0]["prompt"])
+        self.assertTrue(prompt["detect_bilingual_equivalence"])
+        self.assertIn("semantically equivalent", provider.calls[0]["system_prompt"])
+        self.assertIn("do not classify Japanese", provider.calls[0]["system_prompt"])
+
+    async def test_invalid_empty_bilingual_result_is_not_cached(self):
+        class Provider:
+            def __init__(self):
+                self.calls = 0
+
+            async def text_chat(self, **kwargs):
+                self.calls += 1
+                completion = (
+                    '{"source_language":"multilingual","translations":{}}'
+                    if self.calls == 1
+                    else '{"source_language":"multilingual",'
+                    '"already_bilingual":true,"translations":{}}'
+                )
+                return types.SimpleNamespace(completion_text=completion)
+
+        provider = Provider()
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "bridge_settings": {
+                "game_translation_provider_id": "",
+                "game_translation_timeout_seconds": 5,
+                "max_relay_length": 500,
+            }
+        }
+        plugin.context = types.SimpleNamespace(
+            get_using_provider=lambda origin: provider,
+            get_provider_by_id=lambda provider_id: None,
+        )
+        plugin._game_translation_cache = {}
+        source = "出生点仓库\nSpawn Warehouse"
+
+        first = await plugin._translate_text(
+            source,
+            ("zh_cn", "en_us"),
+            cache_scope="game-sign",
+            detect_bilingual_equivalence=True,
+        )
+        second = await plugin._translate_text(
+            source,
+            ("zh_cn", "en_us"),
+            cache_scope="game-sign",
+            detect_bilingual_equivalence=True,
+        )
+
+        self.assertEqual(first, {})
+        self.assertTrue(second["already_bilingual"])
+        self.assertEqual(provider.calls, 2)
+        self.assertEqual(len(plugin._game_translation_cache), 1)
 
     async def test_empty_sign_translation_is_not_reported_as_usable(self):
         plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)

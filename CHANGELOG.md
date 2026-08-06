@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.25
+
+- Detect sign text that already contains semantically equivalent Chinese and English, return an explicit skip result, and cache the decision without affecting chat or image translation.
+- Require a strict multilingual/empty-translation response shape before accepting the AI skip marker; invalid empty results are not cached.
+- Raise both AstrBot-managed text and image translation prompt limits from 4,000 to 40,000 characters.
+- Document the Fabric `skipTranslation` persistence contract and cover it in WebSocket and translation-pipeline tests.
+
 ## 0.6.20
 
 - 修复 `translation_context_messages` 配置描述的 UTF-8 乱码。
