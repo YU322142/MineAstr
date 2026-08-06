@@ -1056,7 +1056,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         }
         boolean showOriginal = getBoolean(payload, "show_original", false);
         String error = trimFlatContent(getString(payload, "error", ""), MineAstrPayloads.MAX_ERROR_LENGTH);
-        boolean usable = ok && !translations.isEmpty();
+        boolean usable = ok && (!translations.isEmpty() || !sourceText.isBlank());
         currentServer.execute(() -> {
             ServerPlayer player = currentServer.getPlayerList().getPlayer(pending.playerUuid);
             if (player == null) {

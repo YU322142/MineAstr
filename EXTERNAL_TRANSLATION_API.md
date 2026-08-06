@@ -23,7 +23,8 @@ MineAstrClient.requestImageTranslation(
         "这是沉浸画框中的图片；保留专有名词和换行。",
         "图片翻译专用要求：优先识别画面中的文字，不要描述图片。")
     .thenAccept(result -> {
-        String translated = result.translations().get("zh_cn");
+        String translated = result.translations().getOrDefault(
+                "zh_cn", result.sourceText());
         if (translated == null || translated.isBlank()) {
             return;
         }
