@@ -16,19 +16,23 @@ MineAstr 将 Minecraft 1.21.11 Fabric 服务器接入 AstrBot、QQ/OneBot 与 Di
 
 ## 当前版本
 
-- AstrBot 插件：`0.6.24`
-- MineAstr Fabric Mod：`0.6.24`
+- AstrBot 插件：`0.6.25`
+- MineAstr Fabric Mod：`0.6.25`
 - Minecraft：`1.21.11`
 - Fabric API：`0.141.4+1.21.11`
 
 成品请从 [GitHub Releases](https://github.com/YU322142/MineAstr/releases) 下载：
 
-- `astrbot_plugin_mineastr-v0.6.24.zip`
-  - `mineastr-fabric-0.6.24.jar`
+- `astrbot_plugin_mineastr-v0.6.25.zip`
+  - `mineastr-fabric-0.6.25.jar`
 
-v0.6.24 参考 Create-Fly 的目标检测算法，直接复用 Minecraft 原生 `hitResult`，移除 MineAstr 自定义世界射线，降低客户端帧耗时并避免目标判定不一致；同时增加告示牌翻译结果日志，便于确认服务端返回链路。普通告示牌、墙上告示牌和悬挂告示牌均继续统一适配，并兼容 `front_text`/`back_text` 只填写一面的命令或数据包。F8 客户端设置现在可以调整告示牌与沉浸画框共用的浮选译文开关、最大距离和大小。
+v0.6.25 把告示牌与沉浸画框的准星译文统一到独立 HUD 提示层，不再依赖原版告示牌渲染器，因此可兼容 Better Block Entities 等替换渲染器，并修复提示框边框缺失。AstrBot 会对同时出现汉字和拉丁字母的告示牌做严格的中英语义同义判断；确认牌面已包含等价中英文时，服务端把“无需翻译”状态写入世界缓存，之后不重复调用模型也不显示多余浮层。
 
-当前翻译更新还包含两项行为：QQ/Discord 会先比较规范化后的原文与译文，AI 返回同文时只发送原文，不添加语言或 `[原文/Original]` 标签；Fabric 客户端只在准星指向告示牌时，在牌子旁显示世界空间译文浮选，不会进入服务器时批量刷聊天，翻译缓存继续保存在世界存档中。
+服主可将准星对准告示牌后使用 `/mineastr sign-translation status` 查看缓存，使用 `set <locale> <translation>` 保存不会被自动翻译覆盖的人工译文，使用 `clear [locale]` 清理当前牌面，并以管理员权限使用 `clear-all` 清理当前世界。管理操作会同步重置在线客户端缓存，并使已经在途的旧 AI 响应失效。
+
+AstrBot 端的统一文本翻译提示词和图片翻译专用提示词上限均由 4000 字提高到 40000 字；Fabric 外部 Mod 单次随请求传入的临时图片提示仍维持 4096 字符的网络载荷上限。
+
+当前翻译更新还包含两项行为：QQ/Discord 会先比较规范化后的原文与译文，AI 返回同文时只发送原文，不添加语言或 `[原文/Original]` 标签；Fabric 客户端只在准星指向告示牌时显示译文提示，不会进入服务器时批量刷聊天，翻译缓存继续保存在世界存档中。
 
 ## 连接方式
 
@@ -65,8 +69,8 @@ AstrBot 插件元数据的安装/更新源为本 Fork 的 [`astrbot-plugin`](htt
 
 ## 构建验证
 
-- AstrBot 插件：73 个自动化测试通过，覆盖 fail-closed/常数时间鉴权、配置迁移、AstrBot Schema 类型兼容、QQ/Discord 自动化及消息编辑同步、游戏与平台共用单次翻译后分发、源语言去重、自定义术语表、命令审批列表与函数工具、管理员身份过滤及实时同步、并发冷却和游戏内翻译协议。
-- Fabric Mod：Gradle `clean build` 通过。
+- AstrBot 插件：88 个自动化测试通过，覆盖 fail-closed/常数时间鉴权、配置迁移、AstrBot Schema 类型兼容、QQ/Discord 自动化及消息编辑同步、游戏与平台共用单次翻译后分发、源语言去重、中英同义告示牌缓存、40000 字提示词上限、自定义术语表、命令审批列表与函数工具、管理员身份过滤及实时同步、并发冷却和游戏内翻译协议。
+- Fabric Mod：11 个 JUnit 测试及 Gradle `clean build` 通过，覆盖缓存持久化、策略迁移、人工译文优先级、管理清理和过期异步响应失效。
 - 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证 Mixin 加载、离线后端收到正版客户端 UUID 时改用服务端真实离线 UUID、`whitelist_verified=true`，并实际通过原版白名单登录校验；既有解绑、管理员同步、可信命令和正常关服流程保持有效。
 
 ## 许可与来源
