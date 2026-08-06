@@ -16,17 +16,17 @@ MineAstr 将 Minecraft 1.21.11 Fabric 服务器接入 AstrBot、QQ/OneBot 与 Di
 
 ## 当前版本
 
-- AstrBot 插件：`0.6.23`
-- MineAstr Fabric Mod：`0.6.23`
+- AstrBot 插件：`0.6.24`
+- MineAstr Fabric Mod：`0.6.24`
 - Minecraft：`1.21.11`
 - Fabric API：`0.141.4+1.21.11`
 
 成品请从 [GitHub Releases](https://github.com/YU322142/MineAstr/releases) 下载：
 
-- `astrbot_plugin_mineastr-v0.6.23.zip`
-  - `mineastr-fabric-0.6.23.jar`
+- `astrbot_plugin_mineastr-v0.6.24.zip`
+  - `mineastr-fabric-0.6.24.jar`
 
-v0.6.23 在 v0.6.22 的基础上修复了告示牌准星检测使用碰撞形状导致射线穿过告示牌的问题，改用 Minecraft 选取方块使用的轮廓形状。普通告示牌、墙上告示牌和悬挂告示牌均继续统一适配，并兼容 `front_text`/`back_text` 只填写一面的命令或数据包。F8 客户端设置现在可以调整告示牌与沉浸画框共用的浮选译文开关、最大距离和大小。
+v0.6.24 参考 Create-Fly 的目标检测算法，直接复用 Minecraft 原生 `hitResult`，移除 MineAstr 自定义世界射线，降低客户端帧耗时并避免目标判定不一致；同时增加告示牌翻译结果日志，便于确认服务端返回链路。普通告示牌、墙上告示牌和悬挂告示牌均继续统一适配，并兼容 `front_text`/`back_text` 只填写一面的命令或数据包。F8 客户端设置现在可以调整告示牌与沉浸画框共用的浮选译文开关、最大距离和大小。
 
 当前翻译更新还包含两项行为：QQ/Discord 会先比较规范化后的原文与译文，AI 返回同文时只发送原文，不添加语言或 `[原文/Original]` 标签；Fabric 客户端只在准星指向告示牌时，在牌子旁显示世界空间译文浮选，不会进入服务器时批量刷聊天，翻译缓存继续保存在世界存档中。
 
