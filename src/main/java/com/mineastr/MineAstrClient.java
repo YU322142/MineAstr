@@ -30,17 +30,16 @@ import javax.imageio.stream.MemoryCacheImageOutputStream;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Screenshot;
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.renderer.LightTexture;
-import net.minecraft.client.renderer.MultiBufferSource;
-import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
-import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.level.block.SignBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
@@ -50,7 +49,8 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import org.lwjgl.glfw.GLFW;
 
@@ -71,8 +71,12 @@ public final class MineAstrClient implements ClientModInitializer {
     private static final ConcurrentMap<String, CompletableFuture<MineAstrPayloads.ImageTranslationResult>>
             IMAGE_TRANSLATION_REQUESTS = new ConcurrentHashMap<>();
     private static final int MAX_OVERLAY_WIDTH = 180;
-    private static final float OVERLAY_SCALE = 0.025F;
     private static volatile TargetedSign TARGETED_SIGN;
+    private static volatile String SIGN_OVERLAY_DEBUG_STATE = "";
+    private static volatile String SIGN_HUD_TARGET_KEY = "";
+    private static volatile long SIGN_HUD_TARGET_SINCE_MS;
+    private static volatile String SIGN_HUD_RENDER_KEY = "";
+    private static volatile long SIGN_HUD_RENDER_LOG_AT;
     private static final KeyMapping OPEN_CONFIG_KEY = KeyBindingHelper.registerKeyBinding(new KeyMapping(
             "key.mineastr.open_config",
             InputConstants.Type.KEYSYM,
@@ -86,6 +90,8 @@ public final class MineAstrClient implements ClientModInitializer {
                 context.client().execute(() -> handleScreenshotRequestOnClientThread(context.client(), request)));
         ClientPlayNetworking.registerGlobalReceiver(MineAstrPayloads.SignTranslationResult.TYPE, (result, context) ->
                 context.client().execute(() -> applySignTranslationResult(context.client(), result)));
+        ClientPlayNetworking.registerGlobalReceiver(MineAstrPayloads.SignTranslationCacheReset.TYPE, (reset, context) ->
+                context.client().execute(MineAstrClient::clearSignTranslationCache));
         ClientPlayNetworking.registerGlobalReceiver(MineAstrPayloads.ImageTranslationResult.TYPE, (result, context) ->
                 context.client().execute(() -> applyImageTranslationResult(result)));
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
@@ -114,8 +120,17 @@ public final class MineAstrClient implements ClientModInitializer {
             }
             updateTargetedSign(client);
         });
-        WorldRenderEvents.AFTER_ENTITIES.register(context -> {
-            renderTargetedSignOverlay(context);
+        /*
+         * Create's goggle/stress information is rendered as a GUI overlay
+         * driven by Minecraft.hitResult, not by the targeted block entity's
+         * renderer. Do the same here so Better Block Entities, culling and
+         * render caching cannot suppress the translated text.
+         */
+        HudElementRegistry.attachElementAfter(
+                VanillaHudElements.CROSSHAIR,
+                Identifier.fromNamespaceAndPath(MineAstr.MODID, "sign_translation"),
+                MineAstrClient::renderTargetedSignHud);
+        WorldRenderEvents.END_MAIN.register(context -> {
             MineAstrDisplayApi.render(context);
         });
     }
@@ -250,18 +265,42 @@ public final class MineAstrClient implements ClientModInitializer {
      * The original sign render state is deliberately left untouched.
      */
     private static void updateTargetedSign(Minecraft minecraft) {
-        if (!MineAstrClientConfig.GAME_TRANSLATIONS_ENABLED.getAsBoolean()
-                || !MineAstrClientConfig.SIGN_TRANSLATIONS_ENABLED.getAsBoolean()
-                || minecraft.level == null
-                || minecraft.player == null
-                || minecraft.screen != null
-                || !(minecraft.hitResult instanceof BlockHitResult hit)
-                || hit.getType() != HitResult.Type.BLOCK
-                || hit.getLocation().distanceToSqr(minecraft.player.getEyePosition())
-                        > Math.pow(MineAstrClientConfig.SIGN_TRANSLATION_MAX_DISTANCE.getAsInt(), 2)
-                || !(minecraft.level.getBlockState(hit.getBlockPos()).getBlock() instanceof SignBlock)
-                || !(minecraft.level.getBlockEntity(hit.getBlockPos()) instanceof SignBlockEntity sign)) {
-            TARGETED_SIGN = null;
+        if (!MineAstrClientConfig.GAME_TRANSLATIONS_ENABLED.getAsBoolean()) {
+            clearTargetedSign("game-translations-disabled");
+            return;
+        }
+        if (!MineAstrClientConfig.SIGN_TRANSLATIONS_ENABLED.getAsBoolean()) {
+            clearTargetedSign("sign-translations-disabled");
+            return;
+        }
+        if (minecraft.level == null || minecraft.player == null) {
+            clearTargetedSign("level-or-player-unavailable");
+            return;
+        }
+        if (minecraft.screen != null) {
+            clearTargetedSign("screen-open:" + minecraft.screen.getClass().getSimpleName());
+            return;
+        }
+        if (!(minecraft.hitResult instanceof BlockHitResult hit)
+                || hit.getType() != HitResult.Type.BLOCK) {
+            clearTargetedSign("no-block-hit:" + (minecraft.hitResult == null
+                    ? "null"
+                    : minecraft.hitResult.getType()));
+            return;
+        }
+        double distanceSquared = hit.getLocation().distanceToSqr(minecraft.player.getEyePosition());
+        int maxDistance = MineAstrClientConfig.SIGN_TRANSLATION_MAX_DISTANCE.getAsInt();
+        if (distanceSquared > Math.pow(maxDistance, 2)) {
+            clearTargetedSign("out-of-range:" + String.format(Locale.ROOT, "%.2f>%d", Math.sqrt(distanceSquared), maxDistance));
+            return;
+        }
+        BlockState hitState = minecraft.level.getBlockState(hit.getBlockPos());
+        if (!(hitState.getBlock() instanceof SignBlock)) {
+            clearTargetedSign("not-sign:" + hitState.getBlock());
+            return;
+        }
+        if (!(minecraft.level.getBlockEntity(hit.getBlockPos()) instanceof SignBlockEntity sign)) {
+            clearTargetedSign("sign-block-entity-unavailable:" + hit.getBlockPos());
             return;
         }
 
@@ -282,7 +321,7 @@ public final class MineAstrClient implements ClientModInitializer {
             }
         }
         if (source.isBlank()) {
-            TARGETED_SIGN = null;
+            clearTargetedSign("empty-source:" + hit.getBlockPos() + ":" + front);
             return;
         }
 
@@ -292,19 +331,37 @@ public final class MineAstrClient implements ClientModInitializer {
                 front);
         MineAstrPayloads.SignTranslationResult result = SIGN_TRANSLATIONS.get(key);
         if (result == null) {
+            logSignOverlayState(
+                    "cache-miss pos=" + sign.getBlockPos()
+                            + " front=" + front
+                            + " fp=" + key.fingerprint()
+                            + " source=" + summarizeSignText(source));
             requestSignTranslation(sign, front, key);
             TARGETED_SIGN = null;
             return;
         }
 
+        String selectedLanguage = normalizeLanguage(minecraft.getLanguageManager().getSelected());
         String translated = selectTranslation(
                 result.translations(),
-                normalizeLanguage(minecraft.getLanguageManager().getSelected()));
+                selectedLanguage);
         if (translated.isBlank() || sameSignText(source, translated)) {
-            TARGETED_SIGN = null;
+            clearTargetedSign(
+                    "translation-unusable pos=" + sign.getBlockPos()
+                            + " front=" + front
+                            + " lang=" + selectedLanguage
+                            + " keys=" + result.translations().keySet()
+                            + " blank=" + translated.isBlank()
+                            + " same=" + sameSignText(source, translated));
             return;
         }
 
+        logSignOverlayState(
+                "target-ready pos=" + sign.getBlockPos()
+                        + " front=" + front
+                        + " lang=" + selectedLanguage
+                        + " keys=" + result.translations().keySet()
+                        + " text=" + summarizeSignText(translated));
         TARGETED_SIGN = new TargetedSign(sign.getBlockPos(), front, key, translated);
     }
 
@@ -349,82 +406,177 @@ public final class MineAstrClient implements ClientModInitializer {
         SignCacheKey key = new SignCacheKey(signId, result.sourceFingerprint(), result.front());
         PENDING_SIGN_TRANSLATIONS.remove(key);
         MineAstr.LOGGER.info(
-                "MineAstr sign translation result: pos={} front={} ok={} languages={}",
+                "MineAstr sign translation result: pos={} front={} fp={} ok={} languages={} keys={}",
                 result.pos(),
                 result.front(),
+                result.sourceFingerprint(),
                 result.ok(),
-                result.translations() == null ? 0 : result.translations().size());
+                result.translations() == null ? 0 : result.translations().size(),
+                result.translations() == null ? Set.of() : result.translations().keySet());
         if (result.ok() && result.translations() != null && !result.translations().isEmpty()) {
             SIGN_TRANSLATIONS.put(key, result);
             SIGN_TRANSLATION_RETRY_AT.remove(key);
+            logSignOverlayState(
+                    "result-cached pos=" + result.pos()
+                            + " front=" + result.front()
+                            + " fp=" + result.sourceFingerprint());
         } else {
+            SIGN_TRANSLATIONS.remove(key);
             SIGN_TRANSLATION_RETRY_AT.put(
                     key,
                     System.currentTimeMillis() + SIGN_TRANSLATION_RETRY_DELAY_MS);
+            logSignOverlayState(
+                    "result-rejected pos=" + result.pos()
+                            + " front=" + result.front()
+                            + " fp=" + result.sourceFingerprint());
         }
     }
 
-    private static void renderTargetedSignOverlay(WorldRenderContext context) {
+    private static void clearSignTranslationCache() {
+        SIGN_TRANSLATIONS.clear();
+        PENDING_SIGN_TRANSLATIONS.clear();
+        SIGN_TRANSLATION_RETRY_AT.clear();
+        TARGETED_SIGN = null;
+        SIGN_HUD_TARGET_KEY = "";
+        SIGN_HUD_RENDER_KEY = "";
+        logSignOverlayState("cache-reset");
+    }
+
+    /**
+     * Render the selected sign translation through the same GUI/HUD path used
+     * by Create's goggle overlay. This deliberately does not depend on any
+     * sign block-entity renderer: Better Block Entities replaces the vanilla
+     * renderer entirely when optimize.sign is enabled.
+     */
+    private static void renderTargetedSignHud(
+            GuiGraphics graphics,
+            DeltaTracker tickCounter) {
         TargetedSign targeted = TARGETED_SIGN;
         Minecraft minecraft = Minecraft.getInstance();
         if (targeted == null
                 || minecraft.level == null
                 || minecraft.player == null
                 || minecraft.screen != null
-                || !(minecraft.level.getBlockEntity(targeted.pos()) instanceof SignBlockEntity)) {
+                || !MineAstrClientConfig.GAME_TRANSLATIONS_ENABLED.getAsBoolean()
+                || !MineAstrClientConfig.SIGN_TRANSLATIONS_ENABLED.getAsBoolean()) {
+            SIGN_HUD_TARGET_KEY = "";
+            SIGN_HUD_TARGET_SINCE_MS = 0L;
             return;
         }
 
-        BlockState state = minecraft.level.getBlockState(targeted.pos());
-        if (!(state.getBlock() instanceof SignBlock signBlock)) {
-            return;
-        }
-        var camera = minecraft.gameRenderer.getMainCamera();
-        Vec3 cameraPosition = camera.position();
-        var left = camera.leftVector();
-        Vec3 sideOffset = new Vec3(-left.x(), -left.y(), -left.z()).scale(0.72D);
-        Vec3 anchor = new Vec3(
-                targeted.pos().getX(),
-                targeted.pos().getY(),
-                targeted.pos().getZ())
-                .add(signBlock.getSignHitboxCenterPosition(state))
-                .add(sideOffset);
-
-        Font font = minecraft.font;
-        List<net.minecraft.util.FormattedCharSequence> lines = wrapOverlayText(font, targeted.translation());
+        List<net.minecraft.util.FormattedCharSequence> lines =
+                wrapOverlayText(minecraft.font, targeted.translation());
         if (lines.isEmpty()) {
             return;
         }
 
-        PoseStack matrices = context.matrices();
-        MultiBufferSource buffers = context.consumers();
-        matrices.pushPose();
-        matrices.translate(
-                anchor.x() - cameraPosition.x(),
-                anchor.y() - cameraPosition.y(),
-                anchor.z() - cameraPosition.z());
-        matrices.mulPose(camera.rotation());
-        float overlayScale = OVERLAY_SCALE * floatingTranslationScale();
-        matrices.scale(-overlayScale, -overlayScale, overlayScale);
-
-        int totalHeight = lines.size() * font.lineHeight;
-        int y = -totalHeight / 2;
-        for (var line : lines) {
-            int width = font.width(line);
-            font.drawInBatch(
-                    line,
-                    -width / 2.0F,
-                    y,
-                    0xFFFFFFFF,
-                    false,
-                    matrices.last().pose(),
-                    buffers,
-                    Font.DisplayMode.NORMAL,
-                    0xA0000000,
-                    LightTexture.FULL_BRIGHT);
-            y += font.lineHeight;
+        String targetKey = targeted.key().signId()
+                + "|" + targeted.key().fingerprint()
+                + "|" + targeted.front();
+        long now = System.currentTimeMillis();
+        if (!targetKey.equals(SIGN_HUD_TARGET_KEY)) {
+            SIGN_HUD_TARGET_KEY = targetKey;
+            SIGN_HUD_TARGET_SINCE_MS = now;
         }
-        matrices.popPose();
+
+        float fade = Math.max(0.0F, Math.min(
+                1.0F,
+                (now - SIGN_HUD_TARGET_SINCE_MS) / 360.0F));
+        float scale = Math.max(0.50F, Math.min(2.0F, floatingTranslationScale()));
+        int padding = 5;
+        int textWidth = 0;
+        for (var line : lines) {
+            textWidth = Math.max(textWidth, minecraft.font.width(line));
+        }
+        int panelWidth = textWidth + padding * 2;
+        int panelHeight = lines.size() * minecraft.font.lineHeight + padding * 2;
+
+        int renderedWidth = Math.round(panelWidth * scale);
+        int renderedHeight = Math.round(panelHeight * scale);
+        int x = Math.max(
+                4,
+                Math.min(
+                        graphics.guiWidth() / 2 + 18,
+                        graphics.guiWidth() - renderedWidth - 4));
+        int y = Math.max(
+                4,
+                Math.min(
+                        graphics.guiHeight() / 2 + 10,
+                        graphics.guiHeight() - renderedHeight - 4));
+        float slide = (float) (Math.pow(1.0F - fade, 3.0D) * 8.0D);
+
+        var pose = graphics.pose();
+        pose.pushMatrix();
+        try {
+            pose.translate(x + slide, y);
+            pose.scale(scale, scale);
+
+            int background = scaleAlpha(0xE0100010, fade);
+            int borderTop = scaleAlpha(0xFF8977C9, fade);
+            int borderBottom = scaleAlpha(0xFF392A6A, fade);
+            int textColor = scaleAlpha(0xFFFFFFFF, fade);
+
+            graphics.fill(0, 0, panelWidth, panelHeight, background);
+            graphics.renderOutline(0, 0, panelWidth, panelHeight, borderTop);
+            graphics.fill(1, panelHeight - 2, panelWidth - 1, panelHeight - 1, borderBottom);
+            graphics.fill(panelWidth - 2, 1, panelWidth - 1, panelHeight - 1, borderBottom);
+
+            int lineY = padding;
+            for (var line : lines) {
+                graphics.drawString(
+                        minecraft.font,
+                        line,
+                        padding,
+                        lineY,
+                        textColor,
+                        true);
+                lineY += minecraft.font.lineHeight;
+            }
+        } finally {
+            pose.popMatrix();
+        }
+
+        if (!targetKey.equals(SIGN_HUD_RENDER_KEY)
+                || now - SIGN_HUD_RENDER_LOG_AT >= 5_000L) {
+            SIGN_HUD_RENDER_KEY = targetKey;
+            SIGN_HUD_RENDER_LOG_AT = now;
+            MineAstr.LOGGER.info(
+                    "MineAstr sign HUD render: pos={} front={} lines={} scale={} translation={}",
+                    targeted.pos(),
+                    targeted.front(),
+                    lines.size(),
+                    scale,
+                    summarizeSignText(targeted.translation()));
+        }
+    }
+
+    private static int scaleAlpha(int color, float multiplier) {
+        int alpha = (color >>> 24) & 0xFF;
+        int scaledAlpha = Math.max(0, Math.min(0xFF, Math.round(alpha * multiplier)));
+        return (scaledAlpha << 24) | (color & 0x00FFFFFF);
+    }
+
+    private static void clearTargetedSign(String reason) {
+        TARGETED_SIGN = null;
+        SIGN_HUD_TARGET_KEY = "";
+        SIGN_HUD_TARGET_SINCE_MS = 0L;
+        logSignOverlayState("cleared " + reason);
+    }
+
+    private static void logSignOverlayState(String state) {
+        if (!state.equals(SIGN_OVERLAY_DEBUG_STATE)) {
+            SIGN_OVERLAY_DEBUG_STATE = state;
+            if (state.startsWith("cleared ")) {
+                MineAstr.LOGGER.debug("MineAstr sign overlay state: {}", state);
+            } else {
+                MineAstr.LOGGER.info("MineAstr sign overlay state: {}", state);
+            }
+        }
+    }
+
+    private static String summarizeSignText(String value) {
+        String normalized = normalizeSignText(value).replace('\n', '|');
+        return normalized.length() <= 160 ? normalized : normalized.substring(0, 157) + "...";
     }
 
     private static List<net.minecraft.util.FormattedCharSequence> wrapOverlayText(Font font, String translation) {

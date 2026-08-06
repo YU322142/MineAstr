@@ -16,6 +16,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 
 /**
@@ -31,6 +32,8 @@ public final class MineAstrDisplayApi {
     private static final ConcurrentMap<String, DisplayEntry> ENTRIES = new ConcurrentHashMap<>();
     private static final int MAX_OVERLAY_WIDTH = 180;
     private static final float OVERLAY_SCALE = 0.025F;
+    private static final MultiBufferSource.BufferSource OVERLAY_BUFFERS =
+            MultiBufferSource.immediate(new ByteBufferBuilder(256 * 1024));
 
     private MineAstrDisplayApi() {
     }
@@ -121,46 +124,71 @@ public final class MineAstrDisplayApi {
         double maxDistance = com.mineastr.MineAstrClient.floatingTranslationMaxDistance();
         double maxDistanceSquared = maxDistance * maxDistance;
         float overlayScale = OVERLAY_SCALE * com.mineastr.MineAstrClient.floatingTranslationScale();
-        for (DisplayEntry entry : ENTRIES.values()) {
-            Vec3 anchor = entry.resolveAnchor(minecraft);
-            if (anchor == null
-                    || minecraft.player.position().distanceToSqr(anchor) > maxDistanceSquared
-                    || (entry.onlyWhenTargeted() && !isTargeted(minecraft, entry, anchor))) {
-                continue;
-            }
-            String text = displayText(entry.translated(), entry.original());
-            List<net.minecraft.util.FormattedCharSequence> lines = wrap(font, text);
-            if (lines.isEmpty()) {
-                continue;
-            }
-            PoseStack matrices = context.matrices();
-            MultiBufferSource buffers = context.consumers();
-            matrices.pushPose();
-            matrices.translate(
-                    anchor.x() - cameraPosition.x(),
-                    anchor.y() - cameraPosition.y(),
-                    anchor.z() - cameraPosition.z());
-            matrices.mulPose(camera.rotation());
-            matrices.scale(-overlayScale, -overlayScale, overlayScale);
+        boolean submitted = false;
+        try {
+            for (DisplayEntry entry : ENTRIES.values()) {
+                Vec3 anchor = entry.resolveAnchor(minecraft);
+                if (anchor == null
+                        || minecraft.player.position().distanceToSqr(anchor) > maxDistanceSquared
+                        || (entry.onlyWhenTargeted() && !isTargeted(minecraft, entry, anchor))) {
+                    continue;
+                }
+                String text = displayText(entry.translated(), entry.original());
+                List<net.minecraft.util.FormattedCharSequence> lines = wrap(font, text);
+                if (lines.isEmpty()) {
+                    continue;
+                }
+                // Match Create's clean world-space render stack.
+                PoseStack matrices = new PoseStack();
+                MultiBufferSource buffers = OVERLAY_BUFFERS;
+                matrices.pushPose();
+                try {
+                    matrices.translate(
+                            anchor.x() - cameraPosition.x(),
+                            anchor.y() - cameraPosition.y(),
+                            anchor.z() - cameraPosition.z());
+                    matrices.mulPose(camera.rotation());
+                    matrices.scale(-overlayScale, -overlayScale, overlayScale);
 
-            int totalHeight = lines.size() * font.lineHeight;
-            int y = -totalHeight / 2;
-            for (var line : lines) {
-                int width = font.width(line);
-                font.drawInBatch(
-                        line,
-                        -width / 2.0F,
-                        y,
-                        0xFFFFFFFF,
-                        false,
-                        matrices.last().pose(),
-                        buffers,
-                        Font.DisplayMode.NORMAL,
-                        0xA0000000,
-                        LightTexture.FULL_BRIGHT);
-                y += font.lineHeight;
+                    int totalHeight = lines.size() * font.lineHeight;
+                    int y = -totalHeight / 2;
+                    for (var line : lines) {
+                        int width = font.width(line);
+                        font.drawInBatch8xOutline(
+                                line,
+                                -width / 2.0F,
+                                y,
+                                0xFFFFFFFF,
+                                0xFF333333,
+                                matrices.last().pose(),
+                                buffers,
+                                LightTexture.FULL_BRIGHT);
+                        font.drawInBatch(
+                                line,
+                                -width / 2.0F,
+                                y,
+                                0xFFFFFFFF,
+                                false,
+                                matrices.last().pose(),
+                                buffers,
+                                Font.DisplayMode.SEE_THROUGH,
+                                0xA0000000,
+                                LightTexture.FULL_BRIGHT);
+                        y += font.lineHeight;
+                    }
+                    submitted = true;
+                } finally {
+                    matrices.popPose();
+                }
             }
-            matrices.popPose();
+        } finally {
+            if (submitted) {
+                try {
+                    OVERLAY_BUFFERS.endBatch();
+                } catch (RuntimeException exception) {
+                    com.mineastr.MineAstr.LOGGER.warn("MineAstr public overlay buffer flush failed", exception);
+                }
+            }
         }
     }
 

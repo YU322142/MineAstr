@@ -80,5 +80,22 @@
   "configuration.mineastr.commandPermissionLevel": "Command permission level",
   "configuration.mineastr.commandMaxLength": "Command max length",
   "configuration.mineastr.commandApprovalTimeoutSeconds": "Command approval timeout (seconds)",
-  "configuration.mineastr.commandMaxPendingApprovals": "Maximum pending command approvals"
+  "configuration.mineastr.commandMaxPendingApprovals": "Maximum pending command approvals",
+  "commands.mineastr.sign.target_required": "Look directly at a non-empty sign within 8 blocks.",
+  "commands.mineastr.sign.status": "Sign %s (%s): %s; languages: %s; manual: %s; world entries: %s; source: %s",
+  "commands.mineastr.sign.side.front": "front",
+  "commands.mineastr.sign.side.back": "back",
+  "commands.mineastr.sign.state.miss": "not cached",
+  "commands.mineastr.sign.state.bilingual": "cached as equivalent Chinese/English",
+  "commands.mineastr.sign.state.manual": "manual override",
+  "commands.mineastr.sign.state.automatic": "automatic translation",
+  "commands.mineastr.sign.locale_invalid": "Invalid locale: %s. Use a value such as zh_cn or en_us.",
+  "commands.mineastr.sign.translation_empty": "The manual translation cannot be empty.",
+  "commands.mineastr.sign.translation_too_long": "The manual translation may contain at most %s characters.",
+  "commands.mineastr.sign.set": "Stored the %s manual translation for the targeted sign.",
+  "commands.mineastr.sign.cache_missing": "The targeted sign has no current cache entry.",
+  "commands.mineastr.sign.locale_missing": "The targeted sign has no cached %s translation.",
+  "commands.mineastr.sign.clear": "Cleared the targeted sign translation cache.",
+  "commands.mineastr.sign.clear_locale": "Cleared the targeted sign's %s translation.",
+  "commands.mineastr.sign.clear_all": "Cleared %s sign translation cache entries from this world."
 }

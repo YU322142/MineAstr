@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.25
+
+- Render targeted sign and immersive-frame translations through a renderer-independent HUD path compatible with Better Block Entities, with a complete outlined panel.
+- Persist explicit bilingual-equivalent skip results and invalidate older automatic sign translations once under the new policy.
+- Add `/mineastr sign-translation` status, locale override, targeted clear, locale clear, and administrator-only world clear commands.
+- Preserve manual locale overrides across automatic refreshes and reset connected clients after cache administration.
+- Discard in-flight AstrBot sign responses made stale by an administrator cache change.
+- Add JUnit coverage for persistence, policy migration, manual precedence, clearing, command state output, and stale-response revisions.
+
 ## 0.6.20
 
 - Synchronize the Fabric Mod with AstrBot plugin `v0.6.20`.

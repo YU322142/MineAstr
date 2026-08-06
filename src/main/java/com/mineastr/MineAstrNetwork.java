@@ -26,6 +26,9 @@ public final class MineAstrNetwork {
                 MineAstrPayloads.SignTranslationResult.TYPE,
                 MineAstrPayloads.SignTranslationResult.CODEC);
         PayloadTypeRegistry.playS2C().register(
+                MineAstrPayloads.SignTranslationCacheReset.TYPE,
+                MineAstrPayloads.SignTranslationCacheReset.CODEC);
+        PayloadTypeRegistry.playS2C().register(
                 MineAstrPayloads.ImageTranslationResult.TYPE,
                 MineAstrPayloads.ImageTranslationResult.CODEC);
 
@@ -65,6 +68,12 @@ public final class MineAstrNetwork {
             MineAstrPayloads.SignTranslationResult result) {
         if (canSendSignTranslationResult(player)) {
             ServerPlayNetworking.send(player, result);
+        }
+    }
+
+    public static void sendSignTranslationCacheReset(ServerPlayer player, long revision) {
+        if (ServerPlayNetworking.canSend(player, MineAstrPayloads.SignTranslationCacheReset.TYPE)) {
+            ServerPlayNetworking.send(player, new MineAstrPayloads.SignTranslationCacheReset(revision));
         }
     }
 

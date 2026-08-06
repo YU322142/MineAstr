@@ -80,5 +80,22 @@
   "configuration.mineastr.commandPermissionLevel": "命令工具权限等级",
   "configuration.mineastr.commandMaxLength": "命令最大长度",
   "configuration.mineastr.commandApprovalTimeoutSeconds": "命令审批有效期（秒）",
-  "configuration.mineastr.commandMaxPendingApprovals": "最大待审批命令数"
+  "configuration.mineastr.commandMaxPendingApprovals": "最大待审批命令数",
+  "commands.mineastr.sign.target_required": "请将准星直接对准 8 格内有内容的告示牌。",
+  "commands.mineastr.sign.status": "告示牌 %s（%s）：%s；语言：%s；人工覆盖：%s；世界缓存数：%s；原文：%s",
+  "commands.mineastr.sign.side.front": "正面",
+  "commands.mineastr.sign.side.back": "背面",
+  "commands.mineastr.sign.state.miss": "尚未缓存",
+  "commands.mineastr.sign.state.bilingual": "已缓存为中英同义，无需翻译",
+  "commands.mineastr.sign.state.manual": "含人工覆盖",
+  "commands.mineastr.sign.state.automatic": "自动翻译",
+  "commands.mineastr.sign.locale_invalid": "语言代码无效：%s。请使用 zh_cn、en_us 等格式。",
+  "commands.mineastr.sign.translation_empty": "人工译文不能为空。",
+  "commands.mineastr.sign.translation_too_long": "人工译文最多允许 %s 个字符。",
+  "commands.mineastr.sign.set": "已保存目标告示牌的 %s 人工译文。",
+  "commands.mineastr.sign.cache_missing": "目标告示牌当前没有缓存。",
+  "commands.mineastr.sign.locale_missing": "目标告示牌没有缓存 %s 译文。",
+  "commands.mineastr.sign.clear": "已清除目标告示牌的翻译缓存。",
+  "commands.mineastr.sign.clear_locale": "已清除目标告示牌的 %s 译文。",
+  "commands.mineastr.sign.clear_all": "已从当前世界清除 %s 条告示牌翻译缓存。"
 }

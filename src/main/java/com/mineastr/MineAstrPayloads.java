@@ -134,6 +134,27 @@ public final class MineAstrPayloads {
         }
     }
 
+    /** Clears client-side sign results after an administrator changes the world cache. */
+    public record SignTranslationCacheReset(long revision) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<SignTranslationCacheReset> TYPE =
+                MineAstrPayloads.type("sign_translation_cache_reset");
+        public static final StreamCodec<RegistryFriendlyByteBuf, SignTranslationCacheReset> CODEC =
+                StreamCodec.ofMember(SignTranslationCacheReset::write, SignTranslationCacheReset::read);
+
+        private static SignTranslationCacheReset read(RegistryFriendlyByteBuf buffer) {
+            return new SignTranslationCacheReset(buffer.readVarLong());
+        }
+
+        private void write(RegistryFriendlyByteBuf buffer) {
+            buffer.writeVarLong(revision);
+        }
+
+        @Override
+        public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
     public record ImageTranslationQuery(
             String requestId,
             String mimeType,
