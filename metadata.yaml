@@ -1,7 +1,7 @@
 name: astrbot_plugin_mineastr
 display_name: MineAstr Minecraft / QQ / Discord 群服互联
 desc: 将 Minecraft 接入 AstrBot 的 QQ/Discord，提供 AQQBot 兼容的账号绑定、跨平台聊天、退群解绑、群名片/昵称同步、通知、状态查询、受控命令与 LLM 工具。
-version: v0.6.23
+version: v0.6.24
 author: YU322142
 repo: "https://github.com/YU322142/MineAstr/tree/astrbot-plugin"
 astrbot_version: ">=4.16,<5"
