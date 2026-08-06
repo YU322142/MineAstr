@@ -111,9 +111,9 @@
         "default": 20
       },
       "translation_context_messages": {
-        "description": "缈昏瘧鎼哄甫鐨勮繎鏈熻澧冩秷鎭暟",
+        "description": "翻译上下文消息数量",
         "type": "int",
-        "hint": "0 琛ㄧず涓嶆惌甯︿笂涓嬫枃锛屾渶澶?20 鏉★紱涓婁笅鏂囧彧鐢ㄤ簬甯姪 AI 鐞嗚В褰撳墠娑堟伅锛屼笉浼氳缈昏瘧銆?",
+        "hint": "0 表示不携带上下文，最多 20 条；上下文只用于帮助 AI 理解当前消息，不会被翻译。",
         "default": 0
       },
       "translation_custom_instructions": {
@@ -258,7 +258,7 @@
       "login_reject_message": {
         "description": "未绑定登录拒绝消息",
         "type": "string",
-        "hint": "开启上方开关后返回给游戏玩家。预设内容在安装同版客户端 Mod 时跟随客户端语言，未安装时使用默认通知语言；自定义内容保持原文。登录时尚未绑定平台，因此不区分 QQ/Discord。",
+        "hint": "开启上方开关后返回给游戏玩家。预设内容在安装同版客户端 Mod 时跟随客户端语言，未安装时使用默认通知语言；自定义内容保持原文。自定义内容可使用 {code} 插入本次验证码，使用后 Mod 不会重复追加默认验证码提示。登录时尚未绑定平台，因此不区分 QQ/Discord。",
         "default": "[MC] 该游戏账号尚未在聊天平台绑定，请先使用 /mc bind <游戏名>。"
       },
       "binding_database": {

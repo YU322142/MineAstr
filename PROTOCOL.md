@@ -1,8 +1,8 @@
 # MineAstr WebSocket 协议
 
-v0.6.19 延续可选的聊天媒体字段：`chat` 消息可带 `media` 数组，每项包含 `type=image`、`url` 和可选 `name`。旧版 Mod 会忽略该字段；新版 Mod 会在游戏聊天中以 `[图片] URL` 形式保留可访问入口，QQ/Discord 侧则发送原生图片消息。
+v0.6.20 延续可选的聊天媒体字段：`chat` 消息可带 `media` 数组，每项包含 `type=image`、`url` 和可选 `name`。旧版 Mod 会忽略该字段；新版 Mod 会在游戏聊天中以 `[图片] URL` 形式保留可访问入口，QQ/Discord 侧则发送原生图片消息。
 
-本文描述 AstrBot 插件 `v0.6.19` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
+本文描述 AstrBot 插件 `v0.6.20` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
 
 ## 连接与认证
 
@@ -21,7 +21,7 @@ Authorization: Bearer <token>
   "protocol": 1,
   "server_id": "survival",
   "server_name": "Survival Server",
-  "mod_version": "0.6.19"
+  "mod_version": "0.6.20"
 }
 ```
 
@@ -316,7 +316,7 @@ AstrBot 返回：
 }
 ```
 
-`message_key` 是可选客户端翻译键。0.6.7 Mod 会用 `Component.translatableWithFallback` 断开连接：安装同版客户端 Mod 时跟随玩家客户端语言；未安装时显示 `message` 回退文本。用户在 AstrBot 中自定义登录拒绝模板后，插件只发送自定义 `message`，不会用预设翻译覆盖它。验证码使用 `disconnect.mineastr.login.binding_code` 以同样方式本地化。
+`message_key` 是可选客户端翻译键。0.6.7 Mod 会用 `Component.translatableWithFallback` 断开连接：安装同版客户端 Mod 时跟随玩家客户端语言；未安装时显示 `message` 回退文本。用户在 AstrBot 中自定义登录拒绝模板后，插件只发送自定义 `message`，不会用预设翻译覆盖它；自定义消息中的 `{code}` 会由 Mod 替换为本次验证码，并不会再重复追加默认验证码提示。验证码使用 `disconnect.mineastr.login.binding_code` 以同样方式本地化。
 
 实现要求：
 

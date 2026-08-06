@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.20
+
+- 修复 `translation_context_messages` 配置描述的 UTF-8 乱码。
+- 允许 AstrBot 的未绑定登录提示使用 `{code}` 插入验证码，并避免 Mod 重复追加默认绑定提示。
+
 ## 0.6.19
 
 - Do not persist empty sign translations; invalidate legacy empty cache entries and retry failed sign translations.
