@@ -1,8 +1,8 @@
 # MineAstr WebSocket 协议
 
-v0.6.18 延续可选的聊天媒体字段：`chat` 消息可带 `media` 数组，每项包含 `type=image`、`url` 和可选 `name`。旧版 Mod 会忽略该字段；新版 Mod 会在游戏聊天中以 `[图片] URL` 形式保留可访问入口，QQ/Discord 侧则发送原生图片消息。
+v0.6.19 延续可选的聊天媒体字段：`chat` 消息可带 `media` 数组，每项包含 `type=image`、`url` 和可选 `name`。旧版 Mod 会忽略该字段；新版 Mod 会在游戏聊天中以 `[图片] URL` 形式保留可访问入口，QQ/Discord 侧则发送原生图片消息。
 
-本文描述 AstrBot 插件 `v0.6.18` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
+本文描述 AstrBot 插件 `v0.6.19` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
 
 ## 连接与认证
 
@@ -21,7 +21,7 @@ Authorization: Bearer <token>
   "protocol": 1,
   "server_id": "survival",
   "server_name": "Survival Server",
-  "mod_version": "0.6.18"
+  "mod_version": "0.6.19"
 }
 ```
 

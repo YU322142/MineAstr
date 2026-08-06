@@ -1217,10 +1217,15 @@ class MinecraftPlatformAdapter(Platform):
                 value = await value
             if isinstance(value, dict):
                 result = value
+        usable = bool(
+            isinstance(result, dict)
+            and isinstance(result.get("translations"), dict)
+            and result.get("translations")
+        )
         response: dict[str, Any] = {
             "type": "sign_translate_result",
             "message_id": message_id,
-            "ok": bool(result),
+            "ok": usable,
         }
         if result:
             response.update(result)

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.19
+
+- Do not persist empty sign translations; invalidate legacy empty cache entries and retry failed sign translations.
+- Add explicit diagnostics for disabled translation settings and unusable model responses.
+
 ## 0.6.18
 
 - Translate quoted/replied message text independently for each Discord/QQ target instead of forwarding the original quote unchanged.

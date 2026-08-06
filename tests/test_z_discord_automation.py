@@ -1248,6 +1248,31 @@ class RelayScopeAndContextTests(unittest.IsolatedAsyncioTestCase):
             "game-sign",
         )
 
+    async def test_empty_sign_translation_is_not_reported_as_usable(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "bridge_settings": {
+                "game_translation_enabled": True,
+                "game_translation_languages": "en_us",
+                "game_translation_show_original": True,
+                "max_relay_length": 500,
+            }
+        }
+        plugin._translate_text = AsyncMock(
+            return_value={"source_language": "en_us", "translations": {}}
+        )
+
+        result = await plugin._translate_sign_request(
+            {
+                "server_id": "survival",
+                "sign_id": "minecraft:overworld/1,64,2/front",
+                "source_fingerprint": "fingerprint",
+                "text": "Welcome",
+            }
+        )
+
+        self.assertEqual(result, {})
+
     async def test_reply_quote_is_translated_for_discord_target(self):
         plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
         discord_profile = MAIN.DISCORD_NOTIFICATION_DEFAULTS.copy()

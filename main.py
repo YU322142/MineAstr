@@ -407,7 +407,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.6.18",
+    "0.6.19",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -1905,6 +1905,9 @@ class MineAstrPlugin(Star):
             # persist an empty result while translation is disabled.  An empty
             # cache entry would otherwise suppress a later request after the
             # administrator enables the shared game-translation pipeline.
+            logger.info(
+                "MineAstr 告示牌翻译请求被跳过：bridge_settings.game_translation_enabled=false"
+            )
             return {}
         source = trim_message(
             request.get("text"), self._cfg_int("max_relay_length")
@@ -1941,6 +1944,13 @@ class MineAstrPlugin(Star):
             source,
         )
         options = self._game_translation_options_from_result(result)
+        if not options.get("translations"):
+            logger.warning(
+                "MineAstr 告示牌翻译未返回可用译文：sign_id=%s server_id=%s",
+                request.get("sign_id"),
+                server_id or "minecraft",
+            )
+            return {}
         return {
             "sign_id": trim_message(request.get("sign_id"), 128),
             "source_fingerprint": trim_message(
