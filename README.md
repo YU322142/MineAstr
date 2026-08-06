@@ -16,17 +16,17 @@ MineAstr 将 Minecraft 1.21.11 Fabric 服务器接入 AstrBot、QQ/OneBot 与 Di
 
 ## 当前版本
 
-- AstrBot 插件：`0.6.19`
-- MineAstr Fabric Mod：`0.6.19`
+- AstrBot 插件：`0.6.20`
+- MineAstr Fabric Mod：`0.6.20`
 - Minecraft：`1.21.11`
 - Fabric API：`0.141.4+1.21.11`
 
 成品请从 [GitHub Releases](https://github.com/YU322142/MineAstr/releases) 下载：
 
-- `astrbot_plugin_mineastr-v0.6.19.zip`
-  - `mineastr-fabric-0.6.19.jar`
+- `astrbot_plugin_mineastr-v0.6.20.zip`
+  - `mineastr-fabric-0.6.20.jar`
 
-v0.6.19 是两端同步的新版本线，AstrBot 插件和 Fabric Mod 使用同一个版本号，修复告示牌空译文缓存导致后续请求不再触发的问题。旧版 v0.6.18 保留不变。
+v0.6.20 是两端同步的新版本线，修复 AstrBot 配置 Schema 中文乱码，并让自定义绑定提示中的 `{code}` 与 Mod 验证码保持一致且不重复显示。旧版 v0.6.19 保留不变。
 
 当前翻译更新还包含两项行为：QQ/Discord 会先比较规范化后的原文与译文，AI 返回同文时只发送原文，不添加语言或 `[原文/Original]` 标签；Fabric 客户端只在准星指向告示牌时，在牌子旁显示世界空间译文浮选，不会进入服务器时批量刷聊天，翻译缓存继续保存在世界存档中。
 
