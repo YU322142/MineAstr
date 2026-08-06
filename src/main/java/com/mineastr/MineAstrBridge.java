@@ -86,6 +86,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
     private final ConcurrentMap<String, PendingLoginCheck> pendingLoginChecks = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, PendingCommandApproval> pendingCommandApprovals = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, PendingSignTranslation> pendingSignTranslations = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, PendingImageTranslation> pendingImageTranslations = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, SyncedBinding> syncedBindings = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, NameAndId> observedLoginIdentities = new ConcurrentHashMap<>();
     private final Set<String> syncedTrustedCommandUsers = ConcurrentHashMap.newKeySet();
@@ -121,6 +122,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         clearPendingLoginChecks("Minecraft 服务器正在停止。");
         pendingCommandApprovals.clear();
         pendingSignTranslations.clear();
+        clearPendingImageTranslations("Minecraft 服务器正在停止。");
         signTranslationStore.save();
         translationPreferences.clear();
         observedLoginIdentities.clear();
@@ -344,6 +346,85 @@ public final class MineAstrBridge implements WebSocket.Listener {
                 query.pos(),
                 query.front());
         requestSignTranslation(player, sign, query.front(), true);
+    }
+
+    /**
+     * Public server-side entry point for external client mods that want
+     * AstrBot to translate text found in an image. The image is forwarded
+     * over the existing MineAstr WebSocket and the result is returned to the
+     * requesting client only.
+     */
+    public void handleImageTranslationQuery(
+            ServerPlayer player,
+            MineAstrPayloads.ImageTranslationQuery query) {
+        if (player == null || query == null) {
+            return;
+        }
+        if (query.imageBytes() == null
+                || query.imageBytes().length == 0
+                || query.imageBytes().length > MineAstrPayloads.MAX_IMAGE_TRANSLATION_BYTES) {
+            sendImageTranslationFailure(player, query.requestId(), "image_too_large_or_empty");
+            return;
+        }
+        if (!MineAstrNetwork.canSendImageTranslationResult(player)) {
+            return;
+        }
+        WebSocket socket = webSocket.get();
+        if (socket == null || socket.isOutputClosed()) {
+            sendImageTranslationFailure(player, query.requestId(), "astrbot_unavailable");
+            return;
+        }
+        String requestId = trimFlatContent(query.requestId(), 64);
+        if (requestId.isBlank() || pendingImageTranslations.containsKey(requestId)) {
+            sendImageTranslationFailure(player, requestId, "duplicate_request");
+            return;
+        }
+        String mimeType = trimFlatContent(query.mimeType(), MineAstrPayloads.MAX_MIME_LENGTH);
+        if (mimeType.isBlank()) {
+            mimeType = "image/jpeg";
+        }
+        String targetLanguages = trimFlatContent(query.targetLanguages(), 256);
+        String context = trimContent(query.context(), MineAstrPayloads.MAX_IMAGE_TRANSLATION_CONTEXT_LENGTH);
+        String prompt = trimContent(query.prompt(), MineAstrPayloads.MAX_IMAGE_TRANSLATION_PROMPT_LENGTH);
+        PendingImageTranslation pending = new PendingImageTranslation(
+                socket,
+                requestId,
+                player.getUUID());
+        if (pendingImageTranslations.putIfAbsent(requestId, pending) != null) {
+            sendImageTranslationFailure(player, requestId, "duplicate_request");
+            return;
+        }
+        pending.timeout = scheduleImageTranslationTimeout(requestId);
+
+        JsonObject payload = new JsonObject();
+        payload.addProperty("type", "image_translate_request");
+        payload.addProperty("message_id", requestId);
+        payload.addProperty("server_id", MineAstrConfig.SERVER_ID.get());
+        payload.addProperty("server_name", MineAstrConfig.SERVER_NAME.get());
+        payload.addProperty("player_uuid", player.getUUID().toString());
+        payload.addProperty("player_name", player.getGameProfile().name());
+        payload.addProperty("mime_type", mimeType);
+        payload.addProperty("target_languages", targetLanguages);
+        payload.addProperty("context", context);
+        payload.addProperty("prompt", prompt);
+        payload.addProperty("image_base64", Base64.getEncoder().encodeToString(query.imageBytes()));
+        sendJson(socket, payload);
+    }
+
+    private void sendImageTranslationFailure(ServerPlayer player, String requestId, String error) {
+        if (player == null) {
+            return;
+        }
+        MineAstrNetwork.sendImageTranslationResult(
+                player,
+                new MineAstrPayloads.ImageTranslationResult(
+                        trimFlatContent(requestId, 64),
+                        "",
+                        "",
+                        Map.of(),
+                        false,
+                        false,
+                        trimFlatContent(error, MineAstrPayloads.MAX_ERROR_LENGTH)));
     }
 
     public void translateSign(ServerPlayer player, SignBlockEntity sign, boolean front) {
@@ -664,6 +745,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
             inboundBuffer.setLength(0);
             clearPendingScreenshots("AstrBot WebSocket 已断开。");
             clearPendingLoginChecks("AstrBot WebSocket 已断开。");
+            clearPendingImageTranslations("AstrBot WebSocket 已断开。");
             pendingCommandApprovals.clear();
             syncedTrustedCommandUsers.clear();
             syncedTrustedCommandUsersRevision.set(-1L);
@@ -680,6 +762,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
             inboundBuffer.setLength(0);
             clearPendingScreenshots("AstrBot WebSocket 出错。");
             clearPendingLoginChecks("AstrBot WebSocket 出错。");
+            clearPendingImageTranslations("AstrBot WebSocket 出错。");
             pendingCommandApprovals.clear();
             syncedTrustedCommandUsers.clear();
             syncedTrustedCommandUsersRevision.set(-1L);
@@ -706,6 +789,8 @@ public final class MineAstrBridge implements WebSocket.Listener {
             handleChat(payload);
         } else if ("sign_translate_result".equals(type)) {
             handleSignTranslationResult(socket, payload);
+        } else if ("image_translate_result".equals(type)) {
+            handleImageTranslationResult(socket, payload);
         } else if ("query".equals(type)) {
             handleQuery(socket, payload);
         } else if ("event_result".equals(type)) {
@@ -932,6 +1017,61 @@ public final class MineAstrBridge implements WebSocket.Listener {
                     sendTranslatedSign(player, pending.source, translations, showOriginal);
                 }
             }
+        });
+    }
+
+    private void handleImageTranslationResult(WebSocket socket, JsonObject payload) {
+        String requestId = trimFlatContent(getString(payload, "message_id", ""), 64);
+        PendingImageTranslation pending = pendingImageTranslations.get(requestId);
+        if (pending == null || pending.socket != socket) {
+            MineAstr.LOGGER.warn("MineAstr 忽略未知或来源不匹配的图片翻译响应：{}", requestId);
+            return;
+        }
+        if (!pendingImageTranslations.remove(requestId, pending)) {
+            MineAstr.LOGGER.debug("MineAstr 已忽略重复的图片翻译响应：{}", requestId);
+            return;
+        }
+        pending.cancelTimeout();
+        MinecraftServer currentServer = server;
+        if (currentServer == null) {
+            return;
+        }
+        boolean ok = getBoolean(payload, "ok", false);
+        String sourceLanguage = trimFlatContent(getString(payload, "source_language", ""), 32);
+        String sourceText = trimSignText(getString(payload, "source_text", ""));
+        Map<String, String> translations = new HashMap<>();
+        if (ok && payload.has("translations") && payload.get("translations").isJsonObject()) {
+            for (var entry : payload.getAsJsonObject("translations").entrySet()) {
+                String language = entry.getKey().strip().replace('-', '_').toLowerCase(Locale.ROOT);
+                if (!language.matches("[a-z0-9_]{2,16}")
+                        || !entry.getValue().isJsonPrimitive()
+                        || !entry.getValue().getAsJsonPrimitive().isString()) {
+                    continue;
+                }
+                String translated = trimSignText(entry.getValue().getAsString());
+                if (!translated.isBlank()) {
+                    translations.put(language, translated);
+                }
+            }
+        }
+        boolean showOriginal = getBoolean(payload, "show_original", false);
+        String error = trimFlatContent(getString(payload, "error", ""), MineAstrPayloads.MAX_ERROR_LENGTH);
+        boolean usable = ok && !translations.isEmpty();
+        currentServer.execute(() -> {
+            ServerPlayer player = currentServer.getPlayerList().getPlayer(pending.playerUuid);
+            if (player == null) {
+                return;
+            }
+            MineAstrNetwork.sendImageTranslationResult(
+                    player,
+                    new MineAstrPayloads.ImageTranslationResult(
+                            pending.requestId,
+                            sourceLanguage,
+                            sourceText,
+                            translations,
+                            showOriginal,
+                            usable,
+                            usable ? "" : (error.isBlank() ? "translation_failed" : error)));
         });
     }
 
@@ -1931,6 +2071,35 @@ public final class MineAstrBridge implements WebSocket.Listener {
         return executor.schedule(() -> failScreenshot(requestId, "等待玩家客户端截图超时。"), SCREENSHOT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
 
+    private ScheduledFuture<?> scheduleImageTranslationTimeout(String requestId) {
+        ScheduledExecutorService executor = reconnectExecutor;
+        if (executor == null || executor.isShutdown()) {
+            return null;
+        }
+        return executor.schedule(
+                () -> failImageTranslation(requestId, "image_translation_timeout"),
+                SCREENSHOT_TIMEOUT_SECONDS,
+                TimeUnit.SECONDS);
+    }
+
+    private void failImageTranslation(String requestId, String error) {
+        PendingImageTranslation pending = pendingImageTranslations.remove(requestId);
+        if (pending == null) {
+            return;
+        }
+        pending.cancelTimeout();
+        MinecraftServer currentServer = server;
+        if (currentServer == null) {
+            return;
+        }
+        currentServer.execute(() -> {
+            ServerPlayer player = currentServer.getPlayerList().getPlayer(pending.playerUuid);
+            if (player != null) {
+                sendImageTranslationFailure(player, pending.requestId, error);
+            }
+        });
+    }
+
     private void failScreenshot(String requestId, String error) {
         PendingScreenshot pending = pendingScreenshots.remove(requestId);
         screenshotAssemblies.remove(requestId);
@@ -1964,6 +2133,22 @@ public final class MineAstrBridge implements WebSocket.Listener {
         LoginCheckResult fallback = loginCheckFallback(error);
         pendingLoginChecks.values().forEach(pending -> pending.future.complete(fallback));
         pendingLoginChecks.clear();
+    }
+
+    private void clearPendingImageTranslations(String error) {
+        for (PendingImageTranslation pending : pendingImageTranslations.values()) {
+            pending.cancelTimeout();
+            MinecraftServer currentServer = server;
+            if (currentServer != null) {
+                currentServer.execute(() -> {
+                    ServerPlayer player = currentServer.getPlayerList().getPlayer(pending.playerUuid);
+                    if (player != null) {
+                        sendImageTranslationFailure(player, pending.requestId, error);
+                    }
+                });
+            }
+        }
+        pendingImageTranslations.clear();
     }
 
     private ServerPlayer findExactPlayer(MinecraftServer currentServer, String playerName) {
@@ -2311,6 +2496,30 @@ public final class MineAstrBridge implements WebSocket.Listener {
             String fingerprint,
             String source,
             boolean clientOverlay) {
+    }
+
+    private static final class PendingImageTranslation {
+        private final WebSocket socket;
+        private final String requestId;
+        private final UUID playerUuid;
+        private volatile ScheduledFuture<?> timeout;
+
+        private PendingImageTranslation(
+                WebSocket socket,
+                String requestId,
+                UUID playerUuid) {
+            this.socket = socket;
+            this.requestId = requestId;
+            this.playerUuid = playerUuid;
+        }
+
+        private void cancelTimeout() {
+            ScheduledFuture<?> task = timeout;
+            if (task != null) {
+                task.cancel(false);
+                timeout = null;
+            }
+        }
     }
 
     private record SyncedBinding(

@@ -20,6 +20,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
+import com.mineastr.api.MineAstrDisplayApi;
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
@@ -64,6 +66,8 @@ public final class MineAstrClient implements ClientModInitializer {
     private static final Set<SignCacheKey> PENDING_SIGN_TRANSLATIONS = ConcurrentHashMap.newKeySet();
     private static final ConcurrentMap<SignCacheKey, Long> SIGN_TRANSLATION_RETRY_AT = new ConcurrentHashMap<>();
     private static final long SIGN_TRANSLATION_RETRY_DELAY_MS = 5_000L;
+    private static final ConcurrentMap<String, CompletableFuture<MineAstrPayloads.ImageTranslationResult>>
+            IMAGE_TRANSLATION_REQUESTS = new ConcurrentHashMap<>();
     private static final int MAX_OVERLAY_WIDTH = 180;
     private static final float OVERLAY_SCALE = 0.025F;
     private static volatile TargetedSign TARGETED_SIGN;
@@ -80,11 +84,14 @@ public final class MineAstrClient implements ClientModInitializer {
                 context.client().execute(() -> handleScreenshotRequestOnClientThread(context.client(), request)));
         ClientPlayNetworking.registerGlobalReceiver(MineAstrPayloads.SignTranslationResult.TYPE, (result, context) ->
                 context.client().execute(() -> applySignTranslationResult(context.client(), result)));
+        ClientPlayNetworking.registerGlobalReceiver(MineAstrPayloads.ImageTranslationResult.TYPE, (result, context) ->
+                context.client().execute(() -> applyImageTranslationResult(result)));
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             SIGN_TRANSLATIONS.clear();
             PENDING_SIGN_TRANSLATIONS.clear();
             SIGN_TRANSLATION_RETRY_AT.clear();
             TARGETED_SIGN = null;
+            MineAstrDisplayApi.clear();
             sendPayloadToServer(new MineAstrPayloads.ClientHello(MineAstr.MOD_VERSION, true));
             sendTranslationPreferences();
         });
@@ -94,6 +101,10 @@ public final class MineAstrClient implements ClientModInitializer {
             PENDING_SIGN_TRANSLATIONS.clear();
             SIGN_TRANSLATION_RETRY_AT.clear();
             TARGETED_SIGN = null;
+            IMAGE_TRANSLATION_REQUESTS.values().forEach(future ->
+                    future.completeExceptionally(new IllegalStateException("Minecraft connection closed")));
+            IMAGE_TRANSLATION_REQUESTS.clear();
+            MineAstrDisplayApi.clear();
         });
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (OPEN_CONFIG_KEY.consumeClick()) {
@@ -101,7 +112,92 @@ public final class MineAstrClient implements ClientModInitializer {
             }
             updateTargetedSign(client);
         });
-        WorldRenderEvents.AFTER_ENTITIES.register(MineAstrClient::renderTargetedSignOverlay);
+        WorldRenderEvents.AFTER_ENTITIES.register(context -> {
+            renderTargetedSignOverlay(context);
+            MineAstrDisplayApi.render(context);
+        });
+    }
+
+    /**
+     * Submit an image to the server-side MineAstr bridge for AstrBot's
+     * multimodal translation model. The returned future completes on the
+     * client thread when the result arrives.
+     */
+    public static CompletableFuture<MineAstrPayloads.ImageTranslationResult> requestImageTranslation(
+            byte[] imageBytes,
+            String mimeType,
+            List<String> targetLanguages,
+            String context,
+            String prompt) {
+        CompletableFuture<MineAstrPayloads.ImageTranslationResult> future = new CompletableFuture<>();
+        if (imageBytes == null
+                || imageBytes.length == 0
+                || imageBytes.length > MineAstrPayloads.MAX_IMAGE_TRANSLATION_BYTES) {
+            future.completeExceptionally(new IllegalArgumentException("imageBytes exceeds MineAstr limit"));
+            return future;
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        String requestId = java.util.UUID.randomUUID().toString();
+        IMAGE_TRANSLATION_REQUESTS.put(requestId, future);
+        future.orTimeout(45, TimeUnit.SECONDS)
+                .whenComplete((ignored, throwable) -> IMAGE_TRANSLATION_REQUESTS.remove(requestId, future));
+        minecraft.execute(() -> {
+            if (minecraft.getConnection() == null
+                    || !ClientPlayNetworking.canSend(MineAstrPayloads.ImageTranslationQuery.TYPE)) {
+                future.completeExceptionally(new IllegalStateException("MineAstr image translation channel unavailable"));
+                return;
+            }
+            try {
+                String languages = targetLanguages == null
+                        ? ""
+                        : targetLanguages.stream()
+                                .filter(value -> value != null && !value.isBlank())
+                                .map(MineAstrClient::normalizeLanguage)
+                                .filter(value -> !value.isBlank())
+                                .distinct()
+                                .limit(32)
+                                .reduce((left, right) -> left + "\n" + right)
+                                .orElse("");
+                ClientPlayNetworking.send(new MineAstrPayloads.ImageTranslationQuery(
+                        requestId,
+                        trimPublicText(mimeType, MineAstrPayloads.MAX_MIME_LENGTH, "image/jpeg"),
+                        trimPublicText(languages, 256, ""),
+                        trimPublicText(context, MineAstrPayloads.MAX_IMAGE_TRANSLATION_CONTEXT_LENGTH, ""),
+                        trimPublicText(prompt, MineAstrPayloads.MAX_IMAGE_TRANSLATION_PROMPT_LENGTH, ""),
+                        Arrays.copyOf(imageBytes, imageBytes.length)));
+            } catch (RuntimeException exc) {
+                future.completeExceptionally(exc);
+            }
+        });
+        return future;
+    }
+
+    public static boolean shouldShowOriginalTranslatedMessages() {
+        return MineAstrClientConfig.SHOW_ORIGINAL_TRANSLATED_MESSAGES.getAsBoolean();
+    }
+
+    private static void applyImageTranslationResult(MineAstrPayloads.ImageTranslationResult result) {
+        CompletableFuture<MineAstrPayloads.ImageTranslationResult> future =
+                IMAGE_TRANSLATION_REQUESTS.get(result.requestId());
+        if (future == null) {
+            return;
+        }
+        if (result.ok()) {
+            future.complete(result);
+        } else {
+            future.completeExceptionally(new IllegalStateException(
+                    result.error() == null || result.error().isBlank()
+                            ? "image translation failed"
+                            : result.error()));
+        }
+    }
+
+    private static String trimPublicText(String value, int maxLength, String fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        String trimmed = value.strip();
+        return trimmed.length() <= maxLength ? trimmed : trimmed.substring(0, maxLength);
     }
 
     public static void handleScreenshotRequest(MineAstrPayloads.ScreenshotRequest request) {

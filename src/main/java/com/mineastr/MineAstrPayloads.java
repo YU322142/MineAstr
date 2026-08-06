@@ -16,6 +16,9 @@ public final class MineAstrPayloads {
     public static final int MAX_SIGN_FINGERPRINT_LENGTH = 128;
     public static final int MAX_SIGN_TRANSLATION_ENTRIES = 32;
     public static final int MAX_SIGN_TRANSLATION_TEXT_LENGTH = 512;
+    public static final int MAX_IMAGE_TRANSLATION_BYTES = 768 * 1024;
+    public static final int MAX_IMAGE_TRANSLATION_CONTEXT_LENGTH = 2048;
+    public static final int MAX_IMAGE_TRANSLATION_PROMPT_LENGTH = 4096;
 
     private MineAstrPayloads() {
     }
@@ -123,6 +126,83 @@ public final class MineAstrPayloads {
             writeTranslations(buffer, translations);
             buffer.writeBoolean(showOriginal);
             buffer.writeBoolean(ok);
+        }
+
+        @Override
+        public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record ImageTranslationQuery(
+            String requestId,
+            String mimeType,
+            String targetLanguages,
+            String context,
+            String prompt,
+            byte[] imageBytes) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<ImageTranslationQuery> TYPE =
+                MineAstrPayloads.type("image_translation_query");
+        public static final StreamCodec<RegistryFriendlyByteBuf, ImageTranslationQuery> CODEC =
+                StreamCodec.ofMember(ImageTranslationQuery::write, ImageTranslationQuery::read);
+
+        private static ImageTranslationQuery read(RegistryFriendlyByteBuf buffer) {
+            return new ImageTranslationQuery(
+                    buffer.readUtf(64),
+                    buffer.readUtf(MAX_MIME_LENGTH),
+                    buffer.readUtf(256),
+                    buffer.readUtf(MAX_IMAGE_TRANSLATION_CONTEXT_LENGTH),
+                    buffer.readUtf(MAX_IMAGE_TRANSLATION_PROMPT_LENGTH),
+                    buffer.readByteArray(MAX_IMAGE_TRANSLATION_BYTES));
+        }
+
+        private void write(RegistryFriendlyByteBuf buffer) {
+            buffer.writeUtf(requestId, 64);
+            buffer.writeUtf(mimeType, MAX_MIME_LENGTH);
+            buffer.writeUtf(targetLanguages, 256);
+            buffer.writeUtf(context, MAX_IMAGE_TRANSLATION_CONTEXT_LENGTH);
+            buffer.writeUtf(prompt, MAX_IMAGE_TRANSLATION_PROMPT_LENGTH);
+            buffer.writeByteArray(imageBytes);
+        }
+
+        @Override
+        public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record ImageTranslationResult(
+            String requestId,
+            String sourceLanguage,
+            String sourceText,
+            Map<String, String> translations,
+            boolean showOriginal,
+            boolean ok,
+            String error) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<ImageTranslationResult> TYPE =
+                MineAstrPayloads.type("image_translation_result");
+        public static final StreamCodec<RegistryFriendlyByteBuf, ImageTranslationResult> CODEC =
+                StreamCodec.ofMember(ImageTranslationResult::write, ImageTranslationResult::read);
+
+        private static ImageTranslationResult read(RegistryFriendlyByteBuf buffer) {
+            return new ImageTranslationResult(
+                    buffer.readUtf(64),
+                    buffer.readUtf(32),
+                    buffer.readUtf(MAX_SIGN_TRANSLATION_TEXT_LENGTH),
+                    readTranslations(buffer),
+                    buffer.readBoolean(),
+                    buffer.readBoolean(),
+                    buffer.readUtf(MAX_ERROR_LENGTH));
+        }
+
+        private void write(RegistryFriendlyByteBuf buffer) {
+            buffer.writeUtf(requestId, 64);
+            buffer.writeUtf(sourceLanguage, 32);
+            buffer.writeUtf(sourceText, MAX_SIGN_TRANSLATION_TEXT_LENGTH);
+            writeTranslations(buffer, translations);
+            buffer.writeBoolean(showOriginal);
+            buffer.writeBoolean(ok);
+            buffer.writeUtf(error, MAX_ERROR_LENGTH);
         }
 
         @Override
