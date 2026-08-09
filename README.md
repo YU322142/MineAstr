@@ -5,21 +5,24 @@
 > [!IMPORTANT]
 > **AI 制作声明：MineAstr 采用生成式 AI 参与架构设计、编码、UI、文档与测试。** AI 生成或修改的内容由项目维护者审阅、验证并承担最终维护责任。
 
-MineAstr 将 Minecraft 1.21.11 Fabric 服务器接入 AstrBot、QQ/OneBot 与 Discord，提供 AQQBot 兼容的账号绑定、跨平台聊天、退群解绑、群名片/昵称同步、通知、状态查询、受控命令、LLM 工具和按客户端语言显示的可选游戏内翻译。
+MineAstr 将 Minecraft Fabric 1.21.11 与 NeoForge 1.21.1 服务器接入 AstrBot、QQ/OneBot 与 Discord，提供 AQQBot 兼容的账号绑定、跨平台聊天、退群解绑、群名片/昵称同步、通知、状态查询、受控命令、LLM 工具和按客户端语言显示的可选游戏内翻译。
 
 ## 项目分支
 
 - [`astrbot-plugin`](https://github.com/YU322142/MineAstr/tree/astrbot-plugin)：AstrBot 插件端；分支根目录可直接作为插件项目。
 - [`minecraft-mod`](https://github.com/YU322142/MineAstr/tree/minecraft-mod)：Minecraft Fabric Mod；目标为 Minecraft `1.21.11`、Fabric API `0.141.4+1.21.11`、Java `21`。
+- [`minecraft-neoforge-1.21.1`](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)：Minecraft NeoForge Mod；目标为 Minecraft `1.21.1`、NeoForge `21.1.219`、Java `21`，包含与 Fabric 0.6.25 对齐的完整源码、文档和测试。
 
-`main` 是项目索引；两个可构建工程分别保留在以上分支，以兼容 AstrBot 从仓库分支安装插件的目录要求。
+`main` 是项目索引；三个可构建工程分别保留在以上分支，以兼容 AstrBot 从仓库分支安装插件的目录要求。
 
 ## 当前版本
 
 - AstrBot 插件：`0.6.25`
 - MineAstr Fabric Mod：`0.6.25`
+- MineAstr NeoForge Mod：`0.6.25`（Minecraft `1.21.1`）
 - Minecraft：`1.21.11`
 - Fabric API：`0.141.4+1.21.11`
+- NeoForge：`21.1.219`（Minecraft `1.21.1`）
 
 成品请从 [GitHub Releases](https://github.com/YU322142/MineAstr/releases) 下载：
 
@@ -63,7 +66,7 @@ AstrBot 插件元数据的安装/更新源为本 Fork 的 [`astrbot-plugin`](htt
 - AstrBot 插件：`binding_enabled=true`、`need_bind_to_login=true`、`sync_binding_to_server=true`、`binding_sync_required=true`
 - Fabric Mod：`enableBindingSync=true`、`bindingSyncWhitelist=true`、`loginBindingCheckEnabled=true`、`loginCheckFailOpen=true`
 
-完整安装和权限说明请查看两个工程分支的 README。
+完整安装和权限说明请查看三个工程分支的 README。
 
 需要使用服务器命令时开启 Mod `enableCommandTool=true`。`allowedCommandRules` 是所有人可立即执行的公开命令白名单，不应加入 `op *` 等管理命令；白名单外命令只生成待审批 ID。插件 `sync_command_admins_to_server=true` 与 Mod `syncTrustedCommandUsers=true` 会在审批前实时同步管理员。管理员发送 `/mc approve` 查看列表后可按序号审批，也可明确要求机器人调用审批函数工具；两种方式都只执行 Mod 保存的原始命令。
 
@@ -71,11 +74,12 @@ AstrBot 插件元数据的安装/更新源为本 Fork 的 [`astrbot-plugin`](htt
 
 - AstrBot 插件：88 个自动化测试通过，覆盖 fail-closed/常数时间鉴权、配置迁移、AstrBot Schema 类型兼容、QQ/Discord 自动化及消息编辑同步、游戏与平台共用单次翻译后分发、源语言去重、中英同义告示牌缓存、40000 字提示词上限、自定义术语表、命令审批列表与函数工具、管理员身份过滤及实时同步、并发冷却和游戏内翻译协议。
 - Fabric Mod：11 个 JUnit 测试及 Gradle `clean build` 通过，覆盖缓存持久化、策略迁移、人工译文优先级、管理清理和过期异步响应失效。
+- NeoForge Mod：11 个 JUnit 测试及 Gradle `clean test build` 通过，覆盖缓存持久化、策略迁移、人工译文优先级、管理清理和过期异步响应失效。
 - 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证 Mixin 加载、离线后端收到正版客户端 UUID 时改用服务端真实离线 UUID、`whitelist_verified=true`，并实际通过原版白名单登录校验；既有解绑、管理员同步、可信命令和正常关服流程保持有效。
 
 ## 许可与来源
 
-本项目按 `AGPL-3.0-or-later` 开源，详见 `LICENSE`。本移植基于 [Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr)，AQQBot 功能语义参考 [alazeprt/AQQBot](https://github.com/alazeprt/AQQBot)（LGPL-2.1）；详细第三方说明位于插件分支的 `THIRD_PARTY_NOTICES.md`。
+本项目按 `AGPL-3.0-or-later` 开源，详见 `LICENSE`。本移植基于 [Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr)，AQQBot 功能语义参考 [alazeprt/AQQBot](https://github.com/alazeprt/AQQBot)（LGPL-2.1）；NeoForge 分支的视觉交互参考与第三方许可见其 `THIRD_PARTY_NOTICES.md`，插件端的第三方说明仍位于 `astrbot-plugin` 分支。
 
 ## AI 制作声明
 
