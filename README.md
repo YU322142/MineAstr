@@ -29,6 +29,9 @@ MineAstr 将 Minecraft Fabric 1.21.11 与 NeoForge 1.21.1 服务器接入 AstrBo
 - `astrbot_plugin_mineastr-v0.6.25.zip`
   - `mineastr-fabric-0.6.25.jar`
 
+NeoForge 1.21.1 的完整源码、测试和构建说明已公开在
+[`minecraft-neoforge-1.21.1`](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)；该分支可直接使用 `./gradlew build`（Windows 使用 `gradlew.bat build`）生成 Mod 和源码 JAR。
+
 v0.6.25 把告示牌与沉浸画框的准星译文统一到独立 HUD 提示层，不再依赖原版告示牌渲染器，因此可兼容 Better Block Entities 等替换渲染器，并修复提示框边框缺失。AstrBot 会对同时出现汉字和拉丁字母的告示牌做严格的中英语义同义判断；确认牌面已包含等价中英文时，服务端把“无需翻译”状态写入世界缓存，之后不重复调用模型也不显示多余浮层。
 
 服主可将准星对准告示牌后使用 `/mineastr sign-translation status` 查看缓存，使用 `set <locale> <translation>` 保存不会被自动翻译覆盖的人工译文，使用 `clear [locale]` 清理当前牌面，并以管理员权限使用 `clear-all` 清理当前世界。管理操作会同步重置在线客户端缓存，并使已经在途的旧 AI 响应失效。
