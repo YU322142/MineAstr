@@ -7,24 +7,29 @@
 
 ![MineAstr 封面](cover.png)
 
-MineAstr 是一个 NeoForge 1.21.1 双端 Mod，用于把 Minecraft 聊天桥接到 AstrBot，并把 AstrBot 的文本回复广播回游戏。
+MineAstr `0.6.25` 是一个 Minecraft 1.21.1 / NeoForge 21.1.219 双端 Mod，用于把 Minecraft 聊天与事件桥接到 AstrBot，并按每位玩家的客户端语言显示 AI 译文。
 
 从 AstrBot 侧启用 MineAstr LLM 工具后，机器人还可以主动查询服务器状态、玩家状态、背包、附近实体和区域建筑特征，在严格鉴权后执行受控服务器命令，并在玩家客户端允许时请求低清晰度截图。
 
 ## 功能简介
 
 - 把 Minecraft 里的普通聊天识别为 AstrBot 的同一个群聊。
-- AstrBot 触发回复后，以 `[AstrBot] 回复内容` 的形式广播给全服。
+- AstrBot 触发回复后按玩家 locale 广播译文；译文与原文相同时只显示原文。
+- 转发玩家加入、离开和结构化死亡事件，并接收聊天图片链接和定向玩家提醒。
 - AstrBot 可以通过工具主动查询服务器状态、在线玩家、生命/位置、背包、附近实体和区域建筑特征。
-- 可选的服务器命令工具默认关闭，启用后仍要求请求者可信名单和命令白名单同时匹配，并写入审计日志。
+- 支持账号绑定同步、可选原版白名单同步、登录前绑定检查和一次性验证码。
+- 服务器命令工具默认关闭；公开规则可直接执行，其他命令必须由静态或 AstrBot 同步管理员审批。
+- 只翻译准星指向的普通、墙上或悬挂告示牌；译文显示在独立 HUD 层，不依赖方块实体渲染器。
+- 告示牌译文按维度、坐标、正反面和原文指纹保存在世界存档，支持双语同义跳过和人工纠正。
+- 提供外部图片翻译与统一显示 API，供沉浸画框调用 AstrBot 多模态模型。
 - 截图是可选客户端能力，默认会先询问玩家；玩家也可以改成自动发送或永不发送。
-- 客户端配置页、截图授权页和本地世界服务端页使用 MineAstr 自定义原生界面，无需额外安装 Cloth Config 或 ModernUI。
+- 按 `F8` 可调整游戏翻译、原文显示、告示牌/画框浮选、距离、缩放和截图设置。
 - 单人世界的集成服务器桥接默认关闭，可在“本地服务端”页面通过 Switch 开关启用并配置地址、Token 和服务器标识。
 - 服务端单独安装时，未安装客户端 Mod 的玩家仍可加入服务器，聊天和查询功能照常可用。
 
 ## 界面与运行环境确认
 
-- **有配置界面**：安装在客户端后，可以在 NeoForge 的 Mod 列表中打开 MineAstr 配置界面，主要用于调整截图策略和截图大小/质量。
+- **有配置界面**：安装在客户端后，可按 `F8` 或从 NeoForge Mod 列表打开 MineAstr 设置。
 - **服务端无 GUI 可运行**：独立 NeoForge 服务端只读取 `config/mineastr-common.toml`，不需要也不会打开图形界面；Gradle 的 `runServer` 任务也已按 `--nogui` 配置。
 - **服务端不强制客户端安装**：MineAstr 的客户端网络能力是可选的。没有安装客户端 Mod 的玩家可以进入服务器，但 AstrBot 对这些玩家请求截图时会返回“不支持截图”。
 - **单人模式可选启用**：客户端安装 Mod 后，可在 MineAstr 配置页进入“本地服务端”，打开默认关闭的 Switch。开启后，单人世界的集成服务器才会连接 AstrBot；独立服务器不受此选项影响。
@@ -56,7 +61,7 @@ NeoForge 的 Mod 列表只读取 `logoFile` 作为图标，并没有单独的“
 - 独立服务端：`服务端目录/config/mineastr-common.toml`
 - 单人本地世界：`.minecraft/config/mineastr-common.toml`
 
-客户端安装 MineAstr 后还会生成截图配置：
+客户端安装 MineAstr 后还会生成翻译、浮选和截图配置：
 
 - 客户端：`.minecraft/config/mineastr-client.toml`
 
@@ -127,21 +132,50 @@ regionMaxBlocks = 32768
 
 # 高风险命令工具默认关闭。
 enableCommandTool = false
+syncTrustedCommandUsers = true
 trustedCommandUsers = []
 allowedCommandRules = ["list", "seed", "time query day", "time query daytime", "time query gametime"]
 commandPermissionLevel = 4
 commandMaxLength = 256
+commandApprovalTimeoutSeconds = 300
+commandMaxPendingApprovals = 128
+
+# 定向玩家提醒。
+enablePlayerNotifications = true
+notifyActionBar = true
+notifyTitle = false
+notifySound = true
+notificationMaxLength = 512
+
+# 绑定同步、白名单同步与登录检查。
+enableBindingSync = false
+bindingSyncWhitelist = false
+loginBindingCheckEnabled = false
+loginCheckTimeoutSeconds = 5
+loginCheckFailOpen = true
+generateBindingCodeOnReject = true
+verifyCodeLength = 6
+loginCodeMessage = "\n绑定验证码：{code}\n请在 QQ/Discord 使用 /mc bind {code}"
 ```
 
-## 客户端截图配置
+## 客户端翻译、浮选与截图配置
 
-截图配置只在安装了客户端 Mod 的玩家电脑上生效。默认是 `ASK`，也就是 AstrBot 请求截图时先弹出确认窗口，玩家同意后才发送。
+这些配置只在安装了客户端 Mod 的玩家电脑上生效。截图策略默认是 `ASK`，也就是 AstrBot 请求截图时先弹出确认窗口，玩家同意后才发送。
 
 仓库中提供了示例文件：[examples/mineastr-client.toml](examples/mineastr-client.toml)。
 
 ```toml
 # 是否让本地单人世界的集成服务器连接 AstrBot；默认关闭。
 localWorldServerEnabled = false
+
+# 游戏内译文与原文显示。
+gameTranslationsEnabled = true
+showOriginalTranslatedMessages = true
+
+# 告示牌和外部画框浮选。
+signTranslationsEnabled = true
+signTranslationMaxDistance = 8
+signTranslationScale = 1.0
 
 # AstrBot 请求截图时客户端如何处理。
 # ASK：弹出确认界面，玩家同意后发送；AUTO：自动发送；DISABLED：始终拒绝发送。
@@ -159,6 +193,8 @@ screenshotJpegQuality = 0.35
 # 单张截图编码后的最大字节数。
 screenshotMaxBytes = 131072
 ```
+
+告示牌翻译只在准星命中、没有打开界面且距离未超过设置值时触发。客户端直接复用 Minecraft 已有的命中结果，不会每 tick 再做一次射线检测；右键告示牌保留为未安装客户端协议时的兼容性触发。翻译缓存位于世界 `data/mineastr_sign_translations.dat`；改动告示牌原文后旧指纹自动失效。
 
 ## 跨机器部署
 
@@ -189,8 +225,14 @@ websocketUrl = "ws://192.168.1.20:8765/ws"
 
 - `/mineastr status`：查看连接状态。
 - `/mineastr reconnect`：主动断开当前连接并立即重连。
+- `/mineastr sign-translation status`：查看准星所指 8 格内告示牌的缓存状态。
+- `/mineastr sign-translation set <locale> <translation>`：保存人工译文。
+- `/mineastr sign-translation clear [locale]`：清除目标告示牌全部或指定语言缓存。
+- `/mineastr sign-translation clear-all`：清空当前世界所有告示牌缓存，需要权限等级 4。
 
-两个命令都需要权限等级 2。
+除 `clear-all` 外，这些命令需要权限等级 2。
+
+外部客户端 Mod 的图片翻译和浮选调用方式见 [EXTERNAL_TRANSLATION_API.md](EXTERNAL_TRANSLATION_API.md)。
 
 ## AstrBot 主动查询
 
@@ -202,6 +244,10 @@ Mod 支持 AstrBot 发来的 `query` 协议消息：
 - `inventory`：返回指定玩家的快捷栏、背包、护甲、副手和可选末影箱摘要，不返回完整 NBT。
 - `nearby_entities`：返回玩家附近实体的种类计数、距离、位置和生命摘要。
 - `region_features`：分析已加载区域的方块调色板、门窗/楼梯/照明/容器/红石等部件、表面高度和粗略三维占用模型；不会强制加载新区块，也不读取容器内容、告示牌文字或方块实体 NBT。
+- `performance`：返回 TPS、MSPT、CPU、进程内存和在线人数摘要。
+- `notify_player`：向指定在线玩家发送本地化 actionbar、标题和可选提示音。
+- `binding`：绑定、解绑、重置或查询 Mod 内存绑定，并可同步原版白名单。
+- `trusted_users`：用 revision 实时替换 AstrBot 动态命令管理员名单。
 - `command`：执行受控服务器命令。默认关闭；必须同时通过可信用户和命令规则检查，并记录请求者与命令审计日志。
 - `screenshot`：向指定玩家客户端请求低清晰度截图。玩家未安装客户端 Mod、拒绝截图、禁用截图或超时时会返回失败原因。
 
@@ -249,3 +295,10 @@ AI 输出不代表天然正确或安全。所有合并到仓库的内容均应�
 - AstrBot 不会查询在线玩家：确认 AstrBot 当前模型支持工具调用，并且插件与 Mod 都已经更新到支持查询协议的版本。
 - AstrBot 请求截图失败：确认目标玩家客户端安装了 MineAstr，并且 `screenshotMode` 不是 `"DISABLED"`。默认 `"ASK"` 模式下，玩家需要在弹窗里点击“发送截图”。
 - 单人世界没有连接 AstrBot：打开 Mod 列表中的 MineAstr 配置页，进入“本地服务端”，确认 Switch 已开启且 WebSocket 地址和 Token 正确。
+
+## License and source
+
+This NeoForge 1.21.1 port is released under `AGPL-3.0-or-later`; see
+[LICENSE](LICENSE) and [AUTHORS.md](AUTHORS.md). The complete migration history
+is kept on the `minecraft-neoforge-1.21.1` branch. Rendering and interaction
+references are documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

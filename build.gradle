@@ -16,7 +16,10 @@ base {
     archivesName = mod_id
 }
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    withSourcesJar()
+}
 
 sourceSets.main.resources {
     srcDir('src/generated/resources')
@@ -26,7 +29,6 @@ sourceSets.main.resources {
 
 repositories.clear()
 repositories {
-    mavenLocal()
     maven {
         name = "HuaweiCloudMaven"
         url = uri("https://repo.huaweicloud.com/repository/maven/")
@@ -82,6 +84,11 @@ neoForge {
             sourceSet(sourceSets.main)
         }
     }
+
+    unitTest {
+        enable()
+        testedMod = mods.mineastr
+    }
 }
 
 configurations {
@@ -89,6 +96,13 @@ configurations {
 }
 
 dependencies {
+    testImplementation platform("org.junit:junit-bom:5.11.4")
+    testImplementation "org.junit.jupiter:junit-jupiter"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+test {
+    useJUnitPlatform()
 }
 
 var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
@@ -126,6 +140,22 @@ publishing {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+}
+
+// Keep the license and authorship attached to every distributable jar.
+tasks.withType(Jar).configureEach {
+    from(rootProject.file("LICENSE")) {
+        into("META-INF")
+        rename { "LICENSE_mineastr" }
+    }
+    from(rootProject.file("AUTHORS.md")) {
+        into("META-INF")
+        rename { "AUTHORS_mineastr.md" }
+    }
+    from(rootProject.file("THIRD_PARTY_NOTICES.md")) {
+        into("META-INF")
+        rename { "THIRD_PARTY_NOTICES_mineastr.md" }
+    }
 }
 
 idea {

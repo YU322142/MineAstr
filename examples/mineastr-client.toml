@@ -2,6 +2,15 @@
 # 默认关闭；独立服务器不受此客户端选项影响。
 localWorldServerEnabled = false
 
+# 是否按客户端语言显示游戏内译文，以及是否同时保留原文。
+gameTranslationsEnabled = true
+showOriginalTranslatedMessages = true
+
+# 告示牌和外部画框显示接口的浮选开关、距离与缩放。
+signTranslationsEnabled = true
+signTranslationMaxDistance = 8
+signTranslationScale = 1.0
+
 # AstrBot 请求截图时客户端如何处理。
 # ASK：弹出确认界面，玩家同意后发送；AUTO：自动发送；DISABLED：始终拒绝发送。
 screenshotMode = "ASK"

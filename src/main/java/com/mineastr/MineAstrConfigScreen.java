@@ -12,13 +12,18 @@ import net.minecraft.util.Mth;
 
 public final class MineAstrConfigScreen extends Screen {
     private static final int PANEL_WIDTH = 430;
-    private static final int PANEL_HEIGHT = 224;
+    private static final int PANEL_HEIGHT = 380;
     private static final int ACCENT = 0xFF72E6C1;
     private static final int TEXT = 0xFFF3F7FF;
     private static final int MUTED = 0xFFA8B4C8;
 
     private final Screen parent;
     private MineAstrClientConfig.ScreenshotMode screenshotMode;
+    private boolean gameTranslationsEnabled;
+    private boolean showOriginalTranslatedMessages;
+    private boolean signTranslationsEnabled;
+    private int signTranslationMaxDistance;
+    private double signTranslationScale;
     private int maxWidth;
     private int maxHeight;
     private double jpegQuality;
@@ -32,6 +37,11 @@ public final class MineAstrConfigScreen extends Screen {
 
     private void loadValues() {
         screenshotMode = MineAstrClientConfig.SCREENSHOT_MODE.get();
+        gameTranslationsEnabled = MineAstrClientConfig.GAME_TRANSLATIONS_ENABLED.getAsBoolean();
+        showOriginalTranslatedMessages = MineAstrClientConfig.SHOW_ORIGINAL_TRANSLATED_MESSAGES.getAsBoolean();
+        signTranslationsEnabled = MineAstrClientConfig.SIGN_TRANSLATIONS_ENABLED.getAsBoolean();
+        signTranslationMaxDistance = MineAstrClientConfig.SIGN_TRANSLATION_MAX_DISTANCE.getAsInt();
+        signTranslationScale = MineAstrClientConfig.SIGN_TRANSLATION_SCALE.getAsDouble();
         maxWidth = MineAstrClientConfig.SCREENSHOT_MAX_WIDTH.getAsInt();
         maxHeight = MineAstrClientConfig.SCREENSHOT_MAX_HEIGHT.getAsInt();
         jpegQuality = MineAstrClientConfig.SCREENSHOT_JPEG_QUALITY.getAsDouble();
@@ -55,6 +65,30 @@ public final class MineAstrConfigScreen extends Screen {
                 .create(controlLeft, row, controlWidth, 20, Component.empty(), (button, value) -> screenshotMode = value);
         addRenderableWidget(modeButton);
 
+        row += 28;
+        addRenderableWidget(CycleButton.onOffBuilder(gameTranslationsEnabled)
+                .create(controlLeft, row, controlWidth, 20, Component.empty(),
+                        (button, value) -> gameTranslationsEnabled = value));
+        row += 28;
+        addRenderableWidget(CycleButton.onOffBuilder(showOriginalTranslatedMessages)
+                .create(controlLeft, row, controlWidth, 20, Component.empty(),
+                        (button, value) -> showOriginalTranslatedMessages = value));
+        row += 28;
+        addRenderableWidget(CycleButton.onOffBuilder(signTranslationsEnabled)
+                .create(controlLeft, row, controlWidth, 20, Component.empty(),
+                        (button, value) -> signTranslationsEnabled = value));
+        row += 28;
+        addRenderableWidget(new ValueSlider(
+                controlLeft, row, controlWidth,
+                "screen.mineastr.config.sign_distance", 1, 32, signTranslationMaxDistance,
+                value -> signTranslationMaxDistance = (int) Math.round(value),
+                value -> Integer.toString((int) Math.round(value))));
+        row += 28;
+        addRenderableWidget(new ValueSlider(
+                controlLeft, row, controlWidth,
+                "screen.mineastr.config.sign_scale", 0.50, 2.0, signTranslationScale,
+                value -> signTranslationScale = value,
+                value -> Math.round(value * 100) + "%"));
         row += 28;
         addRenderableWidget(new ValueSlider(
                 controlLeft, row, controlWidth,
@@ -95,6 +129,11 @@ public final class MineAstrConfigScreen extends Screen {
 
     private void resetDefaults() {
         screenshotMode = MineAstrClientConfig.SCREENSHOT_MODE.getDefault();
+        gameTranslationsEnabled = MineAstrClientConfig.GAME_TRANSLATIONS_ENABLED.getDefault();
+        showOriginalTranslatedMessages = MineAstrClientConfig.SHOW_ORIGINAL_TRANSLATED_MESSAGES.getDefault();
+        signTranslationsEnabled = MineAstrClientConfig.SIGN_TRANSLATIONS_ENABLED.getDefault();
+        signTranslationMaxDistance = MineAstrClientConfig.SIGN_TRANSLATION_MAX_DISTANCE.getDefault();
+        signTranslationScale = MineAstrClientConfig.SIGN_TRANSLATION_SCALE.getDefault();
         maxWidth = MineAstrClientConfig.SCREENSHOT_MAX_WIDTH.getDefault();
         maxHeight = MineAstrClientConfig.SCREENSHOT_MAX_HEIGHT.getDefault();
         jpegQuality = MineAstrClientConfig.SCREENSHOT_JPEG_QUALITY.getDefault();
@@ -103,11 +142,17 @@ public final class MineAstrConfigScreen extends Screen {
 
     private void saveAndClose() {
         MineAstrClientConfig.SCREENSHOT_MODE.set(screenshotMode);
+        MineAstrClientConfig.GAME_TRANSLATIONS_ENABLED.set(gameTranslationsEnabled);
+        MineAstrClientConfig.SHOW_ORIGINAL_TRANSLATED_MESSAGES.set(showOriginalTranslatedMessages);
+        MineAstrClientConfig.SIGN_TRANSLATIONS_ENABLED.set(signTranslationsEnabled);
+        MineAstrClientConfig.SIGN_TRANSLATION_MAX_DISTANCE.set(signTranslationMaxDistance);
+        MineAstrClientConfig.SIGN_TRANSLATION_SCALE.set(signTranslationScale);
         MineAstrClientConfig.SCREENSHOT_MAX_WIDTH.set(maxWidth);
         MineAstrClientConfig.SCREENSHOT_MAX_HEIGHT.set(maxHeight);
         MineAstrClientConfig.SCREENSHOT_JPEG_QUALITY.set(jpegQuality);
         MineAstrClientConfig.SCREENSHOT_MAX_BYTES.set(maxBytes);
         MineAstrClientConfig.SPEC.save();
+        MineAstrClient.sendTranslationPreferences();
         onClose();
     }
 
@@ -140,6 +185,11 @@ public final class MineAstrConfigScreen extends Screen {
         int labelY = top + 54;
         String[] labels = {
                 "screen.mineastr.config.mode.label",
+                "screen.mineastr.config.translation.label",
+                "screen.mineastr.config.translation_original.label",
+                "screen.mineastr.config.sign_translation.label",
+                "screen.mineastr.config.sign_distance.label",
+                "screen.mineastr.config.sign_scale.label",
                 "screen.mineastr.config.width.label",
                 "screen.mineastr.config.height.label",
                 "screen.mineastr.config.quality.label",

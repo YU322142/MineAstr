@@ -50,6 +50,9 @@ regionMaxBlocks = 32768
 # 高风险：是否允许受控 LLM 服务器命令。默认必须保持 false，按需显式开启。
 enableCommandTool = false
 
+# 是否接受 AstrBot 实时同步的命令管理员；动态名单断线即清空。
+syncTrustedCommandUsers = true
+
 # 可信请求者的 Minecraft UUID、玩家名或 AstrBot 用户 ID，建议优先填写 UUID。
 trustedCommandUsers = []
 
@@ -61,3 +64,26 @@ commandPermissionLevel = 4
 
 # 单条受控命令最大长度。
 commandMaxLength = 256
+
+# 非公开命令的审批有效期和最大待审批数量。
+commandApprovalTimeoutSeconds = 300
+commandMaxPendingApprovals = 128
+
+# AstrBot 定向提醒玩家时使用的显示方式。
+enablePlayerNotifications = true
+notifyActionBar = true
+notifyTitle = false
+notifySound = true
+notificationMaxLength = 512
+
+# 账号绑定同步与可选原版白名单同步。
+enableBindingSync = false
+bindingSyncWhitelist = false
+
+# 登录前绑定检查。failOpen=true 表示 AstrBot 断线或超时时仍允许登录。
+loginBindingCheckEnabled = false
+loginCheckTimeoutSeconds = 5
+loginCheckFailOpen = true
+generateBindingCodeOnReject = true
+verifyCodeLength = 6
+loginCodeMessage = "\n绑定验证码：{code}\n请在 QQ/Discord 使用 /mc bind {code}"
