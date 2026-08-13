@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.26 - 2026-08-13
+
+- Add configurable periodic cleanup for translation results, translation context, relay recall/edit metadata, and persisted Minecraft screenshots.
+- Stop retaining relayed message bodies and image references in recall/edit records; enforce both a 24-hour default TTL and the existing 2,048-record limit on every write.
+- Delete screenshots older than seven days by default and cap `data/mineastr/screenshots/` at 256 MiB, removing the oldest files first.
+- Cancel the cleanup task and explicitly release all in-memory caches when the plugin unloads.
+- Ignore QQ/Discord recall or delete events unless the original message was actually relayed from a configured MineAstr session; QQ recalls from unserved groups no longer produce notices elsewhere.
+
 ## 0.6.25
 
 - Detect sign text that already contains semantically equivalent Chinese and English, return an explicit skip result, and cache the decision without affecting chat or image translation.

@@ -2,6 +2,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 from test_z_discord_automation import MAIN
 
@@ -76,6 +77,11 @@ class QQAutomationTests(unittest.IsolatedAsyncioTestCase):
             self.plugin.config["binding_database"]
         )
         self.plugin._qq_listener_bindings = {}
+        self.plugin._relay_sessions = {
+            "default:GroupMessage:10001",
+            "discord-main:GroupMessage:20001",
+        }
+        self.plugin._relay_message_records = {}
         await self.plugin._binding_store.initialize()
 
     async def asyncTearDown(self):
@@ -172,6 +178,85 @@ class QQAutomationTests(unittest.IsolatedAsyncioTestCase):
             self.plugin._bounded_nickname(records, "{players}", 60),
             "FirstPlayerName, SecondPlayerName, ThirdPlayerName",
         )
+
+    async def test_recall_from_unserved_qq_group_is_ignored(self):
+        self.plugin._send_to_relay_sessions = AsyncMock()
+        self.plugin._minecraft_adapter = lambda: types.SimpleNamespace(
+            relay_chat=AsyncMock()
+        )
+
+        await self.plugin._on_qq_message_recall(
+            "default",
+            {"group_id": 99999, "user_id": 123456789, "message_id": 777},
+        )
+
+        self.plugin._send_to_relay_sessions.assert_not_awaited()
+
+    async def test_untracked_recall_in_served_group_is_ignored(self):
+        self.plugin._send_to_relay_sessions = AsyncMock()
+        adapter = types.SimpleNamespace(relay_chat=AsyncMock())
+        self.plugin._minecraft_adapter = lambda: adapter
+
+        await self.plugin._on_qq_message_recall(
+            "default",
+            {"group_id": 10001, "user_id": 123456789, "message_id": 778},
+        )
+
+        self.plugin._send_to_relay_sessions.assert_not_awaited()
+        adapter.relay_chat.assert_not_awaited()
+
+    async def test_tracked_recall_in_served_group_is_synchronized(self):
+        self.plugin._send_to_relay_sessions = AsyncMock()
+        adapter = types.SimpleNamespace(relay_chat=AsyncMock())
+        self.plugin._minecraft_adapter = lambda: adapter
+        self.plugin._store_relay_message_record(
+            "default:779",
+            platform_id="default",
+            message_id="779",
+            origin="default:GroupMessage:10001",
+            sender_name="ExampleQQUser",
+        )
+
+        await self.plugin._on_qq_message_recall(
+            "default",
+            {"group_id": 10001, "user_id": 123456789, "message_id": 779},
+        )
+        await self.plugin._on_qq_message_recall(
+            "default",
+            {"group_id": 10001, "user_id": 123456789, "message_id": 779},
+        )
+
+        self.plugin._send_to_relay_sessions.assert_awaited_once_with(
+            "[ExampleQQUser] 消息已撤回",
+            sessions=["discord-main:GroupMessage:20001"],
+        )
+        adapter.relay_chat.assert_awaited_once_with(
+            "[ExampleQQUser] 消息已撤回",
+            "ExampleQQUser",
+            origin="default:GroupMessage:10001",
+        )
+
+    async def test_same_message_id_from_other_group_does_not_consume_record(self):
+        self.plugin.config["qq_group_ids"] = ""
+        self.plugin._send_to_relay_sessions = AsyncMock()
+        adapter = types.SimpleNamespace(relay_chat=AsyncMock())
+        self.plugin._minecraft_adapter = lambda: adapter
+        self.plugin._store_relay_message_record(
+            "default:780",
+            platform_id="default",
+            message_id="780",
+            origin="default:GroupMessage:10001",
+            sender_name="ExampleQQUser",
+        )
+
+        await self.plugin._on_qq_message_recall(
+            "default",
+            {"group_id": 99999, "user_id": 123456789, "message_id": 780},
+        )
+
+        self.plugin._send_to_relay_sessions.assert_not_awaited()
+        adapter.relay_chat.assert_not_awaited()
+        self.assertIn("default:780", self.plugin._relay_message_records)
 
 
 if __name__ == "__main__":

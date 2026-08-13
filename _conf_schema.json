@@ -592,6 +592,50 @@
       }
     }
   },
+  "maintenance_settings": {
+    "description": "⑦ 缓存与截图清理",
+    "type": "object",
+    "hint": "定时清理 MineAstr 自己维护的翻译缓存、上下文、撤回/修改路由记录和 Minecraft 截图文件。AstrBot 核心创建的事件临时媒体仍由 AstrBot 在事件结束时清理。",
+    "obvious_hint": true,
+    "items": {
+      "cache_cleanup_enabled": {
+        "description": "启用定时自动清理",
+        "type": "bool",
+        "hint": "关闭后不会定时删除缓存或截图；插件卸载时仍会释放本实例的内存缓存。",
+        "default": true
+      },
+      "cache_cleanup_interval_seconds": {
+        "description": "清理巡检间隔（秒）",
+        "type": "int",
+        "hint": "默认每 5 分钟执行一次；运行时会限制在 30 到 86400 秒。",
+        "default": 300
+      },
+      "memory_cache_retention_seconds": {
+        "description": "翻译缓存保留时间（秒）",
+        "type": "int",
+        "hint": "文本/图片翻译结果和翻译上下文超过此时间未使用后删除；默认 24 小时，运行时限制为 60 秒到 30 天。",
+        "default": 86400
+      },
+      "relay_record_retention_seconds": {
+        "description": "撤回与修改记录保留时间（秒）",
+        "type": "int",
+        "hint": "只保存消息 ID、来源和发送者，不保存正文或图片；默认 24 小时，运行时限制为 300 秒到 30 天。过期后再撤回旧消息可能无法恢复发送者名称。",
+        "default": 86400
+      },
+      "screenshot_retention_hours": {
+        "description": "Minecraft 截图保留时间（小时）",
+        "type": "int",
+        "hint": "清理 data/mineastr/screenshots/ 中超过此时间的截图；默认 7 天，运行时限制为 1 小时到 365 天。",
+        "default": 168
+      },
+      "screenshot_cache_max_mib": {
+        "description": "Minecraft 截图目录上限（MiB）",
+        "type": "int",
+        "hint": "超过上限时从最旧截图开始删除；默认 256 MiB，运行时限制为 16-10240 MiB。",
+        "default": 256
+      }
+    }
+  },
   "config_layout_version": {"type": "int", "default": 0, "invisible": true},
   "bridge_enabled": {"type": "bool", "default": true, "invisible": true},
   "relay_sessions": {"type": "text", "default": "", "invisible": true},
@@ -611,6 +655,12 @@
   "game_translation_timeout_seconds": {"type": "int", "default": 20, "invisible": true},
   "translation_custom_instructions": {"type": "text", "default": "", "invisible": true},
   "image_translation_prompt": {"type": "text", "default": "", "invisible": true},
+  "cache_cleanup_enabled": {"type": "bool", "default": true, "invisible": true},
+  "cache_cleanup_interval_seconds": {"type": "int", "default": 300, "invisible": true},
+  "memory_cache_retention_seconds": {"type": "int", "default": 86400, "invisible": true},
+  "relay_record_retention_seconds": {"type": "int", "default": 86400, "invisible": true},
+  "screenshot_retention_hours": {"type": "int", "default": 168, "invisible": true},
+  "screenshot_cache_max_mib": {"type": "int", "default": 256, "invisible": true},
   "binding_enabled": {"type": "bool", "default": true, "invisible": true},
   "binding_database": {"type": "string", "default": "data/mineastr/bindings.sqlite3", "invisible": true},
   "verify_method": {"type": "string", "default": "GROUP_NAME", "invisible": true},

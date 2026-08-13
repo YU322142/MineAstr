@@ -2,12 +2,13 @@ import asyncio
 import base64
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, call
+from unittest.mock import AsyncMock, call, patch
 
 
 def _identity_decorator(*args, **kwargs):
@@ -1093,6 +1094,234 @@ class CommandApprovalTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sum(value > 0 for value in results), 1)
 
 
+class CacheCleanupTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def _plugin():
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "maintenance_settings": {
+                "cache_cleanup_enabled": True,
+                "cache_cleanup_interval_seconds": 300,
+                "memory_cache_retention_seconds": 86400,
+                "relay_record_retention_seconds": 86400,
+                "screenshot_retention_hours": 168,
+                "screenshot_cache_max_mib": 256,
+            }
+        }
+        plugin._game_translation_cache = {}
+        plugin._game_translation_cache_accessed_at = {}
+        plugin._image_translation_cache = {}
+        plugin._image_translation_cache_accessed_at = {}
+        plugin._translation_contexts = {}
+        plugin._translation_context_accessed_at = {}
+        plugin._relay_message_records = {}
+        plugin._screenshot_last_request_at = {}
+        return plugin
+
+    async def test_expired_memory_entries_are_pruned_but_recent_ones_remain(self):
+        plugin = self._plugin()
+        monotonic_now = 200_000.0
+        wall_now = 1_700_000_000.0
+        plugin._game_translation_cache = {"old": {}, "recent": {}}
+        plugin._game_translation_cache_accessed_at = {
+            "old": monotonic_now - 90_000,
+            "recent": monotonic_now - 10,
+            "orphan": monotonic_now - 10,
+        }
+        plugin._image_translation_cache = {"old": {}, "recent": {}}
+        plugin._image_translation_cache_accessed_at = {
+            "old": monotonic_now - 90_000,
+            "recent": monotonic_now - 10,
+        }
+        plugin._translation_contexts = {
+            "old": [],
+            "recent": [{"speaker": "Alice", "text": "hello"}],
+        }
+        plugin._translation_context_accessed_at = {
+            "old": monotonic_now - 90_000,
+            "recent": monotonic_now - 10,
+        }
+        plugin._relay_message_records = {
+            "old": {"created_at": wall_now - 90_000},
+            "recent": {"created_at": wall_now - 10},
+            "malformed": None,
+        }
+
+        stats = plugin._prune_memory_caches(
+            wall_now=wall_now,
+            monotonic_now=monotonic_now,
+        )
+
+        self.assertEqual(
+            stats,
+            {
+                "game_translations": 1,
+                "image_translations": 1,
+                "translation_contexts": 1,
+                "relay_records": 2,
+            },
+        )
+        for cache in (
+            plugin._game_translation_cache,
+            plugin._image_translation_cache,
+            plugin._translation_contexts,
+            plugin._relay_message_records,
+        ):
+            self.assertEqual(set(cache), {"recent"})
+        self.assertNotIn(
+            "orphan", plugin._game_translation_cache_accessed_at
+        )
+
+    async def test_screenshot_cleanup_applies_age_then_total_size_limit(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            base_time = 1_700_000_000
+            paths = [directory / f"shot-{index}.jpg" for index in range(3)]
+            for index, path in enumerate(paths, start=1):
+                path.write_bytes(b"data")
+                timestamp = base_time + index * 100
+                os.utime(path, (timestamp, timestamp))
+
+            deleted_count, deleted_bytes = (
+                MAIN.MineAstrPlugin._cleanup_screenshot_files_sync(
+                    directory,
+                    wall_now=base_time + 400,
+                    retention_seconds=250,
+                    max_total_bytes=5,
+                )
+            )
+
+            self.assertEqual((deleted_count, deleted_bytes), (2, 8))
+            self.assertFalse(paths[0].exists())
+            self.assertFalse(paths[1].exists())
+            self.assertTrue(paths[2].exists())
+
+    async def test_relay_records_do_not_retain_message_or_image_content(self):
+        plugin = self._plugin()
+        plugin._store_relay_message_record(
+            "discord:123",
+            platform_id="discord",
+            message_id="123",
+            origin="discord:GroupMessage:456",
+            sender_name="Alice",
+        )
+
+        record = plugin._relay_message_records["discord:123"]
+        self.assertEqual(
+            set(record),
+            {"platform_id", "message_id", "origin", "sender_name", "created_at"},
+        )
+
+    async def test_relay_record_capacity_is_enforced_on_every_write(self):
+        plugin = self._plugin()
+        with (
+            patch.object(MAIN, "RELAY_MESSAGE_RECORD_LIMIT", 2),
+            patch.object(MAIN.time, "time", side_effect=[1.0, 2.0, 3.0]),
+        ):
+            for index in range(3):
+                plugin._store_relay_message_record(
+                    f"discord:{index}",
+                    platform_id="discord",
+                    message_id=str(index),
+                    origin="discord:GroupMessage:456",
+                    sender_name="Alice",
+                )
+
+        self.assertEqual(
+            set(plugin._relay_message_records),
+            {"discord:1", "discord:2"},
+        )
+
+    async def test_cleanup_is_best_effort_and_can_be_disabled(self):
+        plugin = self._plugin()
+        with patch.object(
+            plugin, "_prune_memory_caches", side_effect=RuntimeError("failed")
+        ):
+            self.assertEqual(await plugin._run_cache_cleanup(), {})
+
+        plugin.config["maintenance_settings"]["cache_cleanup_enabled"] = False
+        plugin._game_translation_cache["entry"] = {}
+        self.assertEqual(await plugin._run_cache_cleanup(), {})
+        self.assertIn("entry", plugin._game_translation_cache)
+        plugin._cache_cleanup_task = None
+        plugin._start_cache_cleanup_task()
+        self.assertIsNone(plugin._cache_cleanup_task)
+
+    async def test_cache_hits_refresh_each_last_access_timestamp(self):
+        plugin = self._plugin()
+        plugin.config["bridge_settings"] = {
+            "max_relay_length": 500,
+            "game_translation_enabled": True,
+            "game_translation_languages": "en_us",
+            "image_translation_prompt": "",
+            "translation_context_messages": 1,
+        }
+        text_key = ("game", "hello", ("en_us",), "", (), False)
+        plugin._game_translation_cache[text_key] = {
+            "source_language": "zh_cn",
+            "translations": {"en_us": "hello"},
+        }
+        image_bytes = b"image"
+        image_key = (
+            MAIN.hashlib.sha256(image_bytes).hexdigest(),
+            ("en_us",),
+            "",
+            "",
+        )
+        plugin._image_translation_cache[image_key] = {
+            "source_language": "zh_cn",
+            "translations": {"en_us": "image"},
+        }
+        context_key = plugin._translation_context_key("origin", "game")
+        plugin._translation_contexts[context_key] = [
+            {"speaker": "Alice", "text": "context"}
+        ]
+
+        with patch.object(
+            MAIN.time, "monotonic", side_effect=[101.0, 202.0, 303.0]
+        ):
+            await plugin._translate_text("hello", ("en_us",))
+            await plugin._translate_image_request(
+                {
+                    "image_base64": base64.b64encode(image_bytes).decode("ascii"),
+                    "mime_type": "image/png",
+                    "target_languages": ["en_us"],
+                }
+            )
+            plugin._translation_context_snapshot("origin", "game")
+
+        self.assertEqual(plugin._game_translation_cache_accessed_at[text_key], 101.0)
+        self.assertEqual(
+            plugin._image_translation_cache_accessed_at[image_key], 202.0
+        )
+        self.assertEqual(
+            plugin._translation_context_accessed_at[context_key], 303.0
+        )
+
+    async def test_terminate_cancels_cleanup_task_and_clears_memory(self):
+        plugin = self._plugin()
+        plugin._binding_reconcile_tasks = set()
+        plugin._discord_attach_task = None
+        plugin._discord_listener_bindings = {}
+        plugin._qq_listener_bindings = {}
+        plugin._listener_adapter = None
+        plugin._relay_sessions = set()
+        plugin._cache_cleanup_task = None
+        plugin._game_translation_cache["entry"] = {"translations": {}}
+        plugin._relay_message_records["entry"] = {"created_at": 0}
+        plugin._start_cache_cleanup_task()
+        cleanup_task = plugin._cache_cleanup_task
+        plugin._start_cache_cleanup_task()
+        self.assertIs(plugin._cache_cleanup_task, cleanup_task)
+
+        await plugin.terminate()
+
+        self.assertIsNone(plugin._cache_cleanup_task)
+        self.assertTrue(cleanup_task.done())
+        self.assertFalse(plugin._game_translation_cache)
+        self.assertFalse(plugin._relay_message_records)
+
+
 class FakeGuild:
     def __init__(self, guild_id, name="Test Guild"):
         self.id = guild_id
@@ -1121,7 +1350,8 @@ class FakeMember:
 
 
 class FakeDiscordMessage:
-    def __init__(self, content, author, guild, channel):
+    def __init__(self, content, author, guild, channel, message_id=123):
+        self.id = message_id
         self.content = content
         self.clean_content = content
         self.author = author
@@ -1182,6 +1412,7 @@ class DiscordAutomationTests(unittest.IsolatedAsyncioTestCase):
             self.plugin.config["binding_database"]
         )
         self.plugin._discord_listener_bindings = {}
+        self.plugin._relay_message_records = {}
         await self.plugin._binding_store.initialize()
 
     async def asyncTearDown(self):
@@ -1247,6 +1478,63 @@ class DiscordAutomationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(
             "[Alice] [Edited] new text",
             self.plugin._send_to_relay_sessions.await_args.args,
+        )
+
+    async def test_untracked_discord_delete_is_ignored(self):
+        self.plugin._relay_sessions = {
+            "discord-main:GroupMessage:200",
+            "default:GroupMessage:10001",
+        }
+        self.plugin._send_to_relay_sessions = AsyncMock()
+        adapter = types.SimpleNamespace(relay_chat=AsyncMock())
+        self.plugin._minecraft_adapter = lambda: adapter
+        message = FakeDiscordMessage(
+            "deleted",
+            types.SimpleNamespace(id=42, bot=False),
+            self.guild,
+            types.SimpleNamespace(id=200),
+            message_id=900,
+        )
+
+        await self.plugin._on_discord_message_delete("discord-main", message)
+
+        self.plugin._send_to_relay_sessions.assert_not_awaited()
+        adapter.relay_chat.assert_not_awaited()
+
+    async def test_tracked_discord_delete_is_synchronized_once(self):
+        self.plugin._relay_sessions = {
+            "discord-main:GroupMessage:200",
+            "default:GroupMessage:10001",
+        }
+        self.plugin._send_to_relay_sessions = AsyncMock()
+        adapter = types.SimpleNamespace(relay_chat=AsyncMock())
+        self.plugin._minecraft_adapter = lambda: adapter
+        self.plugin._store_relay_message_record(
+            "discord-main:901",
+            platform_id="discord-main",
+            message_id="901",
+            origin="discord-main:GroupMessage:200",
+            sender_name="Alice",
+        )
+        message = FakeDiscordMessage(
+            "deleted",
+            types.SimpleNamespace(id=42, bot=False),
+            self.guild,
+            types.SimpleNamespace(id=200),
+            message_id=901,
+        )
+
+        await self.plugin._on_discord_message_delete("discord-main", message)
+        await self.plugin._on_discord_message_delete("discord-main", message)
+
+        self.plugin._send_to_relay_sessions.assert_awaited_once_with(
+            "[Alice] 消息已撤回",
+            sessions=["default:GroupMessage:10001"],
+        )
+        adapter.relay_chat.assert_awaited_once_with(
+            "[Alice] 消息已撤回",
+            "Alice",
+            origin="discord-main:GroupMessage:200",
         )
 
     async def test_member_leave_unbinds_all_and_syncs_each_record(self):

@@ -41,7 +41,7 @@ AstrBot 对该会话的文本回复会回传给所有已连接的 Minecraft 服�
 
 ## 安装包兼容性
 
-在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.25.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
+在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.26.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
 
 插件元数据中的安装/更新源固定为 Fork 分支 `https://github.com/YU322142/MineAstr/tree/astrbot-plugin`，不会再让 AstrBot 回到原项目或下载仅用于项目导航的 `main` 分支。
 
@@ -220,8 +220,14 @@ pip install -r requirements.txt
 | `qq_notification_settings` | QQ 独立设置 | QQ/OneBot 的平台 ID、聊天译文目标语言、是否显示原文、逐行通知语言、事件开关和每种语言的通知样式。 |
 | `discord_notification_settings` | Discord 独立设置 | Discord 的平台 ID、聊天译文目标语言、是否显示原文、逐行通知语言、事件开关和每种语言的通知样式。 |
 | `discord_channel_settings` | 空列表 | 可添加任意数量的 Discord 频道配置；频道只选择需要接收的译文语言、原文显示和通知样式，翻译提示词使用统一设置。 |
+| `cache_cleanup_enabled` | `true` | 定时清理插件维护的翻译缓存、上下文、撤回/修改记录和截图文件。 |
+| `cache_cleanup_interval_seconds` | `300` | 清理巡检间隔，运行时限制为 30-86400 秒。 |
+| `memory_cache_retention_seconds` | `86400` | 文本/图片翻译结果和翻译上下文的未使用保留时间，范围 60 秒到 30 天。 |
+| `relay_record_retention_seconds` | `86400` | 撤回/修改路由记录的保留时间，范围 300 秒到 30 天；记录不保存消息正文或图片。 |
+| `screenshot_retention_hours` | `168` | `data/mineastr/screenshots/` 中截图的最长保留时间，范围 1 小时到 365 天。 |
+| `screenshot_cache_max_mib` | `256` | 截图目录总容量上限，范围 16-10240 MiB；超出时优先删除最旧文件。 |
 
-配置页按群服互联、绑定、QQ、Discord、管理员/远程指令和通知分成六个可折叠区域；账号、群号、会话和过滤规则均使用多行输入框。升级时旧版平铺配置会自动迁移一次，不会重置现有设置。v0.6.9 起，QQ 与 Discord 的“通知语言”都是逐行列表：只写一行就是单语，写 `zh_CN` 和 `en_US` 两行就会按该顺序同时发送；“分语言自定义样式”可为每种语言单独填写多行模板，留空则使用内置预设。旧版通用模板非空时为兼容旧配置，只发送该模板一次。事件模板支持 `{server}`、`{server_id}`、`{player}`、`{binding}` 等占位符，死亡事件另支持 `{reason}`、`{death_type}`、`{attacker}`、`{direct_entity}` 和 `{weapon}`。平台适配器的 `host`、`port`、`path`、`token` 仍应在 AstrBot 的 `minecraft` 平台配置页修改。
+配置页按群服互联、绑定、QQ、Discord、管理员/远程指令、通知和缓存维护分成七个可折叠区域；账号、群号、会话和过滤规则均使用多行输入框。升级时旧版平铺配置会自动迁移一次，不会重置现有设置。v0.6.9 起，QQ 与 Discord 的“通知语言”都是逐行列表：只写一行就是单语，写 `zh_CN` 和 `en_US` 两行就会按该顺序同时发送；“分语言自定义样式”可为每种语言单独填写多行模板，留空则使用内置预设。旧版通用模板非空时为兼容旧配置，只发送该模板一次。事件模板支持 `{server}`、`{server_id}`、`{player}`、`{binding}` 等占位符，死亡事件另支持 `{reason}`、`{death_type}`、`{attacker}`、`{direct_entity}` 和 `{weapon}`。平台适配器的 `host`、`port`、`path`、`token` 仍应在 AstrBot 的 `minecraft` 平台配置页修改。
 
 未绑定登录提示由“未绑定登录拒绝消息开关”控制。登录校验发生在 Minecraft 玩家尚未绑定任何聊天平台时，因此这条提示无法判断应使用 QQ 还是 Discord 的平台配置：插件会附带客户端翻译键，安装同版 MineAstr 客户端 Mod 时由客户端按自身语言显示；未安装客户端 Mod 时回退到 AstrBot 的全局语言和模板。
 
@@ -267,6 +273,7 @@ pip install -r requirements.txt
 - AstrBot 默认把截图目标设为当前发言玩家。
 - 如果该玩家安装了 MineAstr 客户端 Mod，客户端会按 `config/mineastr-client.json` 中的 `screenshotMode` 处理，也可在游戏中按 `F8` 打开设置。
 - 默认 `ASK` 模式下，玩家点击“发送截图”后，工具会把图片保存到 `data/mineastr/screenshots/`，并把文件路径、尺寸、玩家名和时间返回给模型。
+- 默认每 5 分钟清理一次截图缓存：超过 7 天或目录总量超过 256 MiB 时优先删除旧文件；可在插件的“缓存与截图清理”区域调整。
 - 如果当前 AstrBot 工具链支持 MCP 图片结果，插件还会把截图作为图片内容返回给支持视觉理解的模型；不支持时仍返回文本摘要和文件路径。
 - 插件会对同一目标玩家的截图请求做 10 秒冷却；冷却期内再次调用会直接返回“截图请求过于频繁”。
 - 截图请求全程使用异步 `await` 等待 Minecraft 返回结果，默认最多等待 30 秒；超时会返回“请求截图超时，客户端未响应”。

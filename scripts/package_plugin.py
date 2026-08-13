@@ -27,6 +27,7 @@ PACKAGE_FILES = (
     "README.md",
     "PROTOCOL.md",
     "AQQBOT_MIGRATION.md",
+    "IMAGE_TRANSLATION_API.md",
     "THIRD_PARTY_NOTICES.md",
     "CHANGELOG.md",
     "LICENSE",
@@ -76,7 +77,7 @@ def main() -> None:
         "output",
         nargs="?",
         type=Path,
-        default=Path("dist") / "astrbot_plugin_mineastr-v0.6.25.zip",
+        default=Path("dist") / "astrbot_plugin_mineastr-v0.6.26.zip",
     )
     args = parser.parse_args()
     repo_root = Path(__file__).resolve().parents[1]

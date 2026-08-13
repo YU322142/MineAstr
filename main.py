@@ -80,6 +80,9 @@ MINEASTR_EXTERNAL_HINT_KEYWORDS = (
 SCREENSHOT_DIR = Path("data") / "mineastr" / "screenshots"
 MAX_SCREENSHOT_SAVE_BYTES = 2 * 1024 * 1024
 TRANSLATION_PROMPT_MAX_LENGTH = 40_000
+GAME_TRANSLATION_CACHE_LIMIT = 256
+IMAGE_TRANSLATION_CACHE_LIMIT = 128
+RELAY_MESSAGE_RECORD_LIMIT = 2048
 _ACTIVE_RELAY_SESSIONS: set[str] = set()
 DEFAULT_PLAYER_NAME_REGEX = r"^\S{1,64}$"
 LEGACY_PLAYER_NAME_REGEX = r"^[A-Za-z0-9_]{3,16}$"
@@ -269,6 +272,12 @@ AQQBOT_DEFAULT_CONFIG: dict[str, Any] = {
     "translation_context_messages": 0,
     "translation_custom_instructions": "",
     "image_translation_prompt": "",
+    "cache_cleanup_enabled": True,
+    "cache_cleanup_interval_seconds": 300,
+    "memory_cache_retention_seconds": 86400,
+    "relay_record_retention_seconds": 86400,
+    "screenshot_retention_hours": 168,
+    "screenshot_cache_max_mib": 256,
     "binding_enabled": True,
     "binding_database": DEFAULT_BINDING_DATABASE,
     "verify_method": "GROUP_NAME",
@@ -389,6 +398,14 @@ CONFIG_GROUP_KEYS: dict[str, tuple[str, ...]] = {
         "notify_player_leave",
         "notify_player_death",
     ),
+    "maintenance_settings": (
+        "cache_cleanup_enabled",
+        "cache_cleanup_interval_seconds",
+        "memory_cache_retention_seconds",
+        "relay_record_retention_seconds",
+        "screenshot_retention_hours",
+        "screenshot_cache_max_mib",
+    ),
 }
 CONFIG_KEY_GROUP = {
     key: group
@@ -411,7 +428,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.6.25",
+    "0.6.26",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -447,6 +464,7 @@ class MineAstrPlugin(Star):
             str, tuple[Any, Any | None, Any | None, Any | None]
         ] = {}
         self._discord_attach_task: asyncio.Task | None = None
+        self._cache_cleanup_task: asyncio.Task | None = None
         self._binding_reconcile_tasks: set[asyncio.Task] = set()
         self._command_admin_sync_lock = asyncio.Lock()
         self._command_admin_revision = 0
@@ -463,9 +481,11 @@ class MineAstrPlugin(Star):
             ],
             dict[str, Any],
         ] = {}
+        self._game_translation_cache_accessed_at: dict[tuple[Any, ...], float] = {}
         self._image_translation_cache: dict[tuple[Any, ...], dict[str, Any]] = {}
+        self._image_translation_cache_accessed_at: dict[tuple[Any, ...], float] = {}
         self._translation_contexts: dict[str, deque[dict[str, str]]] = {}
-        self._relay_message_media: dict[str, list[dict[str, str]]] = {}
+        self._translation_context_accessed_at: dict[str, float] = {}
         self._relay_message_records: dict[str, dict[str, Any]] = {}
         self._binding_store = BindingStore(str(self._cfg("binding_database")))
         self._refresh_relay_sessions()
@@ -488,11 +508,24 @@ class MineAstrPlugin(Star):
         await self._schedule_connected_server_reconcile()
         self._attach_qq_listeners()
         self._schedule_discord_listener_attach()
+        await self._run_cache_cleanup()
+        self._start_cache_cleanup_task()
         logger.info(
             "MineAstr 插件已初始化：AQQBot 兼容功能与 AstrBot QQ/Discord 桥接已加载。"
         )
 
     async def terminate(self):
+        cleanup_task = getattr(self, "_cache_cleanup_task", None)
+        if cleanup_task is not None:
+            cleanup_task.cancel()
+            try:
+                await cleanup_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:  # noqa: BLE001 - unload must continue
+                logger.warning("MineAstr 缓存清理任务异常结束：%s", exc)
+            self._cache_cleanup_task = None
+        self._clear_memory_caches()
         for task in self._binding_reconcile_tasks:
             task.cancel()
         if self._binding_reconcile_tasks:
@@ -633,6 +666,249 @@ class MineAstrPlugin(Star):
             return int(self._cfg(key))
         except (TypeError, ValueError):
             return int(AQQBOT_DEFAULT_CONFIG[key])
+
+    def _bounded_cfg_int(self, key: str, minimum: int, maximum: int) -> int:
+        return max(minimum, min(maximum, self._cfg_int(key)))
+
+    def _start_cache_cleanup_task(self) -> None:
+        if not self._cfg_bool("cache_cleanup_enabled"):
+            return
+        task = getattr(self, "_cache_cleanup_task", None)
+        if task is not None and not task.done():
+            return
+        self._cache_cleanup_task = asyncio.create_task(
+            self._cache_cleanup_loop(),
+            name="mineastr-cache-cleanup",
+        )
+
+    async def _cache_cleanup_loop(self) -> None:
+        while True:
+            interval = self._bounded_cfg_int(
+                "cache_cleanup_interval_seconds", 30, 86400
+            )
+            await asyncio.sleep(interval)
+            if not self._cfg_bool("cache_cleanup_enabled"):
+                continue
+            try:
+                await self._run_cache_cleanup()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - maintenance is best effort
+                logger.warning("MineAstr 定时清理缓存失败：%s", exc)
+
+    def _clear_memory_caches(self) -> None:
+        for attribute in (
+            "_game_translation_cache",
+            "_game_translation_cache_accessed_at",
+            "_image_translation_cache",
+            "_image_translation_cache_accessed_at",
+            "_translation_contexts",
+            "_translation_context_accessed_at",
+            "_relay_message_records",
+            "_screenshot_last_request_at",
+        ):
+            value = getattr(self, attribute, None)
+            if hasattr(value, "clear"):
+                value.clear()
+
+    @staticmethod
+    def _prune_timed_mapping(
+        cache: dict[Any, Any],
+        accessed_at: dict[Any, float],
+        *,
+        now: float,
+        retention_seconds: int,
+    ) -> int:
+        removed = 0
+        cutoff = now - retention_seconds
+        for key in list(cache):
+            last_access = accessed_at.get(key)
+            if last_access is None:
+                accessed_at[key] = now
+                continue
+            if last_access < cutoff:
+                cache.pop(key, None)
+                accessed_at.pop(key, None)
+                removed += 1
+        for key in list(accessed_at):
+            if key not in cache:
+                accessed_at.pop(key, None)
+        return removed
+
+    @staticmethod
+    def _relay_record_created_at(record: Any, fallback: float) -> float:
+        try:
+            return float(record.get("created_at", fallback))
+        except (AttributeError, TypeError, ValueError):
+            return fallback
+
+    def _prune_memory_caches(
+        self,
+        *,
+        wall_now: float | None = None,
+        monotonic_now: float | None = None,
+    ) -> dict[str, int]:
+        wall_now = time.time() if wall_now is None else wall_now
+        monotonic_now = (
+            time.monotonic() if monotonic_now is None else monotonic_now
+        )
+        memory_retention = self._bounded_cfg_int(
+            "memory_cache_retention_seconds", 60, 30 * 86400
+        )
+        relay_retention = self._bounded_cfg_int(
+            "relay_record_retention_seconds", 300, 30 * 86400
+        )
+
+        game_cache = getattr(self, "_game_translation_cache", {})
+        game_accessed = getattr(
+            self, "_game_translation_cache_accessed_at", None
+        )
+        if not isinstance(game_accessed, dict):
+            game_accessed = {}
+            self._game_translation_cache_accessed_at = game_accessed
+        image_cache = getattr(self, "_image_translation_cache", {})
+        image_accessed = getattr(
+            self, "_image_translation_cache_accessed_at", None
+        )
+        if not isinstance(image_accessed, dict):
+            image_accessed = {}
+            self._image_translation_cache_accessed_at = image_accessed
+        contexts = getattr(self, "_translation_contexts", {})
+        context_accessed = getattr(
+            self, "_translation_context_accessed_at", None
+        )
+        if not isinstance(context_accessed, dict):
+            context_accessed = {}
+            self._translation_context_accessed_at = context_accessed
+
+        stats = {
+            "game_translations": self._prune_timed_mapping(
+                game_cache,
+                game_accessed,
+                now=monotonic_now,
+                retention_seconds=memory_retention,
+            ),
+            "image_translations": self._prune_timed_mapping(
+                image_cache,
+                image_accessed,
+                now=monotonic_now,
+                retention_seconds=memory_retention,
+            ),
+            "translation_contexts": self._prune_timed_mapping(
+                contexts,
+                context_accessed,
+                now=monotonic_now,
+                retention_seconds=memory_retention,
+            ),
+            "relay_records": 0,
+        }
+
+        records = getattr(self, "_relay_message_records", {})
+        cutoff = wall_now - relay_retention
+        for key, record in list(records.items()):
+            created_at = self._relay_record_created_at(record, 0.0)
+            if created_at < cutoff:
+                records.pop(key, None)
+                stats["relay_records"] += 1
+        while len(records) > RELAY_MESSAGE_RECORD_LIMIT:
+            oldest = min(
+                records,
+                key=lambda key: self._relay_record_created_at(
+                    records[key], 0.0
+                ),
+            )
+            records.pop(oldest, None)
+            stats["relay_records"] += 1
+        return stats
+
+    @staticmethod
+    def _cleanup_screenshot_files_sync(
+        directory: Path,
+        *,
+        wall_now: float,
+        retention_seconds: int,
+        max_total_bytes: int,
+    ) -> tuple[int, int]:
+        if not directory.exists():
+            return 0, 0
+        files: list[tuple[Path, float, int]] = []
+        for path in directory.iterdir():
+            try:
+                if not path.is_file():
+                    continue
+                stat = path.stat()
+            except OSError:
+                continue
+            files.append((path, stat.st_mtime, stat.st_size))
+
+        deleted_count = 0
+        deleted_bytes = 0
+        retained: list[tuple[Path, float, int]] = []
+        cutoff = wall_now - retention_seconds
+        for path, modified_at, size in files:
+            if modified_at >= cutoff:
+                retained.append((path, modified_at, size))
+                continue
+            try:
+                path.unlink()
+            except OSError:
+                retained.append((path, modified_at, size))
+            else:
+                deleted_count += 1
+                deleted_bytes += size
+
+        total_bytes = sum(size for _, _, size in retained)
+        for path, _, size in sorted(
+            retained, key=lambda item: (item[1], item[0].name)
+        ):
+            if total_bytes <= max_total_bytes:
+                break
+            try:
+                path.unlink()
+            except OSError:
+                continue
+            deleted_count += 1
+            deleted_bytes += size
+            total_bytes -= size
+        return deleted_count, deleted_bytes
+
+    async def _run_cache_cleanup(self) -> dict[str, int]:
+        if not self._cfg_bool("cache_cleanup_enabled"):
+            return {}
+        try:
+            stats = self._prune_memory_caches()
+            retention_hours = self._bounded_cfg_int(
+                "screenshot_retention_hours", 1, 24 * 365
+            )
+            max_total_mib = self._bounded_cfg_int(
+                "screenshot_cache_max_mib", 16, 10240
+            )
+            deleted_files, deleted_bytes = await asyncio.to_thread(
+                self._cleanup_screenshot_files_sync,
+                SCREENSHOT_DIR,
+                wall_now=time.time(),
+                retention_seconds=retention_hours * 3600,
+                max_total_bytes=max_total_mib * 1024 * 1024,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - cleanup must not block startup
+            logger.warning("MineAstr 清理缓存失败：%s", exc)
+            return {}
+        stats["screenshot_files"] = deleted_files
+        stats["screenshot_bytes"] = deleted_bytes
+        if any(stats.values()):
+            logger.info(
+                "MineAstr 缓存清理完成：翻译=%d，图片翻译=%d，上下文=%d，"
+                "转发记录=%d，截图=%d（%d 字节）。",
+                stats["game_translations"],
+                stats["image_translations"],
+                stats["translation_contexts"],
+                stats["relay_records"],
+                stats["screenshot_files"],
+                stats["screenshot_bytes"],
+            )
+        return stats
 
     def _refresh_relay_sessions(self) -> None:
         _ACTIVE_RELAY_SESSIONS.difference_update(self._relay_sessions)
@@ -817,31 +1093,56 @@ class MineAstrPlugin(Star):
         self,
         event: AstrMessageEvent,
         *,
-        content: str,
         sender_name: str,
         origin: str,
-        media: list[dict[str, str]] | None = None,
     ) -> str:
         message_id = self._relay_source_message_id(event)
         if not message_id:
             return ""
         key = f"{event.get_platform_id()}:{message_id}"
-        self._relay_message_records[key] = {
-            "platform_id": str(event.get_platform_id() or ""),
+        self._store_relay_message_record(
+            key,
+            platform_id=str(event.get_platform_id() or ""),
+            message_id=message_id,
+            origin=origin,
+            sender_name=sender_name,
+        )
+        return key
+
+    def _store_relay_message_record(
+        self,
+        key: str,
+        *,
+        platform_id: str,
+        message_id: str,
+        origin: str,
+        sender_name: str,
+    ) -> None:
+        records = getattr(self, "_relay_message_records", None)
+        if not isinstance(records, dict):
+            records = {}
+            self._relay_message_records = records
+        now = time.time()
+        records[key] = {
+            "platform_id": platform_id,
             "message_id": message_id,
             "origin": origin,
             "sender_name": sender_name,
-            "content": trim_message(content, self._cfg_int("max_relay_length")),
-            "media": list(media or ()),
-            "created_at": time.time(),
+            "created_at": now,
         }
-        while len(self._relay_message_records) > 2048:
+        cutoff = now - self._bounded_cfg_int(
+            "relay_record_retention_seconds", 300, 30 * 86400
+        )
+        for record_key, record in list(records.items()):
+            created_at = self._relay_record_created_at(record, 0.0)
+            if created_at < cutoff:
+                records.pop(record_key, None)
+        while len(records) > RELAY_MESSAGE_RECORD_LIMIT:
             oldest = min(
-                self._relay_message_records.items(),
-                key=lambda item: float(item[1].get("created_at", 0)),
+                records.items(),
+                key=lambda item: self._relay_record_created_at(item[1], 0.0),
             )[0]
-            self._relay_message_records.pop(oldest, None)
-        return key
+            records.pop(oldest, None)
 
     async def _relay_recalled_message(
         self,
@@ -852,10 +1153,43 @@ class MineAstrPlugin(Star):
         origin: str = "",
     ) -> None:
         key = f"{platform_id}:{message_id}"
-        record = self._relay_message_records.pop(key, None)
-        if isinstance(record, dict):
-            sender_name = str(record.get("sender_name") or sender_name).strip()
-            origin = str(record.get("origin") or origin).strip()
+        record = self._relay_message_records.get(key)
+        if not isinstance(record, dict):
+            # A platform-wide delete/recall listener also receives events from
+            # channels that MineAstr does not bridge. Only a message recorded
+            # after an actual relay is eligible for recall synchronization.
+            logger.debug(
+                "MineAstr ignored untracked recall/delete event: platform=%s message=%s",
+                platform_id,
+                message_id,
+            )
+            return
+        sender_name = str(record.get("sender_name") or sender_name).strip()
+        event_origin = str(origin or "").strip()
+        record_origin = str(record.get("origin") or "").strip()
+        if event_origin and record_origin and event_origin != record_origin:
+            logger.debug(
+                "MineAstr ignored recall/delete with mismatched origin: "
+                "platform=%s message=%s event_origin=%s record_origin=%s",
+                platform_id,
+                message_id,
+                event_origin,
+                record_origin,
+            )
+            return
+        origin = record_origin or event_origin
+        if not origin or origin not in self._relay_sessions:
+            logger.debug(
+                "MineAstr ignored recall/delete outside configured relay sessions: "
+                "platform=%s message=%s origin=%s",
+                platform_id,
+                message_id,
+                origin,
+            )
+            return
+        # Consume the record before the first await so duplicate callbacks are
+        # naturally idempotent.
+        self._relay_message_records.pop(key, None)
         if not sender_name:
             sender_name = platform_id or "用户"
         notice = f"[{sender_name}] 消息已撤回"
@@ -881,6 +1215,8 @@ class MineAstrPlugin(Star):
             return
         group_id = str(get_value("group_id") or "").strip()
         user_id = str(get_value("user_id") or "").strip()
+        if group_id and not self._qq_group_allowed(group_id):
+            return
         origin = (
             f"{platform_id}:GroupMessage:{group_id}"
             if group_id
@@ -1448,15 +1784,13 @@ class MineAstrPlugin(Star):
         media = self._discord_message_media(after)
         message_id = str(getattr(after, "id", "") or "").strip()
         if message_id:
-            self._relay_message_records[f"{platform_id}:{message_id}"] = {
-                "platform_id": platform_id,
-                "message_id": message_id,
-                "origin": origin,
-                "sender_name": sender_name,
-                "content": filtered,
-                "media": media,
-                "created_at": time.time(),
-            }
+            self._store_relay_message_record(
+                f"{platform_id}:{message_id}",
+                platform_id=platform_id,
+                message_id=message_id,
+                origin=origin,
+                sender_name=sender_name,
+            )
         target_sessions = self._relay_target_sessions(origin)
         adapter = self._minecraft_adapter()
         has_game_target = adapter is not None and hasattr(adapter, "relay_chat")
@@ -1727,6 +2061,11 @@ class MineAstrPlugin(Star):
         history = contexts.get(key) if isinstance(contexts, dict) else None
         if not history:
             return ()
+        accessed_at = getattr(self, "_translation_context_accessed_at", None)
+        if not isinstance(accessed_at, dict):
+            accessed_at = {}
+            self._translation_context_accessed_at = accessed_at
+        accessed_at[key] = time.monotonic()
         return tuple(
             (str(item.get("speaker") or ""), str(item.get("text") or ""))
             for item in list(history)[-limit:]
@@ -1747,6 +2086,9 @@ class MineAstrPlugin(Star):
             contexts = getattr(self, "_translation_contexts", None)
             if isinstance(contexts, dict):
                 contexts.pop(key, None)
+            accessed_at = getattr(self, "_translation_context_accessed_at", None)
+            if isinstance(accessed_at, dict):
+                accessed_at.pop(key, None)
             return
         source = trim_message(text, self._cfg_int("max_relay_length"))
         if not source:
@@ -1767,6 +2109,11 @@ class MineAstrPlugin(Star):
         )
         while len(history) > limit:
             history.popleft()
+        accessed_at = getattr(self, "_translation_context_accessed_at", None)
+        if not isinstance(accessed_at, dict):
+            accessed_at = {}
+            self._translation_context_accessed_at = accessed_at
+        accessed_at[key] = time.monotonic()
 
     @staticmethod
     def _event_chain(event: AstrMessageEvent) -> list[Any]:
@@ -1863,7 +2210,13 @@ class MineAstrPlugin(Star):
         if not isinstance(cache, dict):
             cache = {}
             self._game_translation_cache = cache
+        accessed_at = getattr(self, "_game_translation_cache_accessed_at", None)
+        if not isinstance(accessed_at, dict):
+            accessed_at = {}
+            self._game_translation_cache_accessed_at = accessed_at
         translations = cache.get(cache_key)
+        if translations is not None:
+            accessed_at[cache_key] = time.monotonic()
         if translations is None:
             try:
                 provider_id = str(self._cfg("game_translation_provider_id")).strip()
@@ -1942,8 +2295,11 @@ class MineAstrPlugin(Star):
                 if not translations or (bilingual_review and not usable_bilingual_result):
                     raise RuntimeError("翻译模型没有返回有效的语言检测/翻译 JSON")
                 cache[cache_key] = copy.deepcopy(translations)
-                while len(cache) > 256:
-                    cache.pop(next(iter(cache)))
+                accessed_at[cache_key] = time.monotonic()
+                while len(cache) > GAME_TRANSLATION_CACHE_LIMIT:
+                    oldest = next(iter(cache))
+                    cache.pop(oldest, None)
+                    accessed_at.pop(oldest, None)
             except Exception as exc:
                 logger.warning("MineAstr 自动翻译失败，已发送原文：%s", exc)
                 return {}
@@ -2105,8 +2461,13 @@ class MineAstrPlugin(Star):
             prompt_instructions,
             context,
         )
+        accessed_at = getattr(self, "_image_translation_cache_accessed_at", None)
+        if not isinstance(accessed_at, dict):
+            accessed_at = {}
+            self._image_translation_cache_accessed_at = accessed_at
         cached = self._image_translation_cache.get(cache_key)
         if cached is not None:
+            accessed_at[cache_key] = time.monotonic()
             return copy.deepcopy(cached)
 
         try:
@@ -2180,10 +2541,11 @@ class MineAstrPlugin(Star):
                 "game_translation_show_original"
             )
             self._image_translation_cache[cache_key] = copy.deepcopy(result)
-            while len(self._image_translation_cache) > 128:
-                self._image_translation_cache.pop(
-                    next(iter(self._image_translation_cache))
-                )
+            accessed_at[cache_key] = time.monotonic()
+            while len(self._image_translation_cache) > IMAGE_TRANSLATION_CACHE_LIMIT:
+                oldest = next(iter(self._image_translation_cache))
+                self._image_translation_cache.pop(oldest, None)
+                accessed_at.pop(oldest, None)
             return result
         except Exception as exc:
             logger.warning("MineAstr 图片多模态翻译失败：%s", exc)
@@ -3202,10 +3564,8 @@ class MineAstrPlugin(Star):
         reply_context = self._event_reply_context(event)
         self._remember_relay_message(
             event,
-            content=filtered,
             sender_name=identity["owner_display"],
             origin=event.unified_msg_origin,
-            media=media,
         )
         game_template = str(self._cfg("chat_to_game_template"))
         game_values = {

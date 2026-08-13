@@ -22,6 +22,7 @@ class ConfigSchemaTests(unittest.TestCase):
         "discord_settings",
         "admin_command_settings",
         "notification_settings",
+        "maintenance_settings",
     )
 
     @classmethod
@@ -44,13 +45,13 @@ class ConfigSchemaTests(unittest.TestCase):
         metadata_path = Path(__file__).resolve().parents[1] / "metadata.yaml"
         metadata = metadata_path.read_text(encoding="utf-8")
         self.assertIn("author: YU322142", metadata)
-        self.assertIn("version: v0.6.25", metadata)
+        self.assertIn("version: v0.6.26", metadata)
         self.assertIn(
             'repo: "https://github.com/YU322142/MineAstr/tree/astrbot-plugin"',
             metadata,
         )
         main = (metadata_path.parent / "main.py").read_text(encoding="utf-8")
-        self.assertIn('    "0.6.25",\n)', main)
+        self.assertIn('    "0.6.26",\n)', main)
 
     def test_newline_delimited_fields_use_astrbot_textarea_type(self):
         schema = self._schema()
@@ -226,6 +227,23 @@ class ConfigSchemaTests(unittest.TestCase):
         field = self._visible_field(schema, "sync_command_admins_to_server")
         self.assertEqual(field["type"], "bool")
         self.assertTrue(field["default"])
+
+    def test_cache_cleanup_settings_are_visible_and_enabled_by_default(self):
+        enabled = self._visible_field(self._schema(), "cache_cleanup_enabled")
+        self.assertEqual(enabled["type"], "bool")
+        self.assertTrue(enabled["default"])
+        expected_defaults = {
+            "cache_cleanup_interval_seconds": 300,
+            "memory_cache_retention_seconds": 86400,
+            "relay_record_retention_seconds": 86400,
+            "screenshot_retention_hours": 168,
+            "screenshot_cache_max_mib": 256,
+        }
+        for key, expected in expected_defaults.items():
+            with self.subTest(key=key):
+                field = self._visible_field(self._schema(), key)
+                self.assertEqual(field["type"], "int")
+                self.assertEqual(field["default"], expected)
 
     def test_discord_channel_profiles_are_an_unbounded_template_list(self):
         schema = self._schema()
