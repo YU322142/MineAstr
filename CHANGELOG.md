@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.26
+
+- Synchronize the Fabric build with the AstrBot plugin v0.6.26 release.
+- No Minecraft protocol or client behavior changes from 0.6.25.
+
 ## 0.6.25
 
 - Render targeted sign and immersive-frame translations through a renderer-independent HUD path compatible with Better Block Entities, with a complete outlined panel.
