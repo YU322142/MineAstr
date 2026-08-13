@@ -7,7 +7,7 @@
 
 ![MineAstr 封面](cover.png)
 
-MineAstr `0.6.25` 是一个 Minecraft 1.21.1 / NeoForge 21.1.219 双端 Mod，用于把 Minecraft 聊天与事件桥接到 AstrBot，并按每位玩家的客户端语言显示 AI 译文。
+MineAstr `0.6.26` 是一个 Minecraft 1.21.1 / NeoForge 21.1.219 双端 Mod，用于把 Minecraft 聊天与事件桥接到 AstrBot，并按每位玩家的客户端语言显示 AI 译文。
 
 从 AstrBot 侧启用 MineAstr LLM 工具后，机器人还可以主动查询服务器状态、玩家状态、背包、附近实体和区域建筑特征，在严格鉴权后执行受控服务器命令，并在玩家客户端允许时请求低清晰度截图。
 

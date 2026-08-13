@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.26 - NeoForge 1.21.1
+
+- Synchronize the NeoForge build with the AstrBot plugin v0.6.26 release.
+- No Minecraft protocol or client behavior changes from 0.6.25.
+
 ## 0.6.25 - NeoForge 1.21.1
 
 - 基于上游 MineAstr Minecraft 1.21.1 / NeoForge 21.1.219 基线完整迁移 Fabric 0.6.25 的 20 个功能提交。
