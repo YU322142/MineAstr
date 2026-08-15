@@ -9,6 +9,7 @@ import net.minecraft.world.level.block.SignBlock;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -28,7 +29,7 @@ import org.slf4j.Logger;
 @Mod(MineAstr.MODID)
 public final class MineAstr {
     public static final String MODID = "mineastr";
-    public static final String MOD_VERSION = "0.6.26";
+    public static final String MOD_VERSION = "0.6.27";
     public static final Logger LOGGER = LogUtils.getLogger();
 
     private static final MineAstrBridge BRIDGE = new MineAstrBridge();
@@ -73,9 +74,16 @@ public final class MineAstr {
         BRIDGE.stop();
     }
 
-    @SubscribeEvent
+    @SubscribeEvent(priority = EventPriority.LOWEST)
     public void onServerChat(ServerChatEvent event) {
-        BRIDGE.forwardChat(event.getPlayer(), event.getRawText());
+        if (event.isCanceled()) {
+            return;
+        }
+        if (BRIDGE.queueNativeChatTranslation(event.getPlayer(), event.getMessage())) {
+            event.setCanceled(true);
+            return;
+        }
+        BRIDGE.forwardChat(event.getPlayer(), event.getMessage().getString());
     }
 
     @SubscribeEvent

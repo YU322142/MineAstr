@@ -7,13 +7,15 @@
 
 ![MineAstr 封面](cover.png)
 
-MineAstr `0.6.26` 是一个 Minecraft 1.21.1 / NeoForge 21.1.219 双端 Mod，用于把 Minecraft 聊天与事件桥接到 AstrBot，并按每位玩家的客户端语言显示 AI 译文。
+MineAstr `0.6.27` 是一个 Minecraft 1.21.1 / NeoForge 21.1.219 双端 Mod，用于把 Minecraft 聊天与事件桥接到 AstrBot，并按每位玩家的客户端语言显示 AI 译文。启用原生聊天翻译时会使用未签名消息重发，若需要完整 Secure Chat/原版反刷屏语义，请关闭该选项。
 
 从 AstrBot 侧启用 MineAstr LLM 工具后，机器人还可以主动查询服务器状态、玩家状态、背包、附近实体和区域建筑特征，在严格鉴权后执行受控服务器命令，并在玩家客户端允许时请求低清晰度截图。
 
 ## 功能简介
 
 - 把 Minecraft 里的普通聊天识别为 AstrBot 的同一个群聊。
+- 可选拦截 Minecraft 玩家原生聊天，由 AstrBot 一次翻译后按每位在线玩家的客户端 locale 分别显示；超时、断线或无匹配译文时按原顺序回退原文。
+- 原生聊天翻译会改用未签名消息重发，不保留 Secure Chat 举报关联，也不经过原版服务器文本过滤和完整反刷屏链路；需要这些语义时关闭 AstrBot 的 `game_translation_enabled`。
 - AstrBot 触发回复后按玩家 locale 广播译文；译文与原文相同时只显示原文。
 - 转发玩家加入、离开和结构化死亡事件，并接收聊天图片链接和定向玩家提醒。
 - AstrBot 可以通过工具主动查询服务器状态、在线玩家、生命/位置、背包、附近实体和区域建筑特征。
