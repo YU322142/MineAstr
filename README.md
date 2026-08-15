@@ -11,30 +11,30 @@ MineAstr 将 Minecraft Fabric 1.21.11 与 NeoForge 1.21.1 服务器接入 AstrBo
 
 - [`astrbot-plugin`](https://github.com/YU322142/MineAstr/tree/astrbot-plugin)：AstrBot 插件端；分支根目录可直接作为插件项目。
 - [`minecraft-mod`](https://github.com/YU322142/MineAstr/tree/minecraft-mod)：Minecraft Fabric Mod；目标为 Minecraft `1.21.11`、Fabric API `0.141.4+1.21.11`、Java `21`。
-- [`minecraft-neoforge-1.21.1`](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)：Minecraft NeoForge Mod；目标为 Minecraft `1.21.1`、NeoForge `21.1.219`、Java `21`，包含与 Fabric 0.6.26 对齐的完整源码、文档和测试。
+- [`minecraft-neoforge-1.21.1`](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)：Minecraft NeoForge Mod；目标为 Minecraft `1.21.1`、NeoForge `21.1.219`、Java `21`，包含与 Fabric 0.6.27 对齐的完整源码、文档和测试。
 
 `main` 是项目索引；三个可构建工程分别保留在以上分支，以兼容 AstrBot 从仓库分支安装插件的目录要求。
 
 ## 当前版本
 
-- AstrBot 插件：`0.6.26`
-- MineAstr Fabric Mod：`0.6.26`
-- MineAstr NeoForge Mod：`0.6.26`（Minecraft `1.21.1`）
+- AstrBot 插件：`0.6.27`
+- MineAstr Fabric Mod：`0.6.27`
+- MineAstr NeoForge Mod：`0.6.27`（Minecraft `1.21.1`）
 - Minecraft：`1.21.11`
 - Fabric API：`0.141.4+1.21.11`
 - NeoForge：`21.1.219`（Minecraft `1.21.1`）
 
 成品请从 [GitHub Releases](https://github.com/YU322142/MineAstr/releases) 下载：
 
-- `astrbot_plugin_mineastr-v0.6.26.zip`
-- `mineastr-fabric-0.6.26.jar`
-- `mineastr-neoforge-1.21.1-0.6.26.jar`
-- `mineastr-neoforge-1.21.1-0.6.26-sources.jar`
+- `astrbot_plugin_mineastr-v0.6.27.zip`
+- `mineastr-fabric-0.6.27.jar`
+- `mineastr-neoforge-1.21.1-0.6.27.jar`
+- `mineastr-neoforge-1.21.1-0.6.27-sources.jar`
 
 NeoForge 1.21.1 的完整源码、测试和构建说明已公开在
 [`minecraft-neoforge-1.21.1`](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)；该分支可直接使用 `./gradlew build`（Windows 使用 `gradlew.bat build`）生成 Mod 和源码 JAR。
 
-v0.6.26 修复了 OneBot/Discord 全局撤回或删除事件造成的跨群误提示：只有原消息确实经过 MineAstr 转发、来源仍属于桥接会话且撤回来源一致时才同步，并对重复回调去重。AstrBot 插件同时增加可配置的文本/图片翻译缓存、翻译上下文、撤回记录和 Minecraft 截图定时清理；默认截图保留 7 天且目录上限为 256 MiB。两个 Mod 本次仅同步版本号，协议和客户端行为与 v0.6.25 兼容。
+v0.6.27 新增可选的 Minecraft 原生玩家聊天翻译：服务端 Mod 只提交一次原生消息，AstrBot 按在线玩家的客户端语言返回结果，Mod 按接收者快照有序广播，并在超时、断线、重复响应或无匹配译文时回退原文。此模式会重写为无签名聊天消息，因此不保留 Secure Chat 签名/举报能力，也不替代原版服务器文本过滤、最终广播阶段的过滤与反刷屏语义；需要完整原版审核链路时关闭 `game_translation_enabled`。未启用策略或未安装新 Mod 的连接继续使用原版聊天路径。AstrBot 仍保留 v0.6.26 的 OneBot/Discord 撤回隔离、文本/图片翻译缓存、翻译上下文和 Minecraft 截图定时清理。
 
 服主可将准星对准告示牌后使用 `/mineastr sign-translation status` 查看缓存，使用 `set <locale> <translation>` 保存不会被自动翻译覆盖的人工译文，使用 `clear [locale]` 清理当前牌面，并以管理员权限使用 `clear-all` 清理当前世界。管理操作会同步重置在线客户端缓存，并使已经在途的旧 AI 响应失效。
 
@@ -77,9 +77,9 @@ AstrBot 插件元数据的安装/更新源为本 Fork 的 [`astrbot-plugin`](htt
 
 ## 构建验证
 
-- AstrBot 插件：102 个自动化测试通过，覆盖 fail-closed/常数时间鉴权、配置迁移、AstrBot Schema 类型兼容、QQ/Discord 自动化、消息编辑与撤回去重、跨群来源隔离、缓存/截图清理、游戏与平台共用单次翻译后分发、源语言去重、中英同义告示牌缓存、40000 字提示词上限、自定义术语表、命令审批列表与函数工具、管理员身份过滤及实时同步、并发冷却和游戏内翻译协议。
-- Fabric Mod：11 个 JUnit 测试及 Gradle `clean build` 通过，覆盖缓存持久化、策略迁移、人工译文优先级、管理清理和过期异步响应失效。
-- NeoForge Mod：11 个 JUnit 测试及 Gradle `clean test build` 通过，覆盖缓存持久化、策略迁移、人工译文优先级、管理清理和过期异步响应失效。
+- AstrBot 插件：111 个自动化测试通过，覆盖 fail-closed/常数时间鉴权、配置迁移、AstrBot Schema 类型兼容、QQ/Discord 自动化、消息编辑与撤回去重、跨群来源隔离、缓存/截图清理、游戏与平台共用单次翻译后分发、原生聊天精确连接路由、旧 Mod 能力协商、周期与热更新策略同步、提及消息原文保留、源语言去重、中英同义文本缓存、40000 字提示词上限、自定义术语表、命令审批列表与函数工具、管理员身份过滤及实时同步、并发冷却和游戏内翻译协议。
+- Fabric Mod：15 个 JUnit 测试及 Gradle `clean build` 通过，覆盖缓存持久化、策略迁移、人工译文优先级、管理清理、过期异步响应失效、原生聊天 locale/同文选择及 256 字符包边界。
+- NeoForge Mod：15 个 JUnit 测试及 Gradle `clean test build` 通过，覆盖缓存持久化、策略迁移、人工译文优先级、管理清理、过期异步响应失效、原生聊天 locale/同文选择及 256 字符包边界。
 - 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证 Mixin 加载、离线后端收到正版客户端 UUID 时改用服务端真实离线 UUID、`whitelist_verified=true`，并实际通过原版白名单登录校验；既有解绑、管理员同步、可信命令和正常关服流程保持有效。
 
 ## 许可与来源
