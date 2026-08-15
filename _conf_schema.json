@@ -80,9 +80,9 @@
         "default": 500
       },
       "game_translation_enabled": {
-        "description": "启用游戏内消息自动翻译",
+        "description": "启用游戏内消息与 Minecraft 原生聊天自动翻译",
         "type": "bool",
-        "hint": "使用 AstrBot 文本模型把 QQ/Discord 消息和 AstrBot 回复翻译为各玩家客户端语言。会产生模型调用、延迟和费用，默认关闭。翻译失败时自动发送原文。",
+        "hint": "使用 AstrBot 文本模型把 QQ/Discord 消息、AstrBot 回复和 Minecraft 玩家原生聊天按每位接收者客户端语言翻译。会产生模型调用、延迟和费用，默认关闭；原生聊天翻译失败时按原版顺序回退原文。",
         "obvious_hint": true,
         "default": false
       },
@@ -95,7 +95,7 @@
       "game_translation_languages": {
         "description": "游戏内翻译目标语言（每行一个）",
         "type": "text",
-        "hint": "使用 Minecraft locale，例如 zh_cn、en_us、ja_jp。服务端会按每位玩家客户端上报的语言选择最接近的译文；最多 8 种。",
+        "hint": "使用 Minecraft locale，例如 zh_cn、en_us、ja_jp。服务端会按每位玩家客户端上报的语言选择译文；原生聊天只为在线且启用翻译的玩家请求这些语言，最多 8 种。",
         "default": "zh_cn\nen_us"
       },
       "game_translation_show_original": {

@@ -1,8 +1,8 @@
 # MineAstr WebSocket 协议
 
-v0.6.20 延续可选的聊天媒体字段：`chat` 消息可带 `media` 数组，每项包含 `type=image`、`url` 和可选 `name`。旧版 Mod 会忽略该字段；新版 Mod 会在游戏聊天中以 `[图片] URL` 形式保留可访问入口，QQ/Discord 侧则发送原生图片消息。
+v0.6.27 延续可选的聊天媒体字段：`chat` 消息可带 `media` 数组，每项包含 `type=image`、`url` 和可选 `name`。旧版 Mod 会忽略该字段；新版 Mod 会在游戏聊天中以 `[图片] URL` 形式保留可访问入口，QQ/Discord 侧则发送原生图片消息。
 
-本文描述 AstrBot 插件 `v0.6.20` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
+本文描述 AstrBot 插件 `v0.6.27` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。
 
 ## 连接与认证
 
@@ -21,13 +21,14 @@ Authorization: Bearer <token>
   "protocol": 1,
   "server_id": "survival",
   "server_name": "Survival Server",
-  "mod_version": "0.6.20"
+  "mod_version": "0.6.27",
+  "chat_capabilities": ["native_chat_translation"]
 }
 ```
 
 服务端只信任该连接在 `hello` 中登记的 `server_id` / `server_name`。后续 `chat` 或 `event` 中伪造的同名字段会被覆盖。未发送 `hello` 就提交聊天、事件或查询结果会被拒绝。
 
-`server_id` 在同一个 AstrBot 实例中应保持唯一、稳定，长度不要超过 64 字符。
+`server_id` 在同一个 AstrBot 实例中应保持唯一、稳定，长度不要超过 64 字符。插件会为每条连接分配内部 `connection_id`，原生聊天翻译回包按连接路由，即使错误地配置了重复 `server_id` 也不会把译文发到另一台服务器。
 
 所有 `player_name` 字段必须只包含 Minecraft/Floodgate 认证得到的原始玩家名，不得附加远端 IP、端口或其他日志上下文。旧 Mod 曾发送形如 `玩家名 (/地址:端口)` 的显示值；插件 0.6.6 会仅为兼容迁移而清理这种旧值。
 
@@ -44,6 +45,46 @@ Authorization: Bearer <token>
   "content": "@AstrBot 现在有几个人？"
 }
 ```
+
+### Minecraft 原生聊天 → 按玩家语言翻译回同一服务器
+
+当 `hello.chat_capabilities` 含 `native_chat_translation` 且插件同时开启
+`bridge_enabled`、`game_translation_enabled` 时，AstrBot 会发送：
+
+```json
+{
+  "type": "native_chat_policy",
+  "enabled": true,
+  "timeout_ms": 25000
+}
+```
+
+新 Mod 只有收到 `enabled=true` 后才会在原版聊天广播前排队；旧 Mod 会忽略这个可选消息并继续原版聊天。被接管的消息仍使用 `type=chat`，并增加：
+
+```json
+{
+  "native_chat": true,
+  "native_chat_id": "uuid",
+  "target_languages": ["zh_cn", "en_us"],
+  "native_original_content": "完整的已装饰正文"
+}
+```
+
+插件只对 `target_languages` 与 `game_translation_languages` 的交集调用 AstrBot 文本模型，
+并将结果定向回发到产生请求的连接：
+
+```json
+{
+  "type": "native_chat_translate_result",
+  "message_id": "uuid",
+  "translations": {"zh_cn": "大家好", "en_us": "Hello"},
+  "show_original": true
+}
+```
+
+译文与原文规范化后相同时不发送重复译文。翻译失败、策略关闭、连接断开或超时都会按发送顺序只显示一次原文；结果按发送序号释放，避免 AI 回包乱序。Mod 在提交时快照接收者，晚加入的玩家不会看到旧消息；F8 关闭翻译的玩家仍可看到原文，但不会贡献目标语言。
+
+为实现逐玩家不同正文，Mod 使用未签名的聊天消息重新发送，并尽量保留 ChatType、发送者 UUID、聊天可见性和提交时的接收者快照；这条路径不保留 Mojang Secure Chat 的签名/举报关联，也不能替代原版服务器文本过滤、反刷屏计数和其他在最终广播阶段运行的聊天 Mod。Mod 自带有界的原生聊天速率与排队保护；需要严格审核/举报语义时应关闭 `game_translation_enabled`，让消息完全走原版流程。
 
 ### AstrBot → Mod 聊天
 
@@ -97,7 +138,7 @@ AstrBot 返回按 locale 聚合的纯文本译文；`show_original`、目标语�
 ```
 
 Mod 必须把 `source_fingerprint` 与译文一起持久化到 Minecraft 世界存档。告示牌原文改变后，旧缓存不得复用；翻译失败或翻译前后规范化文本一致时显示原文。
-如果告示牌同时包含中文和英文，AstrBot 会让模型判断两部分是否表达相近含义。命中时不再生成普通译文；插件缓存该判断，并显式返回 `"already_bilingual": true` 和空的 `"translations": {}`。Mod 应把它持久化为 `skipTranslation`，准星再次指向时不请求模型，也不显示翻译浮层。该判断仅用于告示牌，不影响聊天或图片翻译。
+如果告示牌同时包含中文和英文，AstrBot 会让模型判断两部分是否表达相近含义。命中时不再生成普通译文；插件缓存该判断，并显式返回 `"already_bilingual": true` 和空的 `"translations": {}`。Mod 应把它持久化为 `skipTranslation`，准星再次指向时不请求模型，也不显示翻译浮层。原生 Minecraft 玩家聊天也复用同一判断与文本级缓存，命中时只广播原文；图片翻译不受此规则影响。
 
 ```json
 {

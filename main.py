@@ -428,7 +428,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.6.26",
+    "0.6.27",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -470,17 +470,7 @@ class MineAstrPlugin(Star):
         self._command_admin_revision = 0
         self._reported_invalid_command_admin_count = 0
         self._pending_command_approvals: dict[str, str] = {}
-        self._game_translation_cache: dict[
-            tuple[
-                str,
-                str,
-                tuple[str, ...],
-                str,
-                tuple[tuple[str, str], ...],
-                bool,
-            ],
-            dict[str, Any],
-        ] = {}
+        self._game_translation_cache: dict[tuple[Any, ...], dict[str, Any]] = {}
         self._game_translation_cache_accessed_at: dict[tuple[Any, ...], float] = {}
         self._image_translation_cache: dict[tuple[Any, ...], dict[str, Any]] = {}
         self._image_translation_cache_accessed_at: dict[tuple[Any, ...], float] = {}
@@ -560,6 +550,10 @@ class MineAstrPlugin(Star):
             self._listener_adapter, "set_image_translation_handler"
         ):
             self._listener_adapter.set_image_translation_handler(None)
+        if self._listener_adapter is not None and hasattr(
+            self._listener_adapter, "set_native_chat_policy_handler"
+        ):
+            self._listener_adapter.set_native_chat_policy_handler(None)
         self._listener_adapter = None
         _ACTIVE_RELAY_SESSIONS.difference_update(self._relay_sessions)
         logger.info("MineAstr 插件已终止。")
@@ -939,6 +933,10 @@ class MineAstrPlugin(Star):
             self._listener_adapter, "set_chat_translation_handler"
         ):
             self._listener_adapter.set_chat_translation_handler(None)
+        if self._listener_adapter is not None and hasattr(
+            self._listener_adapter, "set_native_chat_policy_handler"
+        ):
+            self._listener_adapter.set_native_chat_policy_handler(None)
         self._listener_adapter = None
         if adapter is not None and hasattr(adapter, "add_bridge_event_listener"):
             adapter.add_bridge_event_listener(self._on_minecraft_bridge_event)
@@ -953,6 +951,10 @@ class MineAstrPlugin(Star):
             if hasattr(adapter, "set_image_translation_handler"):
                 adapter.set_image_translation_handler(
                     self._translate_image_request
+                )
+            if hasattr(adapter, "set_native_chat_policy_handler"):
+                adapter.set_native_chat_policy_handler(
+                    self._native_chat_policy
                 )
             self._listener_adapter = adapter
 
@@ -1940,15 +1942,18 @@ class MineAstrPlugin(Star):
         )
 
     @staticmethod
-    def _same_translation_text(source: Any, translated: Any) -> bool:
-        def normalize(value: Any) -> str:
-            text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
-            lines = text.split("\n")
-            while lines and not lines[-1].strip():
-                lines.pop()
-            return "\n".join(line.strip() for line in lines)
+    def _normalize_translation_text(value: Any) -> str:
+        text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+        lines = text.split("\n")
+        while lines and not lines[-1].strip():
+            lines.pop()
+        return "\n".join(line.strip() for line in lines)
 
-        return normalize(source) == normalize(translated)
+    @staticmethod
+    def _same_translation_text(source: Any, translated: Any) -> bool:
+        return MineAstrPlugin._normalize_translation_text(
+            source
+        ) == MineAstrPlugin._normalize_translation_text(translated)
 
     @staticmethod
     def _contains_han_and_latin_candidate(value: Any) -> bool:
@@ -2214,9 +2219,21 @@ class MineAstrPlugin(Star):
         if not isinstance(accessed_at, dict):
             accessed_at = {}
             self._game_translation_cache_accessed_at = accessed_at
-        translations = cache.get(cache_key)
+        bilingual_cache_key = (
+            "bilingual-equivalence",
+            self._normalize_translation_text(source),
+        )
+        translations = cache.get(bilingual_cache_key) if bilingual_review else None
+        if not (
+            isinstance(translations, dict)
+            and translations.get("already_bilingual") is True
+        ):
+            translations = cache.get(cache_key)
+            active_cache_key = cache_key
+        else:
+            active_cache_key = bilingual_cache_key
         if translations is not None:
-            accessed_at[cache_key] = time.monotonic()
+            accessed_at[active_cache_key] = time.monotonic()
         if translations is None:
             try:
                 provider_id = str(self._cfg("game_translation_provider_id")).strip()
@@ -2259,7 +2276,7 @@ class MineAstrPlugin(Star):
                     )
                 if bilingual_review:
                     system_prompt += (
-                        "\nThis Minecraft sign is only a candidate because it contains both "
+                        "\nThis Minecraft text is only a candidate because it contains both "
                         "Han-script and Latin letters. First verify that it actually contains "
                         "a Chinese portion and an English portion; do not classify Japanese "
                         "or other Han-script text as Chinese. Then decide whether those Chinese "
@@ -2294,8 +2311,13 @@ class MineAstrPlugin(Star):
                 ) or translations.get("already_bilingual") is True
                 if not translations or (bilingual_review and not usable_bilingual_result):
                     raise RuntimeError("翻译模型没有返回有效的语言检测/翻译 JSON")
-                cache[cache_key] = copy.deepcopy(translations)
-                accessed_at[cache_key] = time.monotonic()
+                active_cache_key = (
+                    bilingual_cache_key
+                    if translations.get("already_bilingual") is True
+                    else cache_key
+                )
+                cache[active_cache_key] = copy.deepcopy(translations)
+                accessed_at[active_cache_key] = time.monotonic()
                 while len(cache) > GAME_TRANSLATION_CACHE_LIMIT:
                     oldest = next(iter(cache))
                     cache.pop(oldest, None)
@@ -2304,6 +2326,33 @@ class MineAstrPlugin(Star):
                 logger.warning("MineAstr 自动翻译失败，已发送原文：%s", exc)
                 return {}
         return copy.deepcopy(translations)
+
+    def _native_chat_policy(self) -> dict[str, Any]:
+        timeout_seconds = max(
+            1,
+            min(60, self._cfg_int("game_translation_timeout_seconds")),
+        )
+        return {
+            "enabled": self._cfg_bool("bridge_enabled")
+            and self._cfg_bool("game_translation_enabled"),
+            # Leave a grace period for provider completion and event-loop
+            # serialization before the Mod falls back to the original.
+            "timeout_ms": min(65_000, (timeout_seconds + 5) * 1_000),
+        }
+
+    def _native_chat_translation_languages(
+        self, payload: dict[str, Any]
+    ) -> tuple[str, ...]:
+        if not self._cfg_bool("game_translation_enabled"):
+            return ()
+        configured = self._game_translation_languages()
+        if "target_languages" not in payload:
+            return configured
+        requested = self._translation_languages(payload.get("target_languages"))
+        if not requested:
+            return ()
+        allowed = set(configured)
+        return tuple(language for language in requested if language in allowed)
 
     async def _translate_game_message(
         self, content: str, origin: str = ""
@@ -2552,17 +2601,29 @@ class MineAstrPlugin(Star):
             return {}
 
     def _game_translation_options_from_result(
-        self, result: Any
+        self,
+        result: Any,
+        *,
+        allowed_languages: tuple[str, ...] | None = None,
+        source_text: str = "",
     ) -> dict[str, Any]:
         if not self._cfg_bool("game_translation_enabled"):
             return {}
         source_language, translations = self._translation_result_parts(result)
-        allowed_languages = set(self._game_translation_languages())
+        allowed = set(
+            allowed_languages
+            if allowed_languages is not None
+            else self._game_translation_languages()
+        )
         translations = {
             language: text
             for language, text in translations.items()
-            if language in allowed_languages
+            if language in allowed
             and not self._same_translation_language(source_language, language)
+            and (
+                not source_text
+                or not self._same_translation_text(source_text, text)
+            )
         }
         if not translations:
             return {}
@@ -2684,16 +2745,23 @@ class MineAstrPlugin(Star):
         origin: str,
         *,
         include_game: bool = False,
+        extra_languages: tuple[str, ...] = (),
+        cache_scope: str = "",
+        detect_bilingual_equivalence: bool = False,
     ) -> dict[str, Any]:
         languages = self._platform_translation_languages_for_sessions(sessions)
         if include_game and self._cfg_bool("game_translation_enabled"):
             for language in self._game_translation_languages():
                 if language not in languages:
                     languages.append(language)
+        for language in extra_languages:
+            normalized = self._normalize_translation_language(language)
+            if normalized and normalized not in languages:
+                languages.append(normalized)
         if not languages:
             return {}
-        cache_scope = f"relay-unified:{origin}"
-        context = self._translation_context_snapshot(origin, cache_scope)
+        resolved_scope = cache_scope or f"relay-unified:{origin}"
+        context = self._translation_context_snapshot(origin, resolved_scope)
         result = await self._translate_text(
             content,
             tuple(languages),
@@ -2701,10 +2769,11 @@ class MineAstrPlugin(Star):
             custom_instructions=str(
                 self._cfg("translation_custom_instructions") or ""
             ),
-            cache_scope=cache_scope,
+            cache_scope=resolved_scope,
             context=context,
+            detect_bilingual_equivalence=detect_bilingual_equivalence,
         )
-        self._remember_translation_context(origin, cache_scope, content)
+        self._remember_translation_context(origin, resolved_scope, content)
         return result
 
     async def _platform_chat_message(
@@ -3474,25 +3543,142 @@ class MineAstrPlugin(Star):
             except Exception as exc:
                 logger.debug("MineAstr 提醒玩家 %s 失败：%s", player, exc)
 
+    async def _complete_native_minecraft_chat(
+        self,
+        raw: dict[str, Any],
+        content: str,
+        translation_result: dict[str, Any],
+        target_languages: tuple[str, ...],
+    ) -> None:
+        if not bool(raw.get("native_chat")):
+            return
+        message_id = trim_message(raw.get("native_chat_id"), 64)
+        if not message_id:
+            return
+        adapter = self._minecraft_adapter()
+        if adapter is None or not hasattr(adapter, "complete_native_chat"):
+            logger.warning(
+                "MineAstr 无法回传原生聊天翻译：Minecraft 适配器不支持 complete_native_chat"
+            )
+            return
+        server_id = trim_message(raw.get("server_id"), 64) or "minecraft"
+        sender_name = trim_message(raw.get("player_name"), 64) or "Player"
+        options = self._game_translation_options_from_result(
+            translation_result,
+            allowed_languages=target_languages,
+            source_text=content,
+        )
+        try:
+            complete_kwargs: dict[str, Any] = {"translation_options": options}
+            connection_id = trim_message(raw.get("connection_id"), 64)
+            if connection_id:
+                complete_kwargs["connection_id"] = connection_id
+            await adapter.complete_native_chat(
+                server_id, message_id, content, sender_name, **complete_kwargs
+            )
+        except Exception as exc:
+            # The Mod owns the timeout fallback, so a lost response never eats
+            # the player's original message.
+            logger.warning("MineAstr 回传原生聊天翻译失败，等待 Mod 回退原文：%s", exc)
+
     @filter.custom_filter(MineAstrRelayFilter, priority=-100)
     async def mineastr_relay_message(self, event: AstrMessageEvent) -> None:
-        if not self._cfg_bool("bridge_enabled"):
-            return
         platform_id = str(event.get_platform_id() or "")
+        raw = self._event_raw_message(event) if platform_id == "minecraft" else {}
+        if not self._cfg_bool("bridge_enabled"):
+            if bool(raw.get("native_chat")):
+                fallback = strip_minecraft_colors(
+                    str(
+                        raw.get("native_original_content")
+                        or raw.get("content")
+                        or ""
+                    ).strip()
+                )
+                await self._complete_native_minecraft_chat(raw, fallback, {}, ())
+            return
         text = str(event.message_str or "").strip()
         event_media = self._event_media(event)
         if not text and not event_media:
+            if bool(raw.get("native_chat")):
+                fallback = strip_minecraft_colors(
+                    str(
+                        raw.get("native_original_content")
+                        or raw.get("content")
+                        or ""
+                    ).strip()
+                )
+                await self._complete_native_minecraft_chat(raw, fallback, {}, ())
             return
 
         if platform_id == "minecraft":
-            raw = self._event_raw_message(event)
             filtered = apply_aqqbot_filters(text, self._cfg("game_to_chat_filters"))
-            if filtered is not None:
-                filtered = strip_minecraft_colors(filtered)
-                target_sessions = self._relay_target_sessions(
-                    event.unified_msg_origin,
-                    source_platform="minecraft",
+            native_content = strip_minecraft_colors(
+                str(
+                    raw.get("native_original_content")
+                    or raw.get("content")
+                    or text
+                ).strip()
+            )
+            native_message_id = (
+                trim_message(raw.get("native_chat_id"), 64)
+                if bool(raw.get("native_chat"))
+                else ""
+            )
+            native_languages = self._native_chat_translation_languages(raw)
+            server_scope = trim_message(raw.get("server_id"), 64) or "minecraft"
+            shared_cache_scope = (
+                f"relay-unified:{event.unified_msg_origin}:{server_scope}"
+            )
+            native_cache_scope = (
+                f"native-chat:{event.unified_msg_origin}:{server_scope}"
+            )
+            target_sessions = self._relay_target_sessions(
+                event.unified_msg_origin,
+                source_platform="minecraft",
+            )
+            native_result: dict[str, Any] = {}
+            shared_result: dict[str, Any] | None = None
+            normalized_filtered = (
+                strip_minecraft_colors(filtered)
+                if filtered is not None
+                else None
+            )
+
+            if native_message_id:
+                try:
+                    if normalized_filtered == native_content:
+                        shared_result = await self._translate_relay_message(
+                            native_content,
+                            target_sessions,
+                            event.unified_msg_origin,
+                            extra_languages=native_languages,
+                            cache_scope=shared_cache_scope,
+                            detect_bilingual_equivalence=True,
+                        )
+                        native_result = shared_result
+                    else:
+                        native_result = await self._translate_relay_message(
+                            native_content,
+                            [],
+                            event.unified_msg_origin,
+                            extra_languages=native_languages,
+                            cache_scope=native_cache_scope,
+                            detect_bilingual_equivalence=True,
+                        )
+                except Exception as exc:
+                    logger.warning(
+                        "MineAstr 原生 Minecraft 聊天翻译失败，已回退原文：%s",
+                        exc,
+                    )
+                await self._complete_native_minecraft_chat(
+                    raw,
+                    native_content,
+                    native_result,
+                    native_languages,
                 )
+
+            if filtered is not None:
+                filtered = normalized_filtered or ""
                 values = {
                     "server": str(
                         raw.get("server_name") or raw.get("server_id") or "Minecraft"
@@ -3506,11 +3692,14 @@ class MineAstrPlugin(Star):
                 }
                 template = str(self._cfg("game_to_chat_template"))
                 content = format_template(template, values)
-                translation_result = await self._translate_relay_message(
-                    filtered,
-                    target_sessions,
-                    event.unified_msg_origin,
-                )
+                translation_result = shared_result
+                if translation_result is None:
+                    translation_result = await self._translate_relay_message(
+                        filtered,
+                        target_sessions,
+                        event.unified_msg_origin,
+                        cache_scope=shared_cache_scope,
+                    )
                 translated_result = self._transform_translation_result(
                     translation_result,
                     lambda translated: format_template(

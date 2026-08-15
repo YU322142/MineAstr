@@ -945,6 +945,97 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(matched["language"], "en_US")
         self.assertEqual(fallback["language"], "zh_CN")
 
+    async def test_native_minecraft_chat_is_translated_for_online_locales(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "bridge_settings": {
+                "bridge_enabled": True,
+                "game_translation_enabled": True,
+                "game_translation_languages": "zh_cn\nen_us\nja_jp",
+                "game_translation_show_original": True,
+                "game_translation_timeout_seconds": 5,
+                "translation_context_messages": 0,
+                "translation_custom_instructions": "",
+                "game_to_chat_filters": "",
+                "game_to_chat_template": "[MC/{server}] {player}: {message}",
+                "max_relay_length": 500,
+                "discord_channel_settings": [],
+            }
+        }
+        plugin._relay_sessions = set()
+        plugin._translate_text = AsyncMock(
+            return_value={
+                "source_language": "zh_cn",
+                "translations": {
+                    "zh_cn": "大家好",
+                    "en_us": "Hello everyone",
+                    "ja_jp": "こんにちは",
+                },
+            }
+        )
+        plugin._send_to_relay_sessions = AsyncMock()
+        adapter = types.SimpleNamespace(complete_native_chat=AsyncMock())
+        plugin._minecraft_adapter = lambda: adapter
+        stopped = []
+        event = types.SimpleNamespace(
+            unified_msg_origin="minecraft:GroupMessage:minecraft",
+            message_str="大家好",
+            message_obj=types.SimpleNamespace(
+                raw_message={
+                    "server_id": "survival",
+                    "server_name": "Survival",
+                    "player_uuid": "player-uuid",
+                    "player_name": "Steve",
+                    "native_chat": True,
+                    "native_chat_id": "native-1",
+                    "target_languages": ["zh_cn", "en_us", "fr_fr"],
+                }
+            ),
+            is_at_or_wake_command=False,
+            get_platform_id=lambda: "minecraft",
+            get_sender_id=lambda: "player-uuid",
+            get_sender_name=lambda: "Steve",
+            stop_event=lambda: stopped.append(True),
+        )
+
+        await plugin.mineastr_relay_message(event)
+
+        plugin._translate_text.assert_awaited_once()
+        self.assertEqual(plugin._translate_text.await_args.args[0], "大家好")
+        self.assertEqual(plugin._translate_text.await_args.args[1], ("zh_cn", "en_us"))
+        self.assertTrue(
+            plugin._translate_text.await_args.kwargs["detect_bilingual_equivalence"]
+        )
+        adapter.complete_native_chat.assert_awaited_once_with(
+            "survival",
+            "native-1",
+            "大家好",
+            "Steve",
+            translation_options={
+                "translations": {"en_us": "Hello everyone"},
+                "show_original": True,
+            },
+        )
+        self.assertEqual(stopped, [True])
+
+    def test_native_chat_policy_tracks_shared_game_translation_switch(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "bridge_settings": {
+                "bridge_enabled": True,
+                "game_translation_enabled": True,
+                "game_translation_timeout_seconds": 5,
+            }
+        }
+
+        self.assertEqual(
+            plugin._native_chat_policy(),
+            {"enabled": True, "timeout_ms": 10_000},
+        )
+
+        plugin.config["bridge_settings"]["game_translation_enabled"] = False
+        self.assertFalse(plugin._native_chat_policy()["enabled"])
+
 
 class CommandApprovalTests(unittest.IsolatedAsyncioTestCase):
     @staticmethod
@@ -1757,8 +1848,9 @@ class RelayScopeAndContextTests(unittest.IsolatedAsyncioTestCase):
         )
         second = await plugin._translate_text(
             source,
-            ("zh_cn", "en_us"),
-            cache_scope="game-sign",
+            ("fr_fr",),
+            cache_scope="native-chat:another-server",
+            context=(("Alice", "different context"),),
             detect_bilingual_equivalence=True,
         )
 

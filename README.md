@@ -41,7 +41,7 @@ AstrBot 对该会话的文本回复会回传给所有已连接的 Minecraft 服�
 
 ## 安装包兼容性
 
-在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.26.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
+在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.27.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
 
 插件元数据中的安装/更新源固定为 Fork 分支 `https://github.com/YU322142/MineAstr/tree/astrbot-plugin`，不会再让 AstrBot 回到原项目或下载仅用于项目导航的 `main` 分支。
 
@@ -187,14 +187,14 @@ pip install -r requirements.txt
 | `chat_to_game_template` | `{message}` | 聊天平台到游戏的正文模板；发送者标签由适配器另外携带。 |
 | `game_to_chat_template` | `[MC/{server}] {player}: {message}` | Minecraft 到 QQ/Discord 的模板。 |
 | `chat_to_game_filters` / `game_to_chat_filters` | 空 | AQQBot 本地过滤规则，每行一条。 |
-| `game_translation_enabled` | `false` | 使用 AstrBot 文本模型生成游戏内多语言译文；会增加模型调用、延迟和费用，失败时回退原文。 |
+| `game_translation_enabled` | `false` | 使用 AstrBot 文本模型生成游戏内多语言译文；包括 Minecraft 玩家原生聊天按每位接收者 locale 重发。启用后原生聊天会改为未签名消息并绕过部分原版最终广播语义；会增加模型调用、延迟和费用，失败时回退原文。 |
 | `game_translation_provider_id` | 空 | 留空使用当前会话文本模型，也可指定低成本翻译 Provider。 |
-| `game_translation_languages` | `zh_cn\nen_us` | 每行一个目标 Minecraft locale，最多 8 种，例如 `ja_jp`。 |
+| `game_translation_languages` | `zh_cn\nen_us` | 每行一个目标 Minecraft locale，最多 8 种；原生聊天会把在线玩家 locale 与此列表取交集，例如 `ja_jp`。 |
 | `game_translation_show_original` | `true` | 未安装同版客户端 Mod 时，译文下方是否默认附带原文。 |
 | `translation_custom_instructions` | 空 | 统一翻译提示词/术语表，最多 40000 字；游戏内及所有 QQ/Discord 接收会话共同使用，同一条源消息合计只调用一次模型。 |
 | `image_translation_prompt` | 空 | 沉浸画框等外部图片翻译专用提示词，最多 40000 字；与截图一起交给 AstrBot 多模态模型。 |
 | `relay_bot_conversations_to_game` | `true` | 把桥接会话中玩家 @机器人的消息及 AstrBot 最终纯文本回复同步到 MC。 |
-| `game_translation_timeout_seconds` | `20` | 翻译超时；超时直接发送原文，不阻塞后续聊天。 |
+| `game_translation_timeout_seconds` | `20` | 翻译超时；原生聊天会额外保留最多 5 秒回传余量，超时直接按发送顺序发送原文。 |
 | `translation_context_messages` | `0` | 提供给 AstrBot 翻译模型的最近上下文条数，范围 0-20；只翻译当前消息正文。 |
 | `binding_enabled` | `true` | 启用跨平台账号绑定。 |
 | `binding_database` | `data/mineastr/bindings.sqlite3` | SQLite 绑定数据库；修改后重载插件。 |

@@ -230,6 +230,7 @@ class MinecraftConnectionManager:
     ) -> tuple[dict[str, Any], bool]:
         now = int(time.time() * 1000)
         metadata = {
+            "connection_id": str(uuid.uuid4()),
             "server_id": _trim_sender_name(hello.get("server_id"), "minecraft"),
             "server_name": _trim_sender_name(
                 hello.get("server_name"), "Minecraft Server"
@@ -237,6 +238,15 @@ class MinecraftConnectionManager:
             "mod_version": _trim_sender_name(hello.get("mod_version"), "unknown"),
             "connected_at": now,
             "last_seen_at": now,
+            "chat_capabilities": tuple(
+                sorted(
+                    {
+                        str(item).strip()
+                        for item in (hello.get("chat_capabilities") or [])
+                        if str(item).strip()
+                    }
+                )
+            ),
         }
         async with self._lock:
             is_new = ws not in self._connections
@@ -323,6 +333,60 @@ class MinecraftConnectionManager:
             await ws.send_str(json.dumps(payload, ensure_ascii=False))
         else:
             await self._broadcast(payload)
+
+    async def send_native_chat_policy(
+        self,
+        enabled: bool,
+        timeout_ms: int,
+    ) -> None:
+        payload = {
+            "type": "native_chat_policy",
+            "enabled": bool(enabled),
+            "timeout_ms": max(1_000, min(65_000, int(timeout_ms))),
+        }
+        data = json.dumps(payload, ensure_ascii=False)
+        async with self._lock:
+            targets = [
+                ws
+                for ws, meta in self._connections.items()
+                if not ws.closed
+                and "native_chat_translation"
+                in set(meta.get("chat_capabilities") or ())
+            ]
+        for ws in targets:
+            try:
+                await ws.send_str(data)
+            except Exception as exc:
+                logger.warning("MineAstr 原生聊天策略发送失败：%s", exc)
+                await self.unregister(ws)
+
+    async def send_native_chat_result(
+        self,
+        server_id: str,
+        message_id: str,
+        content: str,
+        sender_name: str,
+        *,
+        translations: dict[str, str] | None = None,
+        show_original: bool = False,
+        connection_id: str | None = None,
+    ) -> None:
+        content = _trim_outbound_content(content, self._outbound_max_message_length)
+        message_id = _trim_content(message_id, 64)
+        if not content or not message_id:
+            return
+        payload = {
+            "type": "native_chat_translate_result",
+            "message_id": message_id,
+            "sender_name": _trim_sender_name(sender_name, "Player"),
+            "content": content,
+            "translations": _normalize_translations(
+                translations, self._outbound_max_message_length
+            ),
+            "show_original": bool(show_original),
+        }
+        ws, _ = await self._select_connection(server_id, connection_id)
+        await ws.send_str(json.dumps(payload, ensure_ascii=False))
 
     async def send_pong(
         self, ws: web.WebSocketResponse, time_ms: int | None = None
@@ -430,7 +494,7 @@ class MinecraftConnectionManager:
                 await self.unregister(ws)
 
     async def _select_connection(
-        self, server_id: str | None
+        self, server_id: str | None, connection_id: str | None = None
     ) -> tuple[web.WebSocketResponse, dict[str, Any]]:
         async with self._lock:
             connections = [
@@ -440,6 +504,13 @@ class MinecraftConnectionManager:
             ]
         if not connections:
             raise RuntimeError("当前没有已连接的 Minecraft 服务器")
+        if connection_id:
+            for ws, meta in connections:
+                if str(meta.get("connection_id")) == connection_id:
+                    return ws, meta
+            raise RuntimeError(
+                f"未找到 connection_id={connection_id} 的 Minecraft 服务器连接"
+            )
         if server_id:
             for ws, meta in connections:
                 if str(meta.get("server_id")) == server_id:
@@ -582,6 +653,10 @@ class MinecraftPlatformAdapter(Platform):
         self._image_translation_handler: Callable[
             [dict[str, Any]], Awaitable[dict[str, Any] | None] | dict[str, Any] | None
         ] | None = None
+        self._native_chat_policy_handler: Callable[
+            [], Awaitable[dict[str, Any]] | dict[str, Any]
+        ] | None = None
+        self._native_chat_policy_task: asyncio.Task | None = None
 
     def set_chat_translation_handler(
         self,
@@ -610,6 +685,80 @@ class MinecraftPlatformAdapter(Platform):
         | None,
     ) -> None:
         self._image_translation_handler = handler
+
+    def set_native_chat_policy_handler(
+        self,
+        handler: Callable[
+            [], Awaitable[dict[str, Any]] | dict[str, Any]
+        ] | None,
+    ) -> None:
+        self._native_chat_policy_handler = handler
+        try:
+            asyncio.get_running_loop().create_task(
+                self._broadcast_native_chat_policy()
+            )
+        except RuntimeError:
+            pass
+
+    async def _native_chat_policy(self) -> dict[str, Any]:
+        handler = self._native_chat_policy_handler
+        if handler is None:
+            return {"enabled": False, "timeout_ms": 20_000}
+        try:
+            value = handler()
+            if inspect.isawaitable(value):
+                value = await value
+            if not isinstance(value, dict):
+                return {"enabled": False, "timeout_ms": 20_000}
+            return {
+                "enabled": bool(value.get("enabled", False)),
+                "timeout_ms": max(
+                    1_000,
+                    min(65_000, int(value.get("timeout_ms", 20_000))),
+                ),
+            }
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("MineAstr 原生聊天翻译策略无效，已保持原版广播：%s", exc)
+            return {"enabled": False, "timeout_ms": 20_000}
+
+    async def _broadcast_native_chat_policy(self) -> None:
+        policy = await self._native_chat_policy()
+        await self.connection_manager.send_native_chat_policy(
+            policy["enabled"], policy["timeout_ms"]
+        )
+
+    async def _native_chat_policy_loop(self) -> None:
+        while True:
+            await asyncio.sleep(15)
+            try:
+                await self._broadcast_native_chat_policy()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("MineAstr 原生聊天策略定时同步失败：%s", exc)
+
+    async def complete_native_chat(
+        self,
+        server_id: str,
+        message_id: str,
+        content: str,
+        sender_name: str,
+        *,
+        translation_options: dict[str, Any] | None = None,
+        connection_id: str | None = None,
+    ) -> None:
+        options = translation_options if isinstance(translation_options, dict) else {}
+        await self.connection_manager.send_native_chat_result(
+            server_id,
+            message_id,
+            content,
+            sender_name,
+            translations=options.get("translations"),
+            show_original=bool(options.get("show_original", False)),
+            connection_id=connection_id,
+        )
 
     async def _chat_translation_options(
         self, content: str, origin: str
@@ -724,9 +873,23 @@ class MinecraftPlatformAdapter(Platform):
             "MineAstr WebSocket 正在监听 ws://%s:%s%s", self.host, self.port, self.path
         )
 
+        self._native_chat_policy_task = asyncio.create_task(
+            self._native_chat_policy_loop(),
+            name="mineastr-native-chat-policy-sync",
+        )
         try:
             await asyncio.Event().wait()
         finally:
+            policy_task = self._native_chat_policy_task
+            self._native_chat_policy_task = None
+            if policy_task is not None:
+                policy_task.cancel()
+                try:
+                    await policy_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    logger.warning("MineAstr 原生聊天策略任务异常结束：%s", exc)
             await self.connection_manager.close()
             if self._runner:
                 await self._runner.cleanup()
@@ -1172,6 +1335,12 @@ class MinecraftPlatformAdapter(Platform):
                 await self._handle_chat(ws, payload)
             elif payload_type == "ping":
                 await self.connection_manager.mark_seen(ws)
+                # Configuration can be hot-reloaded while a Mod remains
+                # connected.  Re-evaluate the native-chat policy on the
+                # heartbeat so the client does not keep intercepting vanilla
+                # chat after translation is disabled (or wait for a reload
+                # before enabling it).
+                await self._broadcast_native_chat_policy()
                 await self.connection_manager.send_pong(ws, payload.get("time_ms"))
             elif payload_type == "query_result":
                 if not await self.connection_manager.is_registered(ws):
@@ -1332,6 +1501,20 @@ class MinecraftPlatformAdapter(Platform):
                     "time_ms": int(time.time() * 1000),
                 }
             )
+        if "native_chat_translation" in set(
+            metadata.get("chat_capabilities") or ()
+        ):
+            policy = await self._native_chat_policy()
+            await ws.send_str(
+                json.dumps(
+                    {
+                        "type": "native_chat_policy",
+                        "enabled": policy["enabled"],
+                        "timeout_ms": policy["timeout_ms"],
+                    },
+                    ensure_ascii=False,
+                )
+            )
 
     async def _handle_bridge_event(
         self, ws: web.WebSocketResponse, payload: dict[str, Any]
@@ -1395,6 +1578,7 @@ class MinecraftPlatformAdapter(Platform):
         trusted_payload = dict(payload)
         trusted_payload["server_id"] = metadata.get("server_id", "minecraft")
         trusted_payload["server_name"] = metadata.get("server_name", "Minecraft Server")
+        trusted_payload["connection_id"] = metadata.get("connection_id", "")
         message = self._convert_chat(trusted_payload, content)
         event = MinecraftPlatformEvent(
             message_str=message.message_str,

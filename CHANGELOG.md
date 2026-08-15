@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.27 - 2026-08-15
+
+- Add optional native Minecraft player-chat translation: the paired 1.21.11/1.21.1 Mod can request one shared AstrBot translation and receive per-player locale results.
+- Keep native-chat fallback ordered and exactly-once across provider timeout, policy changes, WebSocket reconnects, duplicate responses, and late joins.
+- Route native-chat responses to the originating WebSocket connection and serialize Mod WebSocket sends to avoid concurrent-send disconnects.
+- Preserve the original text for fallback, filter identical translations, and exclude players who disabled translation from target-language requests.
+- Reuse the cached Chinese/English equivalence check for native chat, so already-bilingual messages are shown once without a redundant translation.
+- Re-evaluate and synchronize the native-chat interception policy periodically, and on Minecraft activity, after AstrBot configuration hot reloads.
+- Add a small server-side native-chat rate guard so bursts fall back to vanilla chat instead of creating an unbounded AI queue.
+- Document the unsigned-chat and Secure Chat/reporting trade-off of per-player rewritten messages.
+
 ## 0.6.26 - 2026-08-13
 
 - Add configurable periodic cleanup for translation results, translation context, relay recall/edit metadata, and persisted Minecraft screenshots.

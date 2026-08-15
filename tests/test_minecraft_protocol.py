@@ -6,7 +6,7 @@ import unittest
 from dataclasses import dataclass
 from enum import Enum
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 
 def _install_astrbot_stubs():
@@ -221,8 +221,181 @@ class ConnectionManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(translated["translations"], {"zh_cn": "译文"})
         self.assertTrue(translated["show_original"])
 
+    async def test_native_chat_result_is_targeted_and_keeps_empty_fallback(self):
+        manager = MinecraftConnectionManager("AstrBot", 2000)
+        first = FakeWebSocket()
+        second = FakeWebSocket()
+        await manager.register(first, {"server_id": "one"})
+        await manager.register(second, {"server_id": "two"})
+
+        await manager.send_native_chat_result(
+            "two",
+            "native-1",
+            "source text",
+            "Steve",
+            translations={"en-US": "translated", "bad locale": "ignored"},
+            show_original=True,
+        )
+        self.assertEqual(first.sent, [])
+        result = second.sent[-1]
+        self.assertEqual(result["type"], "native_chat_translate_result")
+        self.assertEqual(result["message_id"], "native-1")
+        self.assertEqual(result["translations"], {"en_us": "translated"})
+        self.assertTrue(result["show_original"])
+
+        await manager.send_native_chat_result(
+            "two", "native-2", "same language", "Steve"
+        )
+        self.assertEqual(second.sent[-1]["translations"], {})
+
+    async def test_native_chat_result_uses_exact_connection_id_for_duplicate_server_ids(self):
+        manager = MinecraftConnectionManager("AstrBot", 2000)
+        first = FakeWebSocket()
+        second = FakeWebSocket()
+        await manager.register(
+            first,
+            {"server_id": "same", "chat_capabilities": ["native_chat_translation"]},
+        )
+        await manager.register(
+            second,
+            {"server_id": "same", "chat_capabilities": ["native_chat_translation"]},
+        )
+        second_meta = await manager.metadata_for(second)
+
+        await manager.send_native_chat_result(
+            "same",
+            "native-exact",
+            "source",
+            "Steve",
+            connection_id=second_meta["connection_id"],
+        )
+
+        self.assertEqual(first.sent, [])
+        self.assertEqual(second.sent[-1]["message_id"], "native-exact")
+
+    async def test_native_chat_policy_only_targets_capable_mods(self):
+        manager = MinecraftConnectionManager("AstrBot", 2000)
+        capable = FakeWebSocket()
+        legacy = FakeWebSocket()
+        await manager.register(
+            capable,
+            {"server_id": "capable", "chat_capabilities": ["native_chat_translation"]},
+        )
+        await manager.register(legacy, {"server_id": "legacy"})
+
+        await manager.send_native_chat_policy(True, 25_000)
+
+        self.assertEqual(capable.sent[-1]["type"], "native_chat_policy")
+        self.assertEqual(legacy.sent, [])
+
 
 class AdapterEventTests(unittest.IsolatedAsyncioTestCase):
+    async def test_native_chat_keeps_raw_original_when_mention_parser_rewrites_message(self):
+        adapter = MinecraftPlatformAdapter(
+            {"bot_id": "AstrBot", "bot_display_name": "AstrBot"},
+            {},
+            None,
+        )
+        websocket = FakeWebSocket()
+        await adapter.connection_manager.register(
+            websocket,
+            {"server_id": "survival", "server_name": "Survival"},
+        )
+
+        await adapter._handle_chat(
+            websocket,
+            {
+                "message_id": "native-raw",
+                "player_uuid": "player-1",
+                "player_name": "Steve",
+                "content": "@AstrBot hello",
+                "native_chat": True,
+                "native_chat_id": "native-raw",
+                "native_original_content": "Original decorated text",
+            },
+        )
+
+        event = adapter.committed_events[-1]
+        self.assertEqual(event.message_str, "/hello")
+        self.assertEqual(
+            event.message_obj.raw_message["native_original_content"],
+            "Original decorated text",
+        )
+
+    async def test_hello_receives_native_chat_policy(self):
+        adapter = MinecraftPlatformAdapter({}, {}, None)
+        websocket = FakeWebSocket()
+        adapter.set_native_chat_policy_handler(
+            lambda: {"enabled": True, "timeout_ms": 7_500}
+        )
+
+        await adapter._handle_hello(
+            websocket,
+            {
+                "protocol": 1,
+                "server_id": "survival",
+                "server_name": "Survival",
+                "mod_version": "0.6.27",
+                "chat_capabilities": ["native_chat_translation"],
+            },
+        )
+
+        policy = websocket.sent[-1]
+        self.assertEqual(policy["type"], "native_chat_policy")
+        self.assertTrue(policy["enabled"])
+        self.assertEqual(policy["timeout_ms"], 7_500)
+
+    async def test_ping_resynchronizes_hot_reloaded_native_chat_policy(self):
+        adapter = MinecraftPlatformAdapter({}, {}, None)
+        websocket = FakeWebSocket()
+        second = FakeWebSocket()
+        state = {"enabled": True}
+        adapter.set_native_chat_policy_handler(
+            lambda: {"enabled": state["enabled"], "timeout_ms": 7_500}
+        )
+        await adapter._handle_hello(
+            websocket,
+            {
+                "protocol": 1,
+                "server_id": "survival",
+                "chat_capabilities": ["native_chat_translation"],
+            },
+        )
+
+        state["enabled"] = False
+        await adapter._handle_hello(
+            second,
+            {
+                "protocol": 1,
+                "server_id": "creative",
+                "chat_capabilities": ["native_chat_translation"],
+            },
+        )
+        await adapter._handle_text(
+            websocket,
+            json.dumps({"type": "ping", "time_ms": 123}),
+        )
+
+        self.assertEqual(websocket.sent[-2]["type"], "native_chat_policy")
+        self.assertFalse(websocket.sent[-2]["enabled"])
+        self.assertEqual(websocket.sent[-1], {"type": "pong", "time_ms": 123})
+        self.assertEqual(second.sent[-1]["type"], "native_chat_policy")
+        self.assertFalse(second.sent[-1]["enabled"])
+
+    async def test_native_chat_policy_loop_broadcasts_without_mod_ping(self):
+        adapter = MinecraftPlatformAdapter({}, {}, None)
+        adapter._broadcast_native_chat_policy = AsyncMock(
+            side_effect=asyncio.CancelledError
+        )
+        with patch(
+            "minecraft_adapter.asyncio.sleep",
+            new=AsyncMock(return_value=None),
+        ):
+            with self.assertRaises(asyncio.CancelledError):
+                await adapter._native_chat_policy_loop()
+
+        adapter._broadcast_native_chat_policy.assert_awaited_once()
+
     async def test_sign_bilingual_skip_marker_is_a_usable_result(self):
         adapter = MinecraftPlatformAdapter({}, {}, None)
         websocket = FakeWebSocket()
