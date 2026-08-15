@@ -22,7 +22,7 @@ import org.slf4j.Logger;
 
 public final class MineAstr implements ModInitializer {
     public static final String MODID = "mineastr";
-    public static final String MOD_VERSION = "0.6.26";
+    public static final String MOD_VERSION = "0.6.27";
     public static final Logger LOGGER = LogUtils.getLogger();
 
     private static final MineAstrBridge BRIDGE = new MineAstrBridge();
@@ -50,8 +50,15 @@ public final class MineAstr implements ModInitializer {
         CommandRegistrationCallback.EVENT.register(
                 (dispatcher, registryAccess, environment) -> MineAstrCommands.register(dispatcher, BRIDGE));
 
+        ServerMessageEvents.ALLOW_CHAT_MESSAGE.register(
+                (message, sender, params) -> !BRIDGE.interceptNativeChat(
+                        sender,
+                        message.decoratedContent(),
+                        params));
         ServerMessageEvents.CHAT_MESSAGE.register(
-                (message, sender, params) -> BRIDGE.forwardChat(sender, message.signedContent()));
+                (message, sender, params) -> BRIDGE.forwardChat(
+                        sender,
+                        message.decoratedContent().getString()));
 
         UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
             if (world.isClientSide()

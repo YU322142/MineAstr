@@ -6,13 +6,15 @@ MineAstr 是同一仓库中 AstrBot MineAstr 插件的 Minecraft 端，已适配
 - Fabric Loader `0.19.3`（最低 `0.18.1`）
 - Fabric API `0.141.4+1.21.11`
 - Java `21`
-- MineAstr `0.6.26`
+- MineAstr `0.6.27`
 
-同一个 `mineastr-fabric-0.6.26.jar` 可以放在独立服务端、客户端或两端。服务端只安装 Mod 即可使用聊天、事件、绑定、登录检查及查询；截图、告示牌浮选和外部图片翻译显示功能要求目标玩家客户端也安装该 JAR。
+同一个 `mineastr-fabric-0.6.27.jar` 可以放在独立服务端、客户端或两端。服务端只安装 Mod 即可使用聊天、事件、绑定、登录检查及查询；截图、告示牌浮选和外部图片翻译显示功能要求目标玩家客户端也安装该 JAR。
 
 ## 功能
 
 - Minecraft 与 AstrBot/Discord 双向聊天；
+- 可选拦截 Minecraft 玩家原生聊天，由 AstrBot 一次翻译后按每位在线玩家的客户端 locale 分别显示；超时、断线或无匹配译文时按原顺序回退原文；
+- 原生聊天翻译会改用未签名消息重发，不保留 Secure Chat 举报关联，也不经过原版服务器文本过滤和完整反刷屏链路；需要这些语义时关闭 AstrBot 的 `game_translation_enabled`；
 - 按每位玩家客户端 locale 显示 QQ/Discord/AstrBot 消息译文，并可选择同时显示原文；
 - 服务器状态、在线玩家、TPS/MSPT、CPU、内存查询；
 - 玩家状态、背包、附近实体与已加载区域结构分析；
@@ -31,13 +33,13 @@ MineAstr 是同一仓库中 AstrBot MineAstr 插件的 Minecraft 端，已适配
 .\gradlew.bat clean build
 ```
 
-产物位于 `build/libs/mineastr-fabric-0.6.26.jar`。
+产物位于 `build/libs/mineastr-fabric-0.6.27.jar`。
 
 ## 安装
 
 1. 为 Minecraft 1.21.11 安装 Fabric Loader。
 2. 把 `fabric-api-0.141.4+1.21.11.jar` 放入 `mods`。
-3. 把 `mineastr-fabric-0.6.26.jar` 放入 `mods`。
+3. 把 `mineastr-fabric-0.6.27.jar` 放入 `mods`。
 4. 启动一次，生成 `config/mineastr-common.json`。
 5. 把配置中的 `token` 改成与 AstrBot `minecraft` 平台适配器完全相同的随机字符串，然后重启。
 

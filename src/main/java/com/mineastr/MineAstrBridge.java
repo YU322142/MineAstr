@@ -13,14 +13,17 @@ import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -39,6 +42,9 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.ChatType;
+import net.minecraft.network.chat.OutgoingChatMessage;
+import net.minecraft.network.chat.PlayerChatMessage;
 import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.Identifier;
@@ -72,12 +78,20 @@ public final class MineAstrBridge implements WebSocket.Listener {
     private static final int SCREENSHOT_TIMEOUT_SECONDS = 30;
     private static final int SCREENSHOT_MAX_CHUNKS = 64;
     private static final int MAX_EVENT_TEXT_LENGTH = 512;
+    private static final int DEFAULT_NATIVE_CHAT_TIMEOUT_MS = 20_000;
+    private static final int MIN_NATIVE_CHAT_TIMEOUT_MS = 1_000;
+    private static final int MAX_NATIVE_CHAT_TIMEOUT_MS = 65_000;
+    private static final int MAX_PENDING_NATIVE_CHATS = 256;
+    private static final int MAX_NATIVE_CHAT_RATE = 8;
+    private static final long NATIVE_CHAT_RATE_WINDOW_MS = 10_000L;
     private static final double SIGN_ADMIN_TARGET_DISTANCE = 8.0D;
     private static final Map<String, String> SKIPPED_SIGN_TRANSLATION_MARKER =
             Map.of("mineastr_skip", "1");
     private static final Random VERIFY_CODE_RANDOM = new java.security.SecureRandom();
 
     private final AtomicReference<WebSocket> webSocket = new AtomicReference<>();
+    private final Object outboundSendLock = new Object();
+    private final Map<WebSocket, CompletableFuture<Void>> outboundSendTails = new HashMap<>();
     private final AtomicBoolean connecting = new AtomicBoolean(false);
     private final AtomicLong connectionGeneration = new AtomicLong();
     private final AtomicLong signTranslationCacheRevision = new AtomicLong();
@@ -94,10 +108,20 @@ public final class MineAstrBridge implements WebSocket.Listener {
     private final ConcurrentMap<String, PendingCommandApproval> pendingCommandApprovals = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, PendingSignTranslation> pendingSignTranslations = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, PendingImageTranslation> pendingImageTranslations = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, PendingNativeChat> pendingNativeChats = new ConcurrentHashMap<>();
+    private final ConcurrentMap<UUID, ArrayDeque<Long>> nativeChatRateWindows = new ConcurrentHashMap<>();
+    private final AtomicLong nativeChatSequence = new AtomicLong();
+    private final Object nativeChatOrderLock = new Object();
+    private final TreeMap<Long, NativeChatCompletion> completedNativeChats = new TreeMap<>();
+    private final ArrayDeque<NativeChatCompletion> nativeChatDispatchQueue = new ArrayDeque<>();
+    private long nextNativeChatSequence;
+    private boolean nativeChatDispatchScheduled;
     private final ConcurrentMap<String, SyncedBinding> syncedBindings = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, NameAndId> observedLoginIdentities = new ConcurrentHashMap<>();
     private final Set<String> syncedTrustedCommandUsers = ConcurrentHashMap.newKeySet();
     private final AtomicLong syncedTrustedCommandUsersRevision = new AtomicLong(-1L);
+    private final AtomicReference<NativeChatPolicy> nativeChatPolicy =
+            new AtomicReference<>(NativeChatPolicy.disabled());
 
     private volatile MinecraftServer server;
     private volatile ScheduledExecutorService reconnectExecutor = createReconnectExecutor();
@@ -108,6 +132,15 @@ public final class MineAstrBridge implements WebSocket.Listener {
 
     public void start(MinecraftServer server) {
         this.server = server;
+        synchronized (nativeChatOrderLock) {
+            nativeChatSequence.set(0L);
+            nextNativeChatSequence = 0L;
+            completedNativeChats.clear();
+            nativeChatDispatchQueue.clear();
+            nativeChatDispatchScheduled = false;
+        }
+        nativeChatRateWindows.clear();
+        nativeChatPolicy.set(NativeChatPolicy.disabled());
         signTranslationStore = new SignTranslationStore();
         signTranslationStore.load(server.getWorldPath(LevelResource.ROOT));
         this.stopping = false;
@@ -129,6 +162,14 @@ public final class MineAstrBridge implements WebSocket.Listener {
         clearPendingLoginChecks("Minecraft 服务器正在停止。");
         pendingCommandApprovals.clear();
         pendingSignTranslations.clear();
+        clearPendingNativeChats(null, false, "server stopping");
+        nativeChatRateWindows.clear();
+        synchronized (nativeChatOrderLock) {
+            completedNativeChats.clear();
+            nativeChatDispatchQueue.clear();
+            nativeChatDispatchScheduled = false;
+        }
+        nativeChatPolicy.set(NativeChatPolicy.disabled());
         clearPendingImageTranslations("Minecraft 服务器正在停止。");
         signTranslationStore.save();
         translationPreferences.clear();
@@ -169,9 +210,188 @@ public final class MineAstrBridge implements WebSocket.Listener {
         connecting.set(false);
         WebSocket socket = webSocket.getAndSet(null);
         if (socket != null) {
+            disableNativeChatForSocket(socket, "manual reconnect");
             socket.abort();
         }
         connectNow();
+        return true;
+    }
+
+    /**
+     * Queues vanilla player chat for AstrBot translation when the active
+     * connection explicitly enabled native-chat interception. Returning true
+     * tells Fabric's ALLOW_CHAT_MESSAGE event to suppress the vanilla broadcast.
+     */
+    public boolean interceptNativeChat(
+            ServerPlayer sender,
+            Component decoratedMessage,
+            net.minecraft.network.chat.ChatType.Bound chatType) {
+        MinecraftServer currentServer = server;
+        if (currentServer == null
+                || sender == null
+                || stopping
+                || !MineAstrConfig.ENABLED.getAsBoolean()) {
+            return false;
+        }
+
+        String original = trimContent(
+                decoratedMessage == null ? "" : decoratedMessage.getString(),
+                MAX_BROADCAST_CONTENT_LENGTH);
+        String requestContent = trimContent(
+                original,
+                MineAstrConfig.MAX_MESSAGE_LENGTH.getAsInt());
+        if (original.isEmpty() || requestContent.isEmpty()) {
+            return false;
+        }
+        List<String> rawLanguages = new ArrayList<>();
+        List<UUID> recipients = new ArrayList<>();
+        for (ServerPlayer player : currentServer.getPlayerList().getPlayers()) {
+            recipients.add(player.getUUID());
+            TranslationPreference preference = translationPreferences.get(player.getUUID());
+            if (preference == null || preference.translationsEnabled) {
+                rawLanguages.add(player.clientInformation().language());
+            }
+        }
+        List<String> targetLanguages = NativeChatTranslation.targetLanguages(rawLanguages);
+        WebSocket socket = webSocket.get();
+        NativeChatPolicy policy = nativeChatPolicy.get();
+        String fallbackReason = null;
+        if (socket == null
+                || socket.isInputClosed()
+                || socket.isOutputClosed()
+                || !policy.enabled()
+                || policy.socket() != socket) {
+            fallbackReason = "translation unavailable";
+        } else if (pendingNativeChats.size() >= MAX_PENDING_NATIVE_CHATS) {
+            fallbackReason = "translation queue full";
+        } else if (targetLanguages.isEmpty()) {
+            fallbackReason = "no target locale";
+        } else if (!allowNativeChatRate(sender.getUUID())) {
+            MineAstr.LOGGER.debug(
+                    "MineAstr native chat rate limit reached for {}; preserving ordered original when needed",
+                    sender.getGameProfile().name());
+            fallbackReason = "translation rate limited";
+        }
+        if (fallbackReason != null) {
+            return queueOrderedNativeFallbackIfNeeded(
+                    socket,
+                    sender,
+                    original,
+                    recipients,
+                    chatType,
+                    fallbackReason);
+        }
+
+        long sequence = reserveNativeChatSequence(false);
+        if (sequence < 0L) {
+            return false;
+        }
+        String messageId = UUID.randomUUID().toString();
+        PendingNativeChat pending = new PendingNativeChat(
+                socket,
+                messageId,
+                sequence,
+                sender.getUUID(),
+                sender.getGameProfile().name(),
+                original,
+                recipients,
+                chatType);
+        if (pendingNativeChats.putIfAbsent(messageId, pending) != null) {
+            completeNativeChat(pending, Map.of(), false, "request id collision");
+            return true;
+        }
+        pending.timeout = scheduleNativeChatTimeout(messageId, policy.timeoutMs());
+        if (pending.timeout == null) {
+            if (pendingNativeChats.remove(messageId, pending)) {
+                completeNativeChat(pending, Map.of(), false, "timeout scheduler unavailable");
+            }
+            return true;
+        }
+        if (webSocket.get() != socket
+                || nativeChatPolicy.get() != policy
+                || !policy.enabled()) {
+            if (pendingNativeChats.remove(messageId, pending)) {
+                pending.cancelTimeout();
+                completeNativeChat(pending, Map.of(), false, "native chat policy changed");
+            }
+            return true;
+        }
+
+        JsonObject payload = new JsonObject();
+        payload.addProperty("type", "chat");
+        payload.addProperty("message_id", messageId);
+        payload.addProperty("native_chat", true);
+        payload.addProperty("native_chat_id", messageId);
+        payload.addProperty("time_ms", System.currentTimeMillis());
+        payload.addProperty("server_id", MineAstrConfig.SERVER_ID.get());
+        payload.addProperty("server_name", MineAstrConfig.SERVER_NAME.get());
+        payload.addProperty("player_uuid", sender.getUUID().toString());
+        payload.addProperty("player_name", sender.getGameProfile().name());
+        payload.addProperty("content", requestContent);
+        payload.addProperty("native_original_content", original);
+        JsonArray languages = new JsonArray();
+        targetLanguages.forEach(languages::add);
+        payload.add("target_languages", languages);
+        try {
+            sendTextSerialized(socket, GSON.toJson(payload)).whenComplete((ignored, throwable) -> {
+                if (throwable != null) {
+                    failNativeChat(messageId, "send failed");
+                    handleSendFailure(socket, throwable);
+                }
+            });
+        } catch (RuntimeException exc) {
+            if (pendingNativeChats.remove(messageId, pending)) {
+                pending.cancelTimeout();
+                completeNativeChat(pending, Map.of(), false, "send failed");
+                handleSendFailure(socket, exc);
+                return true;
+            }
+            handleSendFailure(socket, exc);
+            return true;
+        }
+        MineAstr.LOGGER.debug(
+                "MineAstr queued native chat translation: id={} sender={} languages={}",
+                messageId,
+                sender.getGameProfile().name(),
+                targetLanguages);
+        return true;
+    }
+
+    private long reserveNativeChatSequence(boolean requireExistingWork) {
+        synchronized (nativeChatOrderLock) {
+            long incomplete = Math.max(0L, nativeChatSequence.get() - nextNativeChatSequence);
+            long outstanding = incomplete
+                    + nativeChatDispatchQueue.size()
+                    + (nativeChatDispatchScheduled ? 1L : 0L);
+            if ((requireExistingWork && outstanding == 0L)
+                    || outstanding >= MAX_PENDING_NATIVE_CHATS) {
+                return -1L;
+            }
+            return nativeChatSequence.getAndIncrement();
+        }
+    }
+
+    private boolean queueOrderedNativeFallbackIfNeeded(
+            WebSocket socket,
+            ServerPlayer sender,
+            String original,
+            List<UUID> recipients,
+            ChatType.Bound chatType,
+            String reason) {
+        long sequence = reserveNativeChatSequence(true);
+        if (sequence < 0L) {
+            return false;
+        }
+        PendingNativeChat pending = new PendingNativeChat(
+                socket,
+                UUID.randomUUID().toString(),
+                sequence,
+                sender.getUUID(),
+                sender.getGameProfile().name(),
+                original,
+                recipients,
+                chatType);
+        completeNativeChat(pending, Map.of(), false, reason);
         return true;
     }
 
@@ -311,6 +531,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
 
     public void unregisterClientCapability(ServerPlayer player) {
         clientCapabilities.remove(player.getUUID());
+        nativeChatRateWindows.remove(player.getUUID());
         translationPreferences.remove(player.getUUID());
         pendingScreenshots.values().removeIf(pending -> {
             if (!pending.playerUuid.equals(player.getUUID())) {
@@ -801,8 +1022,10 @@ public final class MineAstrBridge implements WebSocket.Listener {
                     } else {
                         WebSocket previous = webSocket.getAndSet(socket);
                         if (previous != null && previous != socket) {
+                            disableNativeChatForSocket(previous, "connection replaced");
                             previous.abort();
                         }
+                        nativeChatPolicy.set(NativeChatPolicy.disabled());
                         sendHello(socket);
                         MineAstr.LOGGER.info("MineAstr 已连接到 AstrBot：{}", uri);
                     }
@@ -838,6 +1061,9 @@ public final class MineAstrBridge implements WebSocket.Listener {
         eventCapabilities.add("binding_code");
         eventCapabilities.add("player_login_check");
         payload.add("event_capabilities", eventCapabilities);
+        JsonArray chatCapabilities = new JsonArray();
+        chatCapabilities.add("native_chat_translation");
+        payload.add("chat_capabilities", chatCapabilities);
         sendJson(socket, payload);
     }
 
@@ -891,6 +1117,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         boolean activeSocketClosed = webSocket.compareAndSet(socket, null);
         MineAstr.LOGGER.info("MineAstr WebSocket 已关闭：{} {}", statusCode, reason);
         if (activeSocketClosed) {
+            disableNativeChatForSocket(socket, "websocket closed");
             inboundBuffer.setLength(0);
             clearPendingScreenshots("AstrBot WebSocket 已断开。");
             clearPendingLoginChecks("AstrBot WebSocket 已断开。");
@@ -908,6 +1135,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         boolean activeSocketFailed = webSocket.compareAndSet(socket, null);
         MineAstr.LOGGER.warn("MineAstr WebSocket 出错：{}", error.getMessage());
         if (activeSocketFailed) {
+            disableNativeChatForSocket(socket, "websocket error");
             inboundBuffer.setLength(0);
             clearPendingScreenshots("AstrBot WebSocket 出错。");
             clearPendingLoginChecks("AstrBot WebSocket 出错。");
@@ -936,6 +1164,10 @@ public final class MineAstrBridge implements WebSocket.Listener {
         String type = getString(payload, "type", "");
         if ("chat".equals(type)) {
             handleChat(payload);
+        } else if ("native_chat_policy".equals(type)) {
+            handleNativeChatPolicy(socket, payload);
+        } else if ("native_chat_translate_result".equals(type)) {
+            handleNativeChatTranslationResult(socket, payload);
         } else if ("sign_translate_result".equals(type)) {
             handleSignTranslationResult(socket, payload);
         } else if ("image_translate_result".equals(type)) {
@@ -1043,6 +1275,80 @@ public final class MineAstrBridge implements WebSocket.Listener {
         if (executor == null || executor.isShutdown() || executor.isTerminated()) {
             reconnectExecutor = createReconnectExecutor();
         }
+    }
+
+    private void handleNativeChatPolicy(WebSocket socket, JsonObject payload) {
+        if (socket == null || socket != webSocket.get()) {
+            return;
+        }
+        boolean enabled = getBoolean(payload, "enabled", false);
+        int timeoutMs = getInt(
+                payload,
+                "timeout_ms",
+                DEFAULT_NATIVE_CHAT_TIMEOUT_MS,
+                MIN_NATIVE_CHAT_TIMEOUT_MS,
+                MAX_NATIVE_CHAT_TIMEOUT_MS);
+        NativeChatPolicy previousPolicy = nativeChatPolicy.get();
+        if (previousPolicy.socket() == socket
+                && previousPolicy.enabled() == enabled
+                && previousPolicy.timeoutMs() == timeoutMs) {
+            MineAstr.LOGGER.debug(
+                    "MineAstr native chat translation policy unchanged: enabled={} timeout_ms={}",
+                    enabled,
+                    timeoutMs);
+            return;
+        }
+        nativeChatPolicy.set(new NativeChatPolicy(socket, enabled, timeoutMs));
+        if (!enabled) {
+            clearPendingNativeChats(socket, true, "native chat policy disabled");
+        }
+        MineAstr.LOGGER.info(
+                "MineAstr native chat translation policy: enabled={} timeout_ms={}",
+                enabled,
+                timeoutMs);
+    }
+
+    private void handleNativeChatTranslationResult(WebSocket socket, JsonObject payload) {
+        String messageId = trimFlatContent(getString(payload, "native_chat_id", ""), 64);
+        if (messageId.isBlank()) {
+            messageId = trimFlatContent(getString(payload, "message_id", ""), 64);
+        }
+        PendingNativeChat pending = pendingNativeChats.get(messageId);
+        if (pending == null || pending.socket != socket) {
+            MineAstr.LOGGER.debug(
+                    "MineAstr ignored late, duplicate, or mismatched native chat result: id={}",
+                    messageId);
+            return;
+        }
+        if (!pendingNativeChats.remove(messageId, pending)) {
+            return;
+        }
+        pending.cancelTimeout();
+
+        Map<String, String> translations = new HashMap<>();
+        if (getBoolean(payload, "ok", true)
+                && payload.has("translations")
+                && payload.get("translations").isJsonObject()) {
+            for (var entry : payload.getAsJsonObject("translations").entrySet()) {
+                String language = NativeChatTranslation.normalizeLanguage(entry.getKey());
+                if (language.isEmpty()
+                        || !entry.getValue().isJsonPrimitive()
+                        || !entry.getValue().getAsJsonPrimitive().isString()) {
+                    continue;
+                }
+                String translated = trimFlatContent(
+                        entry.getValue().getAsString(),
+                        MAX_BROADCAST_CONTENT_LENGTH);
+                if (!translated.isBlank()) {
+                    translations.put(language, translated);
+                }
+            }
+        }
+        completeNativeChat(
+                pending,
+                Map.copyOf(translations),
+                getBoolean(payload, "show_original", false),
+                "translated");
     }
 
     private void handleChat(JsonObject payload) {
@@ -1259,6 +1565,152 @@ public final class MineAstrBridge implements WebSocket.Listener {
         String normalized = value.replace('\r', '\n').replace('\u0000', ' ').strip();
         int maxLength = MineAstrPayloads.MAX_SIGN_TRANSLATION_TEXT_LENGTH;
         return normalized.length() <= maxLength ? normalized : normalized.substring(0, maxLength);
+    }
+
+    private void completeNativeChat(
+            PendingNativeChat pending,
+            Map<String, String> translations,
+            boolean defaultShowOriginal,
+            String reason) {
+        if (server == null) {
+            return;
+        }
+        List<NativeChatCompletion> ready = new ArrayList<>();
+        synchronized (nativeChatOrderLock) {
+            completedNativeChats.put(
+                    pending.sequence,
+                    new NativeChatCompletion(pending, Map.copyOf(translations), defaultShowOriginal, reason));
+            drainNativeChatCompletions(ready);
+            enqueueNativeChatCompletionsLocked(ready);
+        }
+    }
+
+    private void drainNativeChatCompletions(List<NativeChatCompletion> ready) {
+        while (true) {
+            NativeChatCompletion completion = completedNativeChats.remove(nextNativeChatSequence);
+            if (completion == null) {
+                return;
+            }
+            ready.add(completion);
+            nextNativeChatSequence++;
+        }
+    }
+
+    private void enqueueNativeChatCompletionsLocked(List<NativeChatCompletion> ready) {
+        nativeChatDispatchQueue.addAll(ready);
+        if (nativeChatDispatchQueue.isEmpty() || nativeChatDispatchScheduled) {
+            return;
+        }
+        MinecraftServer currentServer = server;
+        if (currentServer == null) {
+            nativeChatDispatchQueue.clear();
+            return;
+        }
+        nativeChatDispatchScheduled = true;
+        currentServer.execute(this::drainNativeChatDispatchQueue);
+    }
+
+    private void drainNativeChatDispatchQueue() {
+        try {
+            while (true) {
+                NativeChatCompletion completion;
+                synchronized (nativeChatOrderLock) {
+                    completion = nativeChatDispatchQueue.pollFirst();
+                    if (completion == null) {
+                        return;
+                    }
+                }
+                try {
+                    broadcastNativeChatNow(completion);
+                } catch (RuntimeException exc) {
+                    MineAstr.LOGGER.error(
+                            "MineAstr failed to broadcast native chat {}; continuing ordered dispatch",
+                            completion.pending.messageId,
+                            exc);
+                }
+            }
+        } finally {
+            synchronized (nativeChatOrderLock) {
+                nativeChatDispatchScheduled = false;
+                if (!nativeChatDispatchQueue.isEmpty()) {
+                    enqueueNativeChatCompletionsLocked(List.of());
+                }
+            }
+        }
+    }
+
+    private boolean allowNativeChatRate(UUID playerUuid) {
+        long now = System.currentTimeMillis();
+        ArrayDeque<Long> timestamps = nativeChatRateWindows.computeIfAbsent(
+                playerUuid,
+                ignored -> new ArrayDeque<>());
+        synchronized (timestamps) {
+            while (!timestamps.isEmpty()
+                    && now - timestamps.peekFirst() >= NATIVE_CHAT_RATE_WINDOW_MS) {
+                timestamps.removeFirst();
+            }
+            if (timestamps.size() >= MAX_NATIVE_CHAT_RATE) {
+                return false;
+            }
+            timestamps.addLast(now);
+            return true;
+        }
+    }
+
+    private void broadcastNativeChatNow(NativeChatCompletion completion) {
+        MinecraftServer currentServer = server;
+        if (currentServer == null) {
+            return;
+        }
+        PendingNativeChat pending = completion.pending;
+        MineAstr.LOGGER.info(
+                "<{}> {} [MineAstr native chat: {}]",
+                pending.senderName,
+                pending.original,
+                completion.reason);
+        for (UUID recipientUuid : pending.recipientUuids) {
+            ServerPlayer player = currentServer.getPlayerList().getPlayer(recipientUuid);
+            if (player == null) {
+                continue;
+            }
+            String displayed = renderNativeChatText(
+                    player,
+                    pending.original,
+                    completion.translations,
+                    completion.defaultShowOriginal);
+            PlayerChatMessage message = PlayerChatMessage.unsigned(
+                    pending.senderUuid,
+                    NativeChatTranslation.packetText(pending.original))
+                    .withUnsignedContent(Component.literal(displayed));
+            player.sendChatMessage(
+                    OutgoingChatMessage.create(message),
+                    false,
+                    pending.chatType);
+        }
+    }
+
+    private String renderNativeChatText(
+            ServerPlayer player,
+            String original,
+            Map<String, String> translations,
+            boolean defaultShowOriginal) {
+        TranslationPreference preference = translationPreferences.get(player.getUUID());
+        String translated = preference != null && !preference.translationsEnabled
+                ? ""
+                : NativeChatTranslation.select(
+                        translations,
+                        player.clientInformation().language());
+        String displayed = translated.isBlank() || NativeChatTranslation.sameText(original, translated)
+                ? original
+                : translated;
+        if (!displayed.equals(original)
+                && (preference == null ? defaultShowOriginal : preference.showOriginal)) {
+            String prefix = player.clientInformation().language().startsWith("zh_")
+                    ? "[原文] "
+                    : "[Original] ";
+            displayed += "\n" + prefix + original;
+        }
+        return displayed;
     }
 
     private Component renderTranslatedChat(
@@ -2230,14 +2682,39 @@ public final class MineAstrBridge implements WebSocket.Listener {
         if (socket == null || socket.isOutputClosed()) {
             return;
         }
-        try {
-            socket.sendText(GSON.toJson(payload), true).whenComplete((ignored, throwable) -> {
-                if (throwable != null) {
-                    handleSendFailure(socket, throwable);
+        sendTextSerialized(socket, GSON.toJson(payload)).whenComplete((ignored, throwable) -> {
+            if (throwable != null) {
+                handleSendFailure(socket, throwable);
+            }
+        });
+    }
+
+    private CompletableFuture<Void> sendTextSerialized(WebSocket socket, String text) {
+        synchronized (outboundSendLock) {
+            CompletableFuture<Void> previous = outboundSendTails.get(socket);
+            CompletableFuture<Void> start = previous == null
+                    ? CompletableFuture.completedFuture(null)
+                    : previous.handle((ignored, error) -> null);
+            CompletableFuture<Void> current = start.thenCompose(ignored -> {
+                if (socket == null || socket.isOutputClosed()) {
+                    return CompletableFuture.failedFuture(
+                            new IllegalStateException("WebSocket output is closed"));
+                }
+                try {
+                    return socket.sendText(text, true).thenApply(ignoredSocket -> null);
+                } catch (Throwable error) {
+                    return CompletableFuture.failedFuture(error);
                 }
             });
-        } catch (RuntimeException exc) {
-            handleSendFailure(socket, exc);
+            outboundSendTails.put(socket, current);
+            current.whenComplete((ignored, error) -> {
+                synchronized (outboundSendLock) {
+                    if (outboundSendTails.get(socket) == current) {
+                        outboundSendTails.remove(socket);
+                    }
+                }
+            });
+            return current;
         }
     }
 
@@ -2247,6 +2724,49 @@ public final class MineAstrBridge implements WebSocket.Listener {
             return null;
         }
         return executor.schedule(() -> failScreenshot(requestId, "等待玩家客户端截图超时。"), SCREENSHOT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    }
+
+    private ScheduledFuture<?> scheduleNativeChatTimeout(String messageId, int timeoutMs) {
+        ScheduledExecutorService executor = reconnectExecutor;
+        if (executor == null || executor.isShutdown()) {
+            return null;
+        }
+        return executor.schedule(
+                () -> failNativeChat(messageId, "translation timeout"),
+                timeoutMs,
+                TimeUnit.MILLISECONDS);
+    }
+
+    private void failNativeChat(String messageId, String reason) {
+        PendingNativeChat pending = pendingNativeChats.remove(messageId);
+        if (pending == null) {
+            return;
+        }
+        pending.cancelTimeout();
+        completeNativeChat(pending, Map.of(), false, reason);
+    }
+
+    private void clearPendingNativeChats(WebSocket socket, boolean broadcastFallback, String reason) {
+        for (var entry : pendingNativeChats.entrySet()) {
+            PendingNativeChat pending = entry.getValue();
+            if (socket != null && pending.socket != socket) {
+                continue;
+            }
+            if (!pendingNativeChats.remove(entry.getKey(), pending)) {
+                continue;
+            }
+            pending.cancelTimeout();
+            if (broadcastFallback) {
+                completeNativeChat(pending, Map.of(), false, reason);
+            }
+        }
+    }
+
+    private void disableNativeChatForSocket(WebSocket socket, String reason) {
+        nativeChatPolicy.updateAndGet(policy -> policy.socket() == socket
+                ? NativeChatPolicy.disabled()
+                : policy);
+        clearPendingNativeChats(socket, true, reason);
     }
 
     private ScheduledFuture<?> scheduleImageTranslationTimeout(String requestId) {
@@ -2541,6 +3061,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         } catch (RuntimeException ignored) {
         }
         if (activeSocketFailed) {
+            disableNativeChatForSocket(socket, error);
             clearPendingScreenshots(error);
             clearPendingLoginChecks(error);
             pendingCommandApprovals.clear();
@@ -2730,6 +3251,58 @@ public final class MineAstrBridge implements WebSocket.Listener {
     }
 
     private record TranslationPreference(boolean translationsEnabled, boolean showOriginal) {
+    }
+
+    private record NativeChatPolicy(WebSocket socket, boolean enabled, int timeoutMs) {
+        private static NativeChatPolicy disabled() {
+            return new NativeChatPolicy(null, false, DEFAULT_NATIVE_CHAT_TIMEOUT_MS);
+        }
+    }
+
+    private record NativeChatCompletion(
+            PendingNativeChat pending,
+            Map<String, String> translations,
+            boolean defaultShowOriginal,
+            String reason) {
+    }
+
+    private static final class PendingNativeChat {
+        private final WebSocket socket;
+        private final String messageId;
+        private final long sequence;
+        private final UUID senderUuid;
+        private final String senderName;
+        private final String original;
+        private final List<UUID> recipientUuids;
+        private final ChatType.Bound chatType;
+        private volatile ScheduledFuture<?> timeout;
+
+        private PendingNativeChat(
+                WebSocket socket,
+                String messageId,
+                long sequence,
+                UUID senderUuid,
+                String senderName,
+                String original,
+                List<UUID> recipientUuids,
+                ChatType.Bound chatType) {
+            this.socket = socket;
+            this.messageId = messageId;
+            this.sequence = sequence;
+            this.senderUuid = senderUuid;
+            this.senderName = senderName;
+            this.original = original;
+            this.recipientUuids = List.copyOf(recipientUuids);
+            this.chatType = chatType;
+        }
+
+        private void cancelTimeout() {
+            ScheduledFuture<?> task = timeout;
+            if (task != null) {
+                task.cancel(false);
+                timeout = null;
+            }
+        }
     }
 
     private static final class PendingScreenshot {

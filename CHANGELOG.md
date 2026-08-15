@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.27
+
+- Add optional native Minecraft player-chat translation: AstrBot returns locale-specific text to the paired player clients while preserving ordered fallback and original-text recovery.
+- Route native-chat responses to the originating connection, serialize WebSocket sends, and document the unsigned-chat/Secure Chat reporting trade-off.
+- Use one server-thread dispatch queue, snapshot every online recipient (including spectators), and place bounded rate/availability fallbacks behind earlier translations so concurrent responses cannot reorder chat.
+- Embed the AGPL license in binary and source JARs.
+- Keep the packet body within Minecraft's 256-character limit without splitting emoji, while carrying the full translation in the unsigned display component.
+
 ## 0.6.26
 
 - Synchronize the Fabric build with the AstrBot plugin v0.6.26 release.

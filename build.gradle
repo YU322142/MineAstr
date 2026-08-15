@@ -46,6 +46,13 @@ java {
     targetCompatibility = JavaVersion.VERSION_21
 }
 
+tasks.withType(Jar).configureEach {
+    from(rootProject.file("LICENSE")) {
+        into("META-INF")
+        rename { "LICENSE_mineastr" }
+    }
+}
+
 publishing {
     publications {
         create("mavenJava", MavenPublication) {
