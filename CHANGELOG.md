@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.28
+
+- 同步 MineAstr 版本号至 v0.6.28；协议与原生聊天翻译行为保持兼容。
+
 ## 0.6.27
 
 - Add optional native Minecraft player-chat translation: AstrBot returns locale-specific text to the paired player clients while preserving ordered fallback and original-text recovery.
