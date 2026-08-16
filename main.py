@@ -428,7 +428,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.6.27",
+    "0.6.28",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -477,6 +477,7 @@ class MineAstrPlugin(Star):
         self._translation_contexts: dict[str, deque[dict[str, str]]] = {}
         self._translation_context_accessed_at: dict[str, float] = {}
         self._relay_message_records: dict[str, dict[str, Any]] = {}
+        self._relay_outbound_message_records: dict[str, dict[str, Any]] = {}
         self._binding_store = BindingStore(str(self._cfg("binding_database")))
         self._refresh_relay_sessions()
         from .minecraft_adapter import MinecraftPlatformAdapter  # noqa: F401
@@ -699,6 +700,7 @@ class MineAstrPlugin(Star):
             "_translation_contexts",
             "_translation_context_accessed_at",
             "_relay_message_records",
+            "_relay_outbound_message_records",
             "_screenshot_last_request_at",
         ):
             value = getattr(self, attribute, None)
@@ -813,6 +815,21 @@ class MineAstrPlugin(Star):
             )
             records.pop(oldest, None)
             stats["relay_records"] += 1
+
+        outbound_records = getattr(
+            self, "_relay_outbound_message_records", {}
+        )
+        for record_key, record in list(outbound_records.items()):
+            if self._relay_record_created_at(record, 0.0) < cutoff:
+                outbound_records.pop(record_key, None)
+        while len(outbound_records) > RELAY_MESSAGE_RECORD_LIMIT:
+            oldest = min(
+                outbound_records,
+                key=lambda key: self._relay_record_created_at(
+                    outbound_records[key], 0.0
+                ),
+            )
+            outbound_records.pop(oldest, None)
         return stats
 
     @staticmethod
@@ -1145,6 +1162,69 @@ class MineAstrPlugin(Star):
                 key=lambda item: self._relay_record_created_at(item[1], 0.0),
             )[0]
             records.pop(oldest, None)
+
+    @staticmethod
+    def _relay_reply_fingerprint(text: Any) -> str:
+        normalized = re.sub(r"\s+", " ", str(text or "")).strip()
+        if not normalized:
+            return ""
+        return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+    def _store_outbound_relay_message(self, session: str, text: Any) -> None:
+        origin = str(session or "").strip()
+        fingerprint = self._relay_reply_fingerprint(text)
+        if not origin or not fingerprint:
+            return
+        records = getattr(self, "_relay_outbound_message_records", None)
+        if not isinstance(records, dict):
+            records = {}
+            self._relay_outbound_message_records = records
+        now = time.time()
+        records[f"{origin}:{time.monotonic_ns()}"] = {
+            "origin": origin,
+            "fingerprint": fingerprint,
+            "created_at": now,
+        }
+        cutoff = now - self._bounded_cfg_int(
+            "relay_record_retention_seconds", 300, 30 * 86400
+        )
+        for record_key, record in list(records.items()):
+            if self._relay_record_created_at(record, 0.0) < cutoff:
+                records.pop(record_key, None)
+        while len(records) > RELAY_MESSAGE_RECORD_LIMIT:
+            oldest = min(
+                records.items(),
+                key=lambda item: self._relay_record_created_at(item[1], 0.0),
+            )[0]
+            records.pop(oldest, None)
+
+    def _is_reply_to_synced_message(
+        self,
+        event: AstrMessageEvent,
+        reply_context: dict[str, str] | None,
+    ) -> bool:
+        quoted_text = str((reply_context or {}).get("text") or "").strip()
+        fingerprint = self._relay_reply_fingerprint(quoted_text)
+        origin = str(getattr(event, "unified_msg_origin", "") or "").strip()
+        if not fingerprint or not origin:
+            return False
+        records = getattr(self, "_relay_outbound_message_records", {})
+        if not isinstance(records, dict):
+            return False
+        cutoff = time.time() - self._bounded_cfg_int(
+            "relay_record_retention_seconds", 300, 30 * 86400
+        )
+        for record in records.values():
+            if not isinstance(record, dict):
+                continue
+            if self._relay_record_created_at(record, 0.0) < cutoff:
+                continue
+            if (
+                str(record.get("origin") or "").strip() == origin
+                and str(record.get("fingerprint") or "") == fingerprint
+            ):
+                return True
+        return False
 
     async def _relay_recalled_message(
         self,
@@ -2928,6 +3008,7 @@ class MineAstrPlugin(Star):
     ) -> None:
         message = trim_message(content, self._cfg_int("max_relay_length"))
         chain: list[Any] = []
+        outbound_texts: list[str] = []
         if reply_context:
             quoted_sender = str(reply_context.get("sender") or "").strip()
             quoted_text = str(reply_context.get("text") or "").strip()
@@ -2938,8 +3019,10 @@ class MineAstrPlugin(Star):
                 if quoted_text:
                     quote += f": {quoted_text}" if quoted_sender else quoted_text
                 chain.append(Plain(quote + "\n"))
+                outbound_texts.append(quote)
         if message:
             chain.append(Plain(message))
+            outbound_texts.append(message)
         for item in media or ():
             reference = str(item.get("url") or "").strip()
             if not reference:
@@ -2960,6 +3043,11 @@ class MineAstrPlugin(Star):
             )
             if not sent:
                 logger.warning("MineAstr 找不到桥接会话：%s", session)
+            else:
+                for outbound_text in outbound_texts:
+                    self._store_outbound_relay_message(
+                        session, outbound_text
+                    )
         except Exception as exc:
             logger.warning("MineAstr 向桥接会话 %s 发送消息失败：%s", session, exc)
 
@@ -3585,7 +3673,13 @@ class MineAstrPlugin(Star):
     async def mineastr_relay_message(self, event: AstrMessageEvent) -> None:
         platform_id = str(event.get_platform_id() or "")
         raw = self._event_raw_message(event) if platform_id == "minecraft" else {}
+        reply_context = self._event_reply_context(event)
+        reply_to_synced = self._is_reply_to_synced_message(
+            event, reply_context
+        )
         if not self._cfg_bool("bridge_enabled"):
+            if reply_to_synced:
+                event.stop_event()
             if bool(raw.get("native_chat")):
                 fallback = strip_minecraft_colors(
                     str(
@@ -3599,6 +3693,8 @@ class MineAstrPlugin(Star):
         text = str(event.message_str or "").strip()
         event_media = self._event_media(event)
         if not text and not event_media:
+            if reply_to_synced:
+                event.stop_event()
             if bool(raw.get("native_chat")):
                 fallback = strip_minecraft_colors(
                     str(
@@ -3732,7 +3828,11 @@ class MineAstrPlugin(Star):
         relay_bot_conversation = self._cfg_bool(
             "relay_bot_conversations_to_game"
         ) or self._cfg_bool("relay_wake_messages")
-        if event.is_at_or_wake_command and not relay_bot_conversation:
+        if (
+            event.is_at_or_wake_command
+            and not relay_bot_conversation
+            and not reply_to_synced
+        ):
             return
 
         prefix = str(self._cfg("relay_prefix"))
@@ -3750,7 +3850,6 @@ class MineAstrPlugin(Star):
             return
         identity = self._identity(event)
         media = event_media
-        reply_context = self._event_reply_context(event)
         self._remember_relay_message(
             event,
             sender_name=identity["owner_display"],
@@ -3834,13 +3933,17 @@ class MineAstrPlugin(Star):
         except Exception as exc:
             logger.warning("MineAstr 转发聊天到 Minecraft 失败：%s", exc)
             return
-        if not event.is_at_or_wake_command:
+        if reply_to_synced or not event.is_at_or_wake_command:
             event.stop_event()
 
     @filter.after_message_sent(priority=1000)
     async def mineastr_relay_bot_reply_to_game(
         self, event: AstrMessageEvent
     ) -> None:
+        if self._is_reply_to_synced_message(
+            event, self._event_reply_context(event)
+        ):
+            return
         if (
             not self._cfg_bool("bridge_enabled")
             or not self._cfg_bool("relay_bot_conversations_to_game")

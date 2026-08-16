@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import types
 import unittest
 from pathlib import Path
@@ -802,6 +803,109 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
             ("目前一人在线。", "AstrBot"),
         )
         self.assertEqual(stopped, [])
+
+    async def test_reply_to_synced_message_is_relayed_without_llm_wakeup(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "bridge_settings": {
+                "bridge_enabled": True,
+                "relay_bot_conversations_to_game": False,
+                "relay_wake_messages": False,
+                "relay_commands": False,
+                "relay_prefix": "",
+                "chat_to_game_filters": "",
+                "chat_to_game_template": "{message}",
+                "max_relay_length": 500,
+                "discord_channel_settings": [],
+            },
+            "qq_settings": {
+                "qq_notification_settings": MAIN.QQ_NOTIFICATION_DEFAULTS.copy()
+            },
+            "discord_settings": {
+                "discord_notification_settings": (
+                    MAIN.DISCORD_NOTIFICATION_DEFAULTS.copy()
+                )
+            },
+        }
+        plugin._relay_sessions = {
+            "default:GroupMessage:10001",
+            "discord:GroupMessage:20002",
+        }
+        quoted = "[Alice] Hello"
+        plugin._relay_outbound_message_records = {
+            "outbound-1": {
+                "origin": "default:GroupMessage:10001",
+                "fingerprint": plugin._relay_reply_fingerprint(quoted),
+                "created_at": time.time(),
+            }
+        }
+        plugin._translate_text = AsyncMock(
+            return_value={
+                "source_language": "zh_cn",
+                "translations": {"en_us": "How are you?"},
+            }
+        )
+        plugin._send_to_relay_session = AsyncMock()
+        plugin._notify_mentioned_players = AsyncMock()
+        adapter = types.SimpleNamespace(relay_chat=AsyncMock())
+        plugin._minecraft_adapter = lambda: adapter
+        reply = MAIN.Reply()
+        reply.text = quoted
+        reply.sender_nickname = "AstrBot"
+        reply.id = "synced-1"
+        stopped = []
+        event = types.SimpleNamespace(
+            unified_msg_origin="default:GroupMessage:10001",
+            message_str="你好吗？",
+            message_obj=types.SimpleNamespace(message=[reply]),
+            is_at_or_wake_command=True,
+            get_platform_id=lambda: "default",
+            get_sender_id=lambda: "42",
+            get_sender_name=lambda: "Bob",
+            stop_event=lambda: stopped.append(True),
+        )
+
+        await plugin.mineastr_relay_message(event)
+
+        plugin._translate_text.assert_not_awaited()
+        adapter.relay_chat.assert_awaited_once()
+        self.assertEqual(stopped, [True])
+
+    async def test_bot_reply_after_synced_message_does_not_relay_llm_result(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "bridge_settings": {
+                "bridge_enabled": True,
+                "relay_bot_conversations_to_game": True,
+            }
+        }
+        plugin._relay_sessions = {"default:GroupMessage:10001"}
+        quoted = "[Alice] Hello"
+        plugin._relay_outbound_message_records = {
+            "outbound-1": {
+                "origin": "default:GroupMessage:10001",
+                "fingerprint": plugin._relay_reply_fingerprint(quoted),
+                "created_at": time.time(),
+            }
+        }
+        adapter = types.SimpleNamespace(relay_chat=AsyncMock())
+        plugin._minecraft_adapter = lambda: adapter
+        reply = MAIN.Reply()
+        reply.text = quoted
+        event = types.SimpleNamespace(
+            unified_msg_origin="default:GroupMessage:10001",
+            message_str="你好吗？",
+            message_obj=types.SimpleNamespace(message=[reply]),
+            is_at_or_wake_command=True,
+            get_platform_id=lambda: "default",
+            get_result=lambda: types.SimpleNamespace(
+                get_plain_text=lambda: "AstrBot 回复"
+            ),
+        )
+
+        await plugin.mineastr_relay_bot_reply_to_game(event)
+
+        adapter.relay_chat.assert_not_awaited()
 
     def test_translation_parser_rejects_missing_languages_and_normalizes_codes(self):
         parsed = MAIN.MineAstrPlugin._parse_translation_response(

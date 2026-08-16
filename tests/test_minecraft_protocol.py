@@ -335,7 +335,7 @@ class AdapterEventTests(unittest.IsolatedAsyncioTestCase):
                 "protocol": 1,
                 "server_id": "survival",
                 "server_name": "Survival",
-                "mod_version": "0.6.27",
+                "mod_version": "0.6.28",
                 "chat_capabilities": ["native_chat_translation"],
             },
         )

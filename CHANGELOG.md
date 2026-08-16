@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.28 - 2026-08-16
+
+- 修复 QQ/Discord 回复 MineAstr 同步消息时被误判为机器人唤醒、继续触发 LLM 的问题；现在仍正常跨平台转发，但会停止该事件继续进入 LLM。
+- 为出站同步消息建立仅保存 SHA-256 指纹的短期账本，支持按会话精确识别引用并自动清理。
+
 ## 0.6.27 - 2026-08-15
 
 - Add optional native Minecraft player-chat translation: the paired 1.21.11/1.21.1 Mod can request one shared AstrBot translation and receive per-player locale results.
