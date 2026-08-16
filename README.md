@@ -11,30 +11,30 @@ MineAstr 将 Minecraft Fabric 1.21.11 与 NeoForge 1.21.1 服务器接入 AstrBo
 
 - [`astrbot-plugin`](https://github.com/YU322142/MineAstr/tree/astrbot-plugin)：AstrBot 插件端；分支根目录可直接作为插件项目。
 - [`minecraft-mod`](https://github.com/YU322142/MineAstr/tree/minecraft-mod)：Minecraft Fabric Mod；目标为 Minecraft `1.21.11`、Fabric API `0.141.4+1.21.11`、Java `21`。
-- [`minecraft-neoforge-1.21.1`](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)：Minecraft NeoForge Mod；目标为 Minecraft `1.21.1`、NeoForge `21.1.219`、Java `21`，包含与 Fabric 0.6.27 对齐的完整源码、文档和测试。
+- [`minecraft-neoforge-1.21.1`](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)：Minecraft NeoForge Mod；目标为 Minecraft `1.21.1`、NeoForge `21.1.219`、Java `21`，包含与 Fabric 0.6.28 对齐的完整源码、文档和测试。
 
 `main` 是项目索引；三个可构建工程分别保留在以上分支，以兼容 AstrBot 从仓库分支安装插件的目录要求。
 
 ## 当前版本
 
-- AstrBot 插件：`0.6.27`
-- MineAstr Fabric Mod：`0.6.27`
-- MineAstr NeoForge Mod：`0.6.27`（Minecraft `1.21.1`）
+- AstrBot 插件：`0.6.28`
+- MineAstr Fabric Mod：`0.6.28`
+- MineAstr NeoForge Mod：`0.6.28`（Minecraft `1.21.1`）
 - Minecraft：`1.21.11`
 - Fabric API：`0.141.4+1.21.11`
 - NeoForge：`21.1.219`（Minecraft `1.21.1`）
 
 成品请从 [GitHub Releases](https://github.com/YU322142/MineAstr/releases) 下载：
 
-- `astrbot_plugin_mineastr-v0.6.27.zip`
-- `mineastr-fabric-0.6.27.jar`
-- `mineastr-neoforge-1.21.1-0.6.27.jar`
-- `mineastr-neoforge-1.21.1-0.6.27-sources.jar`
+- `astrbot_plugin_mineastr-v0.6.28.zip`
+- `mineastr-fabric-0.6.28.jar`
+- `mineastr-neoforge-1.21.1-0.6.28.jar`
+- `mineastr-neoforge-1.21.1-0.6.28-sources.jar`
 
 NeoForge 1.21.1 的完整源码、测试和构建说明已公开在
 [`minecraft-neoforge-1.21.1`](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)；该分支可直接使用 `./gradlew build`（Windows 使用 `gradlew.bat build`）生成 Mod 和源码 JAR。
 
-v0.6.27 新增可选的 Minecraft 原生玩家聊天翻译：服务端 Mod 只提交一次原生消息，AstrBot 按在线玩家的客户端语言返回结果，Mod 按接收者快照有序广播，并在超时、断线、重复响应或无匹配译文时回退原文。此模式会重写为无签名聊天消息，因此不保留 Secure Chat 签名/举报能力，也不替代原版服务器文本过滤、最终广播阶段的过滤与反刷屏语义；需要完整原版审核链路时关闭 `game_translation_enabled`。未启用策略或未安装新 Mod 的连接继续使用原版聊天路径。AstrBot 仍保留 v0.6.26 的 OneBot/Discord 撤回隔离、文本/图片翻译缓存、翻译上下文和 Minecraft 截图定时清理。
+v0.6.28 在保留 Minecraft 原生玩家聊天翻译的基础上，修复 QQ/Discord 回复 MineAstr 同步消息时误触发 LLM 的问题：回复会继续正常跨平台转发，但不会再进入机器人回复链。原生聊天仍会重写为无签名消息，因此不保留 Secure Chat 签名/举报能力，也不替代原版服务器文本过滤、最终广播阶段的过滤与反刷屏语义；需要完整原版审核链路时关闭 `game_translation_enabled`。未启用策略或未安装新 Mod 的连接继续使用原版聊天路径。
 
 服主可将准星对准告示牌后使用 `/mineastr sign-translation status` 查看缓存，使用 `set <locale> <translation>` 保存不会被自动翻译覆盖的人工译文，使用 `clear [locale]` 清理当前牌面，并以管理员权限使用 `clear-all` 清理当前世界。管理操作会同步重置在线客户端缓存，并使已经在途的旧 AI 响应失效。
 
