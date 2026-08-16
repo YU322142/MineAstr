@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.28 - NeoForge 1.21.1
+
+- 同步 MineAstr 版本号至 v0.6.28；协议与原生聊天翻译行为保持兼容。
+
 ## 0.6.27 - NeoForge 1.21.1
 
 - Add optional native Minecraft player-chat translation with per-player locale results and ordered original-text fallback.
