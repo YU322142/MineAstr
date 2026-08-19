@@ -1,5 +1,7 @@
 # MineAstr NeoForge Mod
 
+[English documentation](README.en.md)
+
 [![AI Assisted](https://img.shields.io/badge/AI-OpenAI%20Codex%20Assisted-10A37F?style=for-the-badge&logo=openai&logoColor=white)](#ai-制作声明)
 
 > [!IMPORTANT]
