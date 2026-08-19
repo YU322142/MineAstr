@@ -1,53 +1,74 @@
 # MineAstr 0.6.29 Configuration Reference
 
-This document covers the current configuration only. See [`CHANGELOG.md`](../CHANGELOG.md) for historical changes.
+This document describes the current configuration only. See [`CHANGELOG.md`](../CHANGELOG.md) for historical field changes.
 
-## Files
+## Configuration Files
 
-| File | Scope |
+| File | Purpose |
 | --- | --- |
 | `config/mineastr-common.toml` | server bridge, tools, binding, and authorization |
-| `config/mineastr-client.toml` | client translation HUD, range, scale, and screenshot policy |
+| `config/mineastr-client.toml` | client translation HUD, distance, scale, and screenshot policy |
 
-## Bridge
+A dedicated server reads only the common configuration. When the local bridge is enabled for a single-player world, it also uses the common configuration in the client instance.
 
-The main keys are `enabled`, `websocketUrl`, `token`, `serverId`, `serverName`, `botDisplayName`, `reconnectSeconds`, and `maxMessageLength`. Keep the token private and expose a remote AstrBot only through a controlled network or trusted TLS proxy.
+## Basic Bridge Settings
 
-## Query tools
-
-Player state, inventory summaries, nearby entities, and loaded-region features are individually configurable. Region inspection must not force-load chunks or expose complete block-entity NBT.
-
-## Command tool
-
-Keep `enableCommandTool = false` unless remote commands are explicitly required. Enabling it also requires a strong token, a minimal trusted-user list, narrow command rules, and an auditable approval policy. Avoid a global `"*"` rule.
-
-## Binding and login checks
-
-Binding synchronization, vanilla whitelist synchronization, and pre-login binding checks are independent opt-in features. Decide the account-recovery and AstrBot-outage policy before enabling them.
-
-## Client translation
-
-| Key | Default | Purpose |
+| Key | Recommended value | Description |
 | --- | --- | --- |
-| `localWorldServerEnabled` | `false` | Connect the integrated server to AstrBot |
-| `gameTranslationsEnabled` | `true` | Master translation switch |
-| `showOriginalTranslatedMessages` | `true` | Show source text for ordinary translated chat |
-| `signTranslationsEnabled` | `true` | Enable target-bound overlays |
-| `signTranslationMaxDistance` | `8` | Overlay distance |
+| `enabled` | `true` | Whether to start the bridge |
+| `websocketUrl` | local or controlled endpoint | AstrBot Minecraft adapter WebSocket |
+| `token` | long random string | Must match exactly on both sides; never commit the real value |
+| `serverId` | stable short identifier | Unique ID in a multi-server environment |
+| `serverName` | server display name | Used in logs and bot context |
+| `botDisplayName` | `AstrBot` | In-game bot name |
+| `reconnectSeconds` | `5` | Reconnection interval after disconnection |
+| `maxMessageLength` | `1000` | Maximum forwarded chat length |
+
+A remote AstrBot should be exposed through a controlled network, TLS termination, or a trusted reverse proxy. Do not expose its management interface directly to the public Internet.
+
+## Query Tools
+
+Player state, inventory summaries, nearby entities, and loaded-region features can be enabled independently. Regional tools must not force-load new chunks and must not return container contents, original sign text, or complete block-entity NBT.
+
+## Command Tool
+
+`enableCommandTool` must remain `false` by default. If remote commands are genuinely required, also configure a strong random token, the smallest possible trusted-user list, minimal command rules, and an auditable approval policy. Do not use a standalone `"*"` rule unless the risk of arbitrary remote server-command execution is explicitly accepted.
+
+## Binding and Login Checks
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `enableBindingSync` | `false` | Synchronize MineAstr account bindings |
+| `bindingSyncWhitelist` | `false` | Synchronize binding results to the vanilla whitelist |
+| `loginBindingCheckEnabled` | `false` | Check binding before login |
+| `loginCheckFailOpen` | `true` | Whether to allow login when AstrBot is unavailable |
+| `generateBindingCodeOnReject` | `true` | Generate a one-time binding code when login is rejected |
+
+Whitelist synchronization and login checks are independent features. Define account-recovery and AstrBot-outage policies before enabling them.
+
+## Client Translation
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `localWorldServerEnabled` | `false` | Whether the single-player integrated server connects to AstrBot |
+| `gameTranslationsEnabled` | `true` | Master game-translation switch |
+| `showOriginalTranslatedMessages` | `true` | Whether ordinary chat also displays the source text |
+| `signTranslationsEnabled` | `true` | Master crosshair-target overlay switch |
+| `signTranslationMaxDistance` | `8` | Maximum overlay distance |
 | `signTranslationScale` | `1.0` | Overlay scale |
 
-The source-text option applies to ordinary chat. Target overlays in 0.6.29 display translated text only by default.
+`showOriginalTranslatedMessages` controls ordinary chat only. In 0.6.29, the target HUD displays translated text only by default.
 
 ## Screenshots
 
-`screenshotMode` accepts `ASK`, `AUTO`, or `DISABLED`. Public modpacks should normally keep `ASK`. Width, height, JPEG quality, and encoded byte limits can be configured independently.
+`screenshotMode` accepts `ASK`, `AUTO`, or `DISABLED`. Public modpacks should normally keep `ASK`. Width, height, JPEG quality, and the encoded-size limit can be configured independently.
 
-## Safe update procedure
+## Configuration Change Procedure
 
-1. Stop the server unless the setting is explicitly reloadable.
+1. Stop the server, unless the relevant setting is explicitly reloadable.
 2. Back up the TOML file.
-3. Update only the intended keys.
-4. Reject duplicate keys and invalid TOML.
-5. Restart, run `/mineastr status`, and inspect the log.
+3. Modify only the intended keys; do not replace the whole file over a player's local preferences.
+4. Check for duplicate keys and TOML syntax errors.
+5. After restarting, run `/mineastr status` and inspect the log.
 
-When publishing configuration OTA through MCSync, prefer key-level patches. Keep tokens and private endpoints local.
+When publishing configuration OTA through MCSync, prefer exact key-level patches. Tokens and private endpoints must continue to come from local configuration.
