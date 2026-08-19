@@ -1,8 +1,16 @@
 # MineAstr 0.6.29
 
-[English](README.en.md) · [配置参考](docs/CONFIGURATION.zh-CN.md) · [变更日志](CHANGELOG.md) · [外部翻译 API](EXTERNAL_TRANSLATION_API.md)
+[English](README.en.md) · [配置参考](docs/CONFIGURATION.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md) · [Changelog](CHANGELOG.md) · [外部翻译 API](EXTERNAL_TRANSLATION_API.md)
 
 MineAstr 是面向 Minecraft 1.21.1 / NeoForge 的 AstrBot 桥接模组。它把聊天、事件和受控查询送到 AstrBot，并根据每位玩家的客户端语言显示翻译结果。
+
+## Fork 与项目地址
+
+- 当前社区 Fork：[YU322142/MineAstr](https://github.com/YU322142/MineAstr)，NeoForge 1.21.1 开发分支为 `minecraft-neoforge-1.21.1`。
+- 原始上游：[Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr)。
+- 沉浸画框联动 Fork：[YU322142/ImmersivePaintings](https://github.com/YU322142/ImmersivePaintings)，对应分支为 `1.21.1-neoforge`。
+
+0.6.29 与 Immersive Paintings 0.7.15 的联动由上述两个社区 Fork 共同维护，并非两个上游项目的官方联动。相关问题请提交到对应 Fork。
 
 | 项目 | 要求 |
 | --- | --- |

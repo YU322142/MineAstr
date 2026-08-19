@@ -1,8 +1,16 @@
 # MineAstr 0.6.29
 
-[中文](README.md) · [Configuration](docs/CONFIGURATION.en.md) · [Changelog](CHANGELOG.md) · [External translation API](EXTERNAL_TRANSLATION_API.md)
+[中文](README.md) · [Configuration](docs/CONFIGURATION.en.md) · [Changelog](CHANGELOG.md) · [中文更新日志](CHANGELOG.zh-CN.md) · [External translation API](EXTERNAL_TRANSLATION_API.md)
 
 MineAstr is an AstrBot bridge for Minecraft 1.21.1 on NeoForge. It forwards chat and controlled game events to AstrBot and presents translated results according to each player's client language.
+
+## Forks and project URLs
+
+- Maintained community fork: [YU322142/MineAstr](https://github.com/YU322142/MineAstr), branch `minecraft-neoforge-1.21.1`.
+- Original upstream: [Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr).
+- Immersive Paintings integration fork: [YU322142/ImmersivePaintings](https://github.com/YU322142/ImmersivePaintings), branch `1.21.1-neoforge`.
+
+The MineAstr 0.6.29 and Immersive Paintings 0.7.15 integration is maintained by these two community forks. It is not an official integration supplied by either upstream project. Report integration issues to the corresponding fork.
 
 | Component | Requirement |
 | --- | --- |
