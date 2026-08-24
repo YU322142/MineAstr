@@ -275,7 +275,7 @@ AQQBOT_DEFAULT_CONFIG: dict[str, Any] = {
     "image_translation_prompt": "",
     "translation_glossary_path": "",
     "translation_glossary_max_chars": 12_000,
-    "image_translation_glossary_max_chars": 2_800,
+    "image_translation_glossary_max_chars": 12_000,
     "cache_cleanup_enabled": True,
     "cache_cleanup_interval_seconds": 300,
     "memory_cache_retention_seconds": 86400,
@@ -676,7 +676,17 @@ class MineAstrPlugin(Star):
     def _bounded_cfg_int(self, key: str, minimum: int, maximum: int) -> int:
         return max(minimum, min(maximum, self._cfg_int(key)))
 
-    def _append_translation_glossary(
+    def _translation_glossary_provider(self) -> GlossaryProvider:
+        provider = getattr(self, "_glossary_provider", None)
+        if not isinstance(provider, GlossaryProvider):
+            provider = GlossaryProvider(
+                lambda: str(self._cfg("translation_glossary_path") or ""),
+                logger=lambda message: logger.warning(message),
+            )
+            self._glossary_provider = provider
+        return provider
+
+    async def _append_translation_glossary(
         self,
         instructions: str,
         source: str,
@@ -689,30 +699,35 @@ class MineAstrPlugin(Star):
         # instance during a hot reload.  Lazily create the provider so the
         # glossary remains an additive feature and never becomes a startup
         # requirement.
-        provider = getattr(self, "_glossary_provider", None)
-        if not isinstance(provider, GlossaryProvider):
-            provider = GlossaryProvider(
-                lambda: str(self._cfg("translation_glossary_path") or ""),
-                logger=lambda message: logger.warning(message),
-            )
-            self._glossary_provider = provider
+        if not str(self._cfg("translation_glossary_path") or "").strip():
+            return instructions
+        provider = self._translation_glossary_provider()
         if image:
             max_chars = self._bounded_cfg_int(
-                "image_translation_glossary_max_chars", 0, 2_800
+                "image_translation_glossary_max_chars", 0, 12_000
             )
-            fragment = provider.image_seed(max_chars=max_chars)
-            prompt_limit = TRANSLATION_PROMPT_MAX_LENGTH
         else:
             max_chars = self._bounded_cfg_int(
                 "translation_glossary_max_chars", 0, 12_000
             )
-            fragment = provider.prompt_fragment(
-                source, max_chars=max_chars
-            )
-            prompt_limit = TRANSLATION_PROMPT_MAX_LENGTH
-        return append_glossary_instructions(
-            instructions, fragment, max_chars=prompt_limit
+        if max_chars <= 0:
+            return instructions
+        fragment = await asyncio.to_thread(
+            provider.prompt_fragment,
+            source,
+            max_chars=max_chars,
         )
+        return append_glossary_instructions(
+            instructions, fragment, max_chars=TRANSLATION_PROMPT_MAX_LENGTH
+        )
+
+    async def _translation_glossary_cache_token(
+        self,
+    ) -> tuple[str, int, int] | None:
+        if not str(self._cfg("translation_glossary_path") or "").strip():
+            return None
+        provider = self._translation_glossary_provider()
+        return await asyncio.to_thread(provider.cache_token)
 
     def _start_cache_cleanup_task(self) -> None:
         if not self._cfg_bool("cache_cleanup_enabled"):
@@ -2320,6 +2335,7 @@ class MineAstrPlugin(Star):
         cache_scope: str = "game",
         context: tuple[tuple[str, str], ...] = (),
         detect_bilingual_equivalence: bool = False,
+        inject_glossary: bool = True,
     ) -> dict[str, Any]:
         source = trim_message(content, self._cfg_int("max_relay_length"))
         if not source or not languages:
@@ -2328,9 +2344,10 @@ class MineAstrPlugin(Star):
             str(custom_instructions or "").strip(),
             TRANSLATION_PROMPT_MAX_LENGTH,
         )
-        instructions = self._append_translation_glossary(
-            instructions, source
-        )
+        if inject_glossary:
+            instructions = await self._append_translation_glossary(
+                instructions, source
+            )
         bilingual_review = bool(
             detect_bilingual_equivalence
             and self._contains_han_and_latin_candidate(source)
@@ -2635,16 +2652,16 @@ class MineAstrPlugin(Star):
             ).strip(),
             TRANSLATION_PROMPT_MAX_LENGTH,
         )
-        prompt_instructions = self._append_translation_glossary(
-            prompt_instructions, "", image=True
-        )
         context = trim_message(str(request.get("context") or "").strip(), 2000)
-        cache_key = (
+        glossary_token = await self._translation_glossary_cache_token()
+        cache_key: tuple[Any, ...] = (
             hashlib.sha256(image_bytes).hexdigest(),
             languages,
             prompt_instructions,
             context,
         )
+        if glossary_token is not None:
+            cache_key += (glossary_token,)
         accessed_at = getattr(self, "_image_translation_cache_accessed_at", None)
         if not isinstance(accessed_at, dict):
             accessed_at = {}
@@ -2721,6 +2738,28 @@ class MineAstrPlugin(Star):
             result["source_text"] = parsed_source
             if not result.get("translations") and not parsed_source:
                 raise RuntimeError("多模态模型没有返回有效的图片翻译 JSON")
+            if parsed_source:
+                glossary_instructions = await self._append_translation_glossary(
+                    prompt_instructions,
+                    parsed_source,
+                    image=True,
+                )
+                if glossary_instructions != prompt_instructions:
+                    corrected = await self._translate_text(
+                        parsed_source,
+                        languages,
+                        f"minecraft://{str(request.get('server_id') or 'minecraft')}",
+                        custom_instructions=glossary_instructions,
+                        cache_scope="game-image-ocr",
+                        context=(("image-context", context),) if context else (),
+                        inject_glossary=False,
+                    )
+                    if isinstance(corrected, dict) and (
+                        corrected.get("translations")
+                        or corrected.get("source_language")
+                    ):
+                        result = corrected
+                        result["source_text"] = parsed_source
             result["show_original"] = self._cfg_bool(
                 "game_translation_show_original"
             )

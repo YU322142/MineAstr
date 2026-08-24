@@ -144,10 +144,10 @@
         "default": 12000
       },
       "image_translation_glossary_max_chars": {
-        "description": "图片翻译术语种子上限",
+        "description": "图片 OCR 术语校正上限",
         "type": "int",
-        "hint": "图片请求发送前没有可靠的 OCR 文本，因此使用有限的高频物品/方块名称种子。MineAstr 协议的图片提示词上限为 4096 字符，建议保持默认 2800；0 表示关闭图片术语种子。",
-        "default": 2800
+        "hint": "多模态模型先识别图片文字；识别结果命中 JSON 术语时，再使用精确中英映射校正译文。没有命中时保持单次模型调用。范围 0–12000，0 表示关闭图片术语校正。",
+        "default": 12000
       },
       "discord_channel_settings": {
         "description": "Discord 频道语言分发与通知设置",
@@ -676,7 +676,7 @@
   "image_translation_prompt": {"type": "text", "default": "", "invisible": true},
   "translation_glossary_path": {"type": "string", "default": "", "invisible": true},
   "translation_glossary_max_chars": {"type": "int", "default": 12000, "invisible": true},
-  "image_translation_glossary_max_chars": {"type": "int", "default": 2800, "invisible": true},
+  "image_translation_glossary_max_chars": {"type": "int", "default": 12000, "invisible": true},
   "cache_cleanup_enabled": {"type": "bool", "default": true, "invisible": true},
   "cache_cleanup_interval_seconds": {"type": "int", "default": 300, "invisible": true},
   "memory_cache_retention_seconds": {"type": "int", "default": 86400, "invisible": true},

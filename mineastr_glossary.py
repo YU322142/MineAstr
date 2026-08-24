@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
+import threading
 from typing import Any, Callable, Iterable
 
 
@@ -19,6 +20,7 @@ DEFAULT_MAX_ENTRIES = 200_000
 DEFAULT_MAX_TERM_LENGTH = 512
 DEFAULT_MAX_PROMPT_CHARS = 12_000
 _SPACE_RE = re.compile(r"\s+")
+_HAN_RE = re.compile(r"[\u3400-\u9fff]")
 
 
 class GlossaryLoadError(ValueError):
@@ -136,11 +138,52 @@ class GlossaryIndex:
         self.source_path = source_path
         phrases: list[tuple[str, GlossaryEntry]] = []
         for entry in self.entries:
+            if normalize_text(entry.en_us) == normalize_text(entry.zh_cn):
+                continue
             for phrase in (entry.en_us, entry.zh_cn, entry.key):
                 normalized = normalize_text(phrase)
-                if normalized:
+                if self._usable_phrase(normalized):
                     phrases.append((normalized, entry))
         self._phrases = tuple(sorted(phrases, key=lambda item: len(item[0]), reverse=True))
+
+    @staticmethod
+    def _usable_phrase(phrase: str) -> bool:
+        if not phrase:
+            return False
+        if _HAN_RE.search(phrase):
+            return len(phrase) >= 2
+        return len(phrase) >= 3
+
+    @staticmethod
+    def _span(
+        text: str,
+        phrase: str,
+        covered: list[tuple[int, int, str]],
+    ) -> tuple[int, int] | None:
+        start = 0
+        has_han = bool(_HAN_RE.search(phrase))
+        while True:
+            position = text.find(phrase, start)
+            if position < 0:
+                return None
+            end = position + len(phrase)
+            start = position + 1
+            if not has_han:
+                before = text[position - 1] if position else ""
+                after = text[end] if end < len(text) else ""
+                if before and (before.isalnum() or before == "_"):
+                    continue
+                if after and (after.isalnum() or after == "_"):
+                    continue
+            nested = any(
+                other != phrase
+                and len(other) > len(phrase)
+                and left <= position
+                and end <= right
+                for left, right, other in covered
+            )
+            if not nested:
+                return position, end
 
     @classmethod
     def from_path(
@@ -166,10 +209,13 @@ class GlossaryIndex:
         if not normalized or limit <= 0:
             return []
         found: dict[str, GlossaryEntry] = {}
+        covered: list[tuple[int, int, str]] = []
         for phrase, entry in self._phrases:
-            if not phrase or phrase not in normalized:
+            span = self._span(normalized, phrase, covered)
+            if span is None:
                 continue
             found.setdefault(entry.identity, entry)
+            covered.append((span[0], span[1], phrase))
             if len(found) >= limit:
                 break
         return list(found.values())
@@ -194,36 +240,6 @@ class GlossaryIndex:
             used += extra
         return "\n".join(lines)
 
-    def render_seed(
-        self,
-        *,
-        max_chars: int = DEFAULT_MAX_PROMPT_CHARS,
-        prefixes: tuple[str, ...] = (
-            "item.",
-            "block.",
-            "entity.",
-            "fluid.",
-            "effect.",
-            "enchantment.",
-        ),
-    ) -> str:
-        """Render a bounded static seed for image OCR, where text is unknown."""
-        if max_chars <= 0:
-            return ""
-        lines: list[str] = []
-        used = 0
-        for entry in self.entries:
-            if not entry.key.lower().startswith(prefixes):
-                continue
-            line = f"- {entry.en_us} = {entry.zh_cn}"
-            extra = len(line) + (1 if lines else 0)
-            if used + extra > max_chars:
-                break
-            lines.append(line)
-            used += extra
-        return "\n".join(lines)
-
-
 class GlossaryProvider:
     """Reload-on-change provider with safe fallback to an empty glossary."""
 
@@ -241,6 +257,7 @@ class GlossaryProvider:
         self._logger = logger or (lambda _message: None)
         self._signature: tuple[str, int, int] | None = None
         self._index = GlossaryIndex(())
+        self._lock = threading.RLock()
 
     def _path(self) -> Path | None:
         value = self._path_getter() if callable(self._path_getter) else self._path_getter
@@ -248,8 +265,14 @@ class GlossaryProvider:
         return Path(raw).expanduser() if raw else None
 
     def get(self) -> GlossaryIndex:
+        with self._lock:
+            return self._get_locked()
+
+    def _get_locked(self) -> GlossaryIndex:
         path = self._path()
         if path is None:
+            self._signature = None
+            self._index = GlossaryIndex(())
             return GlossaryIndex(())
         try:
             stat = path.stat()
@@ -261,6 +284,7 @@ class GlossaryProvider:
             self._signature = signature
             self._index = GlossaryIndex(())
             return self._index
+
         if signature == self._signature:
             return self._index
         try:
@@ -275,6 +299,12 @@ class GlossaryProvider:
             self._index = GlossaryIndex(())
             return self._index
 
+    def cache_token(self) -> tuple[str, int, int] | None:
+        """Return the current file revision after applying reload/fallback logic."""
+        with self._lock:
+            self._get_locked()
+            return self._signature
+
     def prompt_fragment(
         self,
         text: str,
@@ -283,6 +313,3 @@ class GlossaryProvider:
         limit: int = 32,
     ) -> str:
         return self.get().render_matches(text, max_chars=max_chars, limit=limit)
-
-    def image_seed(self, *, max_chars: int = DEFAULT_MAX_PROMPT_CHARS) -> str:
-        return self.get().render_seed(max_chars=max_chars)

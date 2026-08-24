@@ -222,7 +222,7 @@ class ConfigSchemaTests(unittest.TestCase):
             self._visible_field(schema, "image_translation_glossary_max_chars")[
                 "default"
             ],
-            2800,
+            12000,
         )
         self.assertTrue(
             self._visible_field(schema, "relay_bot_conversations_to_game")[

@@ -195,7 +195,7 @@ pip install -r requirements.txt
 | `image_translation_prompt` | 空 | 沉浸画框等外部图片翻译专用提示词，最多 40000 字；与截图一起交给 AstrBot 多模态模型。 |
 | `translation_glossary_path` | 空 | AstrBot 机器上的外置 JSON 术语库路径；支持配对词典 `entries[]` 或原始 `languages.en_us` / `languages.zh_cn` 目录格式。留空关闭，不需要更新客户端或服务端 Mod。 |
 | `translation_glossary_max_chars` | `12000` | 普通文本、聊天和告示牌按当前原文召回术语的字符上限；不会把完整 JSON 放进提示词。 |
-| `image_translation_glossary_max_chars` | `2800` | 图片 OCR 前使用的重要物品/方块名称种子上限；为 MineAstr 图片提示词协议的 4096 字符上限预留空间。 |
+| `image_translation_glossary_max_chars` | `12000` | 图片 OCR 识别结果命中词典后，用于精确校正译文的术语字符上限；未命中时不会增加第二次模型调用。 |
 | `relay_bot_conversations_to_game` | `true` | 把桥接会话中玩家 @机器人的消息及 AstrBot 最终纯文本回复同步到 MC。 |
 | `game_translation_timeout_seconds` | `20` | 翻译超时；原生聊天会额外保留最多 5 秒回传余量，超时直接按发送顺序发送原文。 |
 | `translation_context_messages` | `0` | 提供给 AstrBot 翻译模型的最近上下文条数，范围 0-20；只翻译当前消息正文。 |
@@ -238,7 +238,15 @@ pip install -r requirements.txt
 
 “统一翻译提示词/术语表”会作为服主可信规则加入系统提示词，例如每行写 `Motiquies 固定译为 动静交映`。对于同一条源消息，插件会先收集游戏客户端与所有 QQ/Discord 接收会话需要的目标语言，只调用一次模型翻译纯正文，再分别套用游戏模板、平台发送者标签、语言顺序和原文开关。QQ、Discord 和 Discord 频道仍可分别开关聊天翻译、选择一个或多个目标 locale，但不再各自调用模型或维护不同术语表。升级时旧的分平台/频道提示词会自动合并到统一设置。翻译失败时本批次全部回退原文。
 
-如果整合包术语很多，可在 `translation_glossary_path` 指向机器人本机 JSON 文件。普通文字只把命中的英文名、中文名和注册键注入本次翻译；图片在 OCR 前不知道画面文字，因此只注入受长度限制的重要名称种子。JSON 文件被替换后会按文件大小和修改时间自动热重载；文件缺失、损坏、过大或条目异常时只禁用词典并记录警告，不会阻断 MineAstr 翻译。推荐把词典放在 `data/plugin_data/mineastr/`，不要放到 Minecraft 客户端。
+如果整合包术语很多，可在 `translation_glossary_path` 指向机器人本机 JSON 文件。普通文字只把命中的英文名、中文名和注册键注入本次翻译。图片先由多模态模型完成 OCR 与初译；只有 OCR 原文命中词典时，才使用精确术语进行第二段校正，未命中时仍只有一次模型调用。JSON 文件被替换后会按文件大小和修改时间自动热重载；文件缺失、损坏、过大或条目异常时只禁用词典并记录警告，不会阻断 MineAstr 翻译。推荐把词典放在 `data/plugin_data/mineastr/`，不要放到 Minecraft 客户端。
+
+仓库提供 `scripts/build_translation_glossary.py`，可把整合包提取出的 `en_us` / `zh_cn` 语言目录转换为配对词典、经过名称启发式清理的推荐词典和英文反向索引：
+
+```bash
+python scripts/build_translation_glossary.py language-catalog.json --output-dir dist/glossary
+```
+
+推荐运行 `language-glossary-important-names.json`。生成器会保留实际物品、方块、实体、效果等显示名称，并排除多数 tooltip、description、condition、behaviour 和说明句；完整词典适合审计或确实需要翻译界面长文本的场景。
 
 ## 机器人可调用工具
 

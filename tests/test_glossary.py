@@ -33,6 +33,39 @@ class GlossaryTests(unittest.TestCase):
         matches = GlossaryIndex.from_path(path).lookup("Use a Brass Funnel here")
         self.assertEqual(2, len(matches))
 
+    def test_longest_name_suppresses_nested_generic_terms(self):
+        path = self._write_json(
+            {
+                "entries": [
+                    {
+                        "key": "block.create.item_vault",
+                        "en_us": "Item Vault",
+                        "zh_cn": "物品保险库",
+                    },
+                    {"key": "entity.minecraft.item", "en_us": "Item", "zh_cn": "物品"},
+                    {"key": "block.minecraft.vault", "en_us": "Vault", "zh_cn": "宝库"},
+                    {"key": "enchantment.level.1", "en_us": "I", "zh_cn": "I"},
+                ]
+            }
+        )
+        matches = GlossaryIndex.from_path(path).lookup("Place the Item Vault here")
+        self.assertEqual(["block.create.item_vault"], [entry.key for entry in matches])
+
+    def test_chinese_term_matches_inside_a_sentence_without_spaces(self):
+        path = self._write_json(
+            {
+                "entries": [
+                    {
+                        "key": "block.create.item_vault",
+                        "en_us": "Item Vault",
+                        "zh_cn": "物品保险库",
+                    }
+                ]
+            }
+        )
+        matches = GlossaryIndex.from_path(path).lookup("把物品保险库放在这里")
+        self.assertEqual("block.create.item_vault", matches[0].key)
+
     def test_raw_language_catalog_is_supported(self):
         path = self._write_json(
             {
