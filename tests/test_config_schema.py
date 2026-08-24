@@ -45,13 +45,13 @@ class ConfigSchemaTests(unittest.TestCase):
         metadata_path = Path(__file__).resolve().parents[1] / "metadata.yaml"
         metadata = metadata_path.read_text(encoding="utf-8")
         self.assertIn("author: YU322142", metadata)
-        self.assertIn("version: v0.6.28", metadata)
+        self.assertIn("version: v0.6.29", metadata)
         self.assertIn(
             'repo: "https://github.com/YU322142/MineAstr/tree/astrbot-plugin"',
             metadata,
         )
         main = (metadata_path.parent / "main.py").read_text(encoding="utf-8")
-        self.assertIn('    "0.6.28",\n)', main)
+        self.assertIn('    "0.6.29",\n)', main)
 
     def test_newline_delimited_fields_use_astrbot_textarea_type(self):
         schema = self._schema()
@@ -209,6 +209,20 @@ class ConfigSchemaTests(unittest.TestCase):
         self.assertEqual(
             self._visible_field(schema, "translation_custom_instructions")["type"],
             "text",
+        )
+        self.assertEqual(
+            self._visible_field(schema, "translation_glossary_path")["type"],
+            "string",
+        )
+        self.assertEqual(
+            self._visible_field(schema, "translation_glossary_max_chars")["default"],
+            12000,
+        )
+        self.assertEqual(
+            self._visible_field(schema, "image_translation_glossary_max_chars")[
+                "default"
+            ],
+            2800,
         )
         self.assertTrue(
             self._visible_field(schema, "relay_bot_conversations_to_game")[

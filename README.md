@@ -41,7 +41,7 @@ AstrBot 对该会话的文本回复会回传给所有已连接的 Minecraft 服�
 
 ## 安装包兼容性
 
-在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.28.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
+在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.29.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
 
 插件元数据中的安装/更新源固定为 Fork 分支 `https://github.com/YU322142/MineAstr/tree/astrbot-plugin`，不会再让 AstrBot 回到原项目或下载仅用于项目导航的 `main` 分支。
 
@@ -193,6 +193,9 @@ pip install -r requirements.txt
 | `game_translation_show_original` | `true` | 未安装同版客户端 Mod 时，译文下方是否默认附带原文。 |
 | `translation_custom_instructions` | 空 | 统一翻译提示词/术语表，最多 40000 字；游戏内及所有 QQ/Discord 接收会话共同使用，同一条源消息合计只调用一次模型。 |
 | `image_translation_prompt` | 空 | 沉浸画框等外部图片翻译专用提示词，最多 40000 字；与截图一起交给 AstrBot 多模态模型。 |
+| `translation_glossary_path` | 空 | AstrBot 机器上的外置 JSON 术语库路径；支持配对词典 `entries[]` 或原始 `languages.en_us` / `languages.zh_cn` 目录格式。留空关闭，不需要更新客户端或服务端 Mod。 |
+| `translation_glossary_max_chars` | `12000` | 普通文本、聊天和告示牌按当前原文召回术语的字符上限；不会把完整 JSON 放进提示词。 |
+| `image_translation_glossary_max_chars` | `2800` | 图片 OCR 前使用的重要物品/方块名称种子上限；为 MineAstr 图片提示词协议的 4096 字符上限预留空间。 |
 | `relay_bot_conversations_to_game` | `true` | 把桥接会话中玩家 @机器人的消息及 AstrBot 最终纯文本回复同步到 MC。 |
 | `game_translation_timeout_seconds` | `20` | 翻译超时；原生聊天会额外保留最多 5 秒回传余量，超时直接按发送顺序发送原文。 |
 | `translation_context_messages` | `0` | 提供给 AstrBot 翻译模型的最近上下文条数，范围 0-20；只翻译当前消息正文。 |
@@ -234,6 +237,8 @@ pip install -r requirements.txt
 “启用游戏内消息自动翻译”处理的是聊天正文：QQ、Discord 和 AstrBot 回复进入游戏前会检测原文语言，并只生成与原文不同的目标语言译文；Mod 再按每位在线玩家的客户端 locale 分别选择。目标语言与原文一致时直接显示原文，不会重复显示同文译文。玩家安装 v0.6.7 客户端 Mod 后可在 F8 设置中关闭译文或关闭原文；没有匹配译文、模型失败或超时时始终显示原文。翻译提示把聊天正文当作不可信数据，不执行其中的指令，但仍建议为此功能使用独立、低成本的 Provider。
 
 “统一翻译提示词/术语表”会作为服主可信规则加入系统提示词，例如每行写 `Motiquies 固定译为 动静交映`。对于同一条源消息，插件会先收集游戏客户端与所有 QQ/Discord 接收会话需要的目标语言，只调用一次模型翻译纯正文，再分别套用游戏模板、平台发送者标签、语言顺序和原文开关。QQ、Discord 和 Discord 频道仍可分别开关聊天翻译、选择一个或多个目标 locale，但不再各自调用模型或维护不同术语表。升级时旧的分平台/频道提示词会自动合并到统一设置。翻译失败时本批次全部回退原文。
+
+如果整合包术语很多，可在 `translation_glossary_path` 指向机器人本机 JSON 文件。普通文字只把命中的英文名、中文名和注册键注入本次翻译；图片在 OCR 前不知道画面文字，因此只注入受长度限制的重要名称种子。JSON 文件被替换后会按文件大小和修改时间自动热重载；文件缺失、损坏、过大或条目异常时只禁用词典并记录警告，不会阻断 MineAstr 翻译。推荐把词典放在 `data/plugin_data/mineastr/`，不要放到 Minecraft 客户端。
 
 ## 机器人可调用工具
 

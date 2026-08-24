@@ -130,6 +130,25 @@
         "obvious_hint": true,
         "default": ""
       },
+      "translation_glossary_path": {
+        "description": "JSON 术语库路径",
+        "type": "string",
+        "hint": "填写 MineAstr 机器人端可读取的 JSON 文件路径。支持 language-glossary-paired-complete.json 和原始 language-catalog.json；留空则不加载术语库。术语库只在机器人端读取，不会通过 MineAstr 协议发送给客户端。",
+        "obvious_hint": true,
+        "default": ""
+      },
+      "translation_glossary_max_chars": {
+        "description": "普通翻译术语召回上限",
+        "type": "int",
+        "hint": "每次普通文字/聊天/告示牌翻译最多注入多少术语字符；只召回当前原文命中的条目，不会把整个 JSON 放进提示词。范围 0–12000，0 表示关闭普通文字术语注入。",
+        "default": 12000
+      },
+      "image_translation_glossary_max_chars": {
+        "description": "图片翻译术语种子上限",
+        "type": "int",
+        "hint": "图片请求发送前没有可靠的 OCR 文本，因此使用有限的高频物品/方块名称种子。MineAstr 协议的图片提示词上限为 4096 字符，建议保持默认 2800；0 表示关闭图片术语种子。",
+        "default": 2800
+      },
       "discord_channel_settings": {
         "description": "Discord 频道语言分发与通知设置",
         "type": "template_list",
@@ -655,6 +674,9 @@
   "game_translation_timeout_seconds": {"type": "int", "default": 20, "invisible": true},
   "translation_custom_instructions": {"type": "text", "default": "", "invisible": true},
   "image_translation_prompt": {"type": "text", "default": "", "invisible": true},
+  "translation_glossary_path": {"type": "string", "default": "", "invisible": true},
+  "translation_glossary_max_chars": {"type": "int", "default": 12000, "invisible": true},
+  "image_translation_glossary_max_chars": {"type": "int", "default": 2800, "invisible": true},
   "cache_cleanup_enabled": {"type": "bool", "default": true, "invisible": true},
   "cache_cleanup_interval_seconds": {"type": "int", "default": 300, "invisible": true},
   "memory_cache_retention_seconds": {"type": "int", "default": 86400, "invisible": true},

@@ -44,6 +44,7 @@ from .aqqbot_compat import (
     strip_minecraft_colors,
     trim_message,
 )
+from .mineastr_glossary import GlossaryProvider, append_glossary_instructions
 
 try:
     from mcp.types import CallToolResult, ImageContent, TextContent
@@ -272,6 +273,9 @@ AQQBOT_DEFAULT_CONFIG: dict[str, Any] = {
     "translation_context_messages": 0,
     "translation_custom_instructions": "",
     "image_translation_prompt": "",
+    "translation_glossary_path": "",
+    "translation_glossary_max_chars": 12_000,
+    "image_translation_glossary_max_chars": 2_800,
     "cache_cleanup_enabled": True,
     "cache_cleanup_interval_seconds": 300,
     "memory_cache_retention_seconds": 86400,
@@ -345,6 +349,9 @@ CONFIG_GROUP_KEYS: dict[str, tuple[str, ...]] = {
         "translation_context_messages",
         "translation_custom_instructions",
         "image_translation_prompt",
+        "translation_glossary_path",
+        "translation_glossary_max_chars",
+        "image_translation_glossary_max_chars",
         "discord_channel_settings",
     ),
     "binding_settings": (
@@ -428,7 +435,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.6.28",
+    "0.6.29",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -454,6 +461,10 @@ class MineAstrPlugin(Star):
         except (AttributeError, TypeError):
             pass
         self._screenshot_last_request_at: dict[tuple[str, str, str], float] = {}
+        self._glossary_provider = GlossaryProvider(
+            lambda: str(self._cfg("translation_glossary_path") or ""),
+            logger=lambda message: logger.warning(message),
+        )
         self._screenshot_cooldown_lock = asyncio.Lock()
         self._cooldowns = CooldownTracker()
         self._verify_codes: dict[str, dict[str, Any]] = {}
@@ -664,6 +675,44 @@ class MineAstrPlugin(Star):
 
     def _bounded_cfg_int(self, key: str, minimum: int, maximum: int) -> int:
         return max(minimum, min(maximum, self._cfg_int(key)))
+
+    def _append_translation_glossary(
+        self,
+        instructions: str,
+        source: str,
+        *,
+        image: bool = False,
+    ) -> str:
+        """Add only query-relevant terminology; never send the whole JSON file."""
+        # A number of unit/integration tests construct the plugin with
+        # ``__new__`` and AstrBot can also restore a partially initialized
+        # instance during a hot reload.  Lazily create the provider so the
+        # glossary remains an additive feature and never becomes a startup
+        # requirement.
+        provider = getattr(self, "_glossary_provider", None)
+        if not isinstance(provider, GlossaryProvider):
+            provider = GlossaryProvider(
+                lambda: str(self._cfg("translation_glossary_path") or ""),
+                logger=lambda message: logger.warning(message),
+            )
+            self._glossary_provider = provider
+        if image:
+            max_chars = self._bounded_cfg_int(
+                "image_translation_glossary_max_chars", 0, 2_800
+            )
+            fragment = provider.image_seed(max_chars=max_chars)
+            prompt_limit = TRANSLATION_PROMPT_MAX_LENGTH
+        else:
+            max_chars = self._bounded_cfg_int(
+                "translation_glossary_max_chars", 0, 12_000
+            )
+            fragment = provider.prompt_fragment(
+                source, max_chars=max_chars
+            )
+            prompt_limit = TRANSLATION_PROMPT_MAX_LENGTH
+        return append_glossary_instructions(
+            instructions, fragment, max_chars=prompt_limit
+        )
 
     def _start_cache_cleanup_task(self) -> None:
         if not self._cfg_bool("cache_cleanup_enabled"):
@@ -2279,6 +2328,9 @@ class MineAstrPlugin(Star):
             str(custom_instructions or "").strip(),
             TRANSLATION_PROMPT_MAX_LENGTH,
         )
+        instructions = self._append_translation_glossary(
+            instructions, source
+        )
         bilingual_review = bool(
             detect_bilingual_equivalence
             and self._contains_han_and_latin_candidate(source)
@@ -2582,6 +2634,9 @@ class MineAstrPlugin(Star):
                 or ""
             ).strip(),
             TRANSLATION_PROMPT_MAX_LENGTH,
+        )
+        prompt_instructions = self._append_translation_glossary(
+            prompt_instructions, "", image=True
         )
         context = trim_message(str(request.get("context") or "").strip(), 2000)
         cache_key = (

@@ -520,6 +520,127 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertNotIn("y" * 40_000, provider.call["system_prompt"])
 
+    async def test_external_glossary_is_injected_for_matching_text(self):
+        class Provider:
+            def __init__(self):
+                self.call = None
+
+            async def text_chat(self, **kwargs):
+                self.call = kwargs
+                return types.SimpleNamespace(
+                    completion_text=(
+                        '{"source_language":"en_us",'
+                        '"translations":{"zh_cn":"把物品保险库放在这里"}}'
+                    )
+                )
+
+        with tempfile.TemporaryDirectory() as directory:
+            glossary_path = Path(directory) / "glossary.json"
+            glossary_path.write_text(
+                json.dumps(
+                    {
+                        "entries": [
+                            {
+                                "key": "block.create.item_vault",
+                                "en_us": "Item Vault",
+                                "zh_cn": "物品保险库",
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            provider = Provider()
+            plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+            plugin.config = {
+                "bridge_settings": {
+                    "game_translation_provider_id": "",
+                    "game_translation_timeout_seconds": 5,
+                    "max_relay_length": 500,
+                    "translation_glossary_path": str(glossary_path),
+                    "translation_glossary_max_chars": 12000,
+                }
+            }
+            plugin.context = types.SimpleNamespace(
+                get_using_provider=lambda origin: provider,
+                get_provider_by_id=lambda provider_id: None,
+            )
+            plugin._game_translation_cache = {}
+
+            result = await plugin._translate_text(
+                "Place the Item Vault here", ("zh_cn",)
+            )
+
+            self.assertEqual(
+                result["translations"], {"zh_cn": "把物品保险库放在这里"}
+            )
+            self.assertIn("block.create.item_vault", provider.call["system_prompt"])
+            self.assertIn("Item Vault = 物品保险库", provider.call["system_prompt"])
+
+    async def test_external_glossary_seed_reaches_image_provider(self):
+        class Provider:
+            def __init__(self):
+                self.call = None
+
+            async def text_chat(self, **kwargs):
+                self.call = kwargs
+                return types.SimpleNamespace(
+                    completion_text=(
+                        '{"source_language":"en_us","source_text":"Item Vault",'
+                        '"translations":{"zh_cn":"物品保险库"}}'
+                    )
+                )
+
+        with tempfile.TemporaryDirectory() as directory:
+            glossary_path = Path(directory) / "glossary.json"
+            glossary_path.write_text(
+                json.dumps(
+                    {
+                        "entries": [
+                            {
+                                "key": "block.create.item_vault",
+                                "en_us": "Item Vault",
+                                "zh_cn": "物品保险库",
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            provider = Provider()
+            plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+            plugin.config = {
+                "bridge_settings": {
+                    "game_translation_enabled": True,
+                    "game_translation_provider_id": "",
+                    "game_translation_languages": "zh_cn",
+                    "game_translation_show_original": False,
+                    "game_translation_timeout_seconds": 5,
+                    "image_translation_prompt": "",
+                    "translation_glossary_path": str(glossary_path),
+                    "image_translation_glossary_max_chars": 2800,
+                    "max_relay_length": 500,
+                }
+            }
+            plugin.context = types.SimpleNamespace(
+                get_using_provider=lambda origin: provider,
+                get_provider_by_id=lambda provider_id: None,
+            )
+            plugin._image_translation_cache = {}
+
+            result = await plugin._translate_image_request(
+                {
+                    "server_id": "survival",
+                    "image_base64": base64.b64encode(b"image").decode("ascii"),
+                    "mime_type": "image/png",
+                }
+            )
+
+            self.assertEqual(result["translations"], {"zh_cn": "物品保险库"})
+            self.assertIn("Item Vault = 物品保险库", provider.call["system_prompt"])
+
     async def test_target_platform_can_translate_one_or_multiple_languages(self):
         plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
         discord_profile = MAIN.DISCORD_NOTIFICATION_DEFAULTS.copy()

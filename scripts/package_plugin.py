@@ -20,6 +20,7 @@ PACKAGE_FILES = (
     "_conf_schema.json",
     "aqqbot_compat.py",
     "main.py",
+    "mineastr_glossary.py",
     "metadata.yaml",
     "minecraft_adapter.py",
     "requirements.txt",
@@ -77,7 +78,7 @@ def main() -> None:
         "output",
         nargs="?",
         type=Path,
-        default=Path("dist") / "astrbot_plugin_mineastr-v0.6.28.zip",
+        default=Path("dist") / "astrbot_plugin_mineastr-v0.6.29.zip",
     )
     args = parser.parse_args()
     repo_root = Path(__file__).resolve().parents[1]
