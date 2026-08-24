@@ -32,6 +32,7 @@ PROTOCOL_VERSION = 1
 QUERY_TIMEOUT_SECONDS = 5.0
 SCREENSHOT_QUERY_TIMEOUT_SECONDS = 30.0
 MAX_WEBSOCKET_MESSAGE_BYTES = 2 * 1024 * 1024
+MAX_PENDING_TRANSLATION_REQUESTS_PER_WEBSOCKET = 1
 LOGO_PATH = str(Path(__file__).resolve().with_name("logo.png"))
 MINECRAFT_LEADING_MENTION_RE = re.compile(
     r"^\s*@(?P<target>[^\s@]+)(?P<body>(?:\s+.*)?)$"
@@ -657,6 +658,9 @@ class MinecraftPlatformAdapter(Platform):
             [], Awaitable[dict[str, Any]] | dict[str, Any]
         ] | None = None
         self._native_chat_policy_task: asyncio.Task | None = None
+        self._websocket_request_tasks: dict[
+            web.WebSocketResponse, set[asyncio.Task[Any]]
+        ] = {}
 
     def set_chat_translation_handler(
         self,
@@ -1286,6 +1290,11 @@ class MinecraftPlatformAdapter(Platform):
                 elif msg.type == WSMsgType.ERROR:
                     logger.warning("MineAstr WebSocket 出错：%s", ws.exception())
         finally:
+            request_tasks = tuple(self._websocket_request_tasks.pop(ws, ()))
+            for task in request_tasks:
+                task.cancel()
+            if request_tasks:
+                await asyncio.gather(*request_tasks, return_exceptions=True)
             metadata = await self.connection_manager.unregister(ws)
             if metadata:
                 await self._notify_bridge_event(
@@ -1365,7 +1374,12 @@ class MinecraftPlatformAdapter(Platform):
                     )
                     return
                 await self.connection_manager.mark_seen(ws)
-                await self._handle_sign_translate_request(ws, payload)
+                await self._schedule_translation_request(
+                    ws,
+                    payload,
+                    self._handle_sign_translate_request,
+                    response_type="sign_translate_result",
+                )
             elif payload_type == "image_translate_request":
                 if not await self.connection_manager.is_registered(ws):
                     await self.connection_manager.send_error(
@@ -1373,7 +1387,12 @@ class MinecraftPlatformAdapter(Platform):
                     )
                     return
                 await self.connection_manager.mark_seen(ws)
-                await self._handle_image_translate_request(ws, payload)
+                await self._schedule_translation_request(
+                    ws,
+                    payload,
+                    self._handle_image_translate_request,
+                    response_type="image_translate_result",
+                )
             else:
                 await self.connection_manager.send_error(
                     ws, f"不支持的消息类型：{payload_type}"
@@ -1381,6 +1400,78 @@ class MinecraftPlatformAdapter(Platform):
         except (TypeError, ValueError, RuntimeError) as exc:
             logger.warning("MineAstr 处理 WebSocket 消息失败：%s", exc)
             await self.connection_manager.send_error(ws, str(exc))
+
+    async def _schedule_translation_request(
+        self,
+        ws: web.WebSocketResponse,
+        payload: dict[str, Any],
+        handler: Callable[
+            [web.WebSocketResponse, dict[str, Any]], Awaitable[None]
+        ],
+        *,
+        response_type: str,
+    ) -> None:
+        """Run slow model requests without blocking this WebSocket's receive loop."""
+
+        tasks = self._websocket_request_tasks.setdefault(ws, set())
+        message_id = _trim_content(payload.get("message_id"), 64)
+        if len(tasks) >= MAX_PENDING_TRANSLATION_REQUESTS_PER_WEBSOCKET:
+            await ws.send_str(
+                json.dumps(
+                    {
+                        "type": response_type,
+                        "message_id": message_id,
+                        "ok": False,
+                        "error": "translation_busy",
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            return
+
+        async def run_request() -> None:
+            try:
+                await handler(ws, payload)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("MineAstr 后台翻译请求失败：%s", exc)
+                if not ws.closed:
+                    try:
+                        await ws.send_str(
+                            json.dumps(
+                                {
+                                    "type": response_type,
+                                    "message_id": message_id,
+                                    "ok": False,
+                                    "error": "translation_handler_failed",
+                                },
+                                ensure_ascii=False,
+                            )
+                        )
+                    except Exception as send_exc:
+                        logger.debug(
+                            "MineAstr 翻译失败结果无法写回已断开的 WebSocket：%s",
+                            send_exc,
+                        )
+
+        task = asyncio.create_task(
+            run_request(),
+            name=f"mineastr-{response_type}-{message_id or time.monotonic_ns()}",
+        )
+        tasks.add(task)
+
+        def discard(completed: asyncio.Task[Any]) -> None:
+            if not completed.cancelled():
+                completed.exception()
+            active = self._websocket_request_tasks.get(ws)
+            if active is None:
+                return
+            active.discard(completed)
+            if not active:
+                self._websocket_request_tasks.pop(ws, None)
+
+        task.add_done_callback(discard)
 
     async def _handle_sign_translate_request(
         self, ws: web.WebSocketResponse, payload: dict[str, Any]

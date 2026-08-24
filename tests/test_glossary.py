@@ -13,7 +13,7 @@ from mineastr_glossary import (
 
 
 class GlossaryTests(unittest.TestCase):
-    def test_generated_entries_keep_duplicate_english_by_registry_key(self):
+    def test_ambiguous_display_name_is_not_forced_without_registry_key(self):
         path = self._write_json(
             {
                 "entries": [
@@ -31,7 +31,43 @@ class GlossaryTests(unittest.TestCase):
             }
         )
         matches = GlossaryIndex.from_path(path).lookup("Use a Brass Funnel here")
-        self.assertEqual(2, len(matches))
+        self.assertEqual([], matches)
+
+    def test_registry_key_disambiguates_conflicting_display_name(self):
+        path = self._write_json(
+            {
+                "entries": [
+                    {
+                        "key": "block.create.brass_funnel",
+                        "en_us": "Brass Funnel",
+                        "zh_cn": "黄铜漏斗",
+                    },
+                    {
+                        "key": "item.example.brass_funnel",
+                        "en_us": "Brass Funnel",
+                        "zh_cn": "示例黄铜漏斗",
+                    },
+                ]
+            }
+        )
+        matches = GlossaryIndex.from_path(path).lookup(
+            "block.create.brass_funnel"
+        )
+        self.assertEqual(
+            ["block.create.brass_funnel"], [entry.key for entry in matches]
+        )
+
+    def test_identical_duplicate_mapping_is_rendered_once(self):
+        path = self._write_json(
+            {
+                "entries": [
+                    {"key": "first", "en_us": "Copper Bars", "zh_cn": "铜栏杆"},
+                    {"key": "second", "en_us": "Copper Bars", "zh_cn": "铜栏杆"},
+                ]
+            }
+        )
+        rendered = GlossaryIndex.from_path(path).render_matches("Copper Bars")
+        self.assertEqual(1, len(rendered.splitlines()))
 
     def test_longest_name_suppresses_nested_generic_terms(self):
         path = self._write_json(
@@ -65,6 +101,8 @@ class GlossaryTests(unittest.TestCase):
         )
         matches = GlossaryIndex.from_path(path).lookup("把物品保险库放在这里")
         self.assertEqual("block.create.item_vault", matches[0].key)
+        rendered = GlossaryIndex.from_path(path).render_matches("把物品保险库放在这里")
+        self.assertIn('en_us "Item Vault" <=> zh_cn "物品保险库"', rendered)
 
     def test_raw_language_catalog_is_supported(self):
         path = self._write_json(
@@ -153,6 +191,7 @@ class GlossaryTests(unittest.TestCase):
         )
         self.assertTrue(result.startswith("base rule"))
         self.assertLessEqual(len(result), 120)
+        self.assertIn("en_us <=> zh_cn", result)
 
     @staticmethod
     def _write_json(value: object) -> Path:

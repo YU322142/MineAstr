@@ -19,6 +19,7 @@ DEFAULT_MAX_BYTES = 32 * 1024 * 1024
 DEFAULT_MAX_ENTRIES = 200_000
 DEFAULT_MAX_TERM_LENGTH = 512
 DEFAULT_MAX_PROMPT_CHARS = 12_000
+DEFAULT_LOOKUP_CACHE_LIMIT = 512
 _SPACE_RE = re.compile(r"\s+")
 _HAN_RE = re.compile(r"[\u3400-\u9fff]")
 
@@ -65,8 +66,10 @@ def append_glossary_instructions(
         return prefix[:max_chars]
     section = (
         "[Trusted Motiquies terminology]\n"
-        "Use these exact English-to-Chinese mappings when the source contains "
-        "the corresponding Minecraft term. Keep registry IDs unchanged.\n"
+        "Each listed pair is an exact en_us <=> zh_cn Minecraft terminology "
+        "mapping. Apply it in the direction required by the source and target "
+        "locale. Ambiguous source terms are intentionally omitted; do not guess "
+        "between conflicting mappings. Keep registry IDs unchanged.\n"
         + fragment
     )
     if not prefix:
@@ -136,15 +139,42 @@ class GlossaryIndex:
                 unique[identity] = entry
         self.entries = tuple(unique.values())
         self.source_path = source_path
+        english_targets: dict[str, set[str]] = {}
+        chinese_targets: dict[str, set[str]] = {}
+        canonical_pairs: dict[tuple[str, str], GlossaryEntry] = {}
+        for entry in self.entries:
+            english = normalize_text(entry.en_us)
+            chinese = normalize_text(entry.zh_cn)
+            if not english or not chinese or english == chinese:
+                continue
+            english_targets.setdefault(english, set()).add(chinese)
+            chinese_targets.setdefault(chinese, set()).add(english)
+            canonical_pairs.setdefault((english, chinese), entry)
+
         phrases: list[tuple[str, GlossaryEntry]] = []
         for entry in self.entries:
-            if normalize_text(entry.en_us) == normalize_text(entry.zh_cn):
+            english = normalize_text(entry.en_us)
+            chinese = normalize_text(entry.zh_cn)
+            if not english or not chinese or english == chinese:
                 continue
-            for phrase in (entry.en_us, entry.zh_cn, entry.key):
-                normalized = normalize_text(phrase)
-                if self._usable_phrase(normalized):
-                    phrases.append((normalized, entry))
+            canonical = canonical_pairs[(english, chinese)]
+            # OCR and ordinary chat normally contain display names, not registry
+            # keys.  A display name is safe to force only when it has one exact
+            # counterpart.  Conflicting names (for example two unrelated mods
+            # both calling an item "Speed") are intentionally left to the model
+            # unless the source also carries the unique registry key.
+            if entry is canonical and len(english_targets[english]) == 1:
+                if self._usable_phrase(english):
+                    phrases.append((english, canonical))
+            if entry is canonical and len(chinese_targets[chinese]) == 1:
+                if self._usable_phrase(chinese):
+                    phrases.append((chinese, canonical))
+            key = normalize_text(entry.key)
+            if self._usable_phrase(key):
+                phrases.append((key, entry))
         self._phrases = tuple(sorted(phrases, key=lambda item: len(item[0]), reverse=True))
+        self._lookup_cache: dict[tuple[str, int], tuple[GlossaryEntry, ...]] = {}
+        self._lookup_lock = threading.RLock()
 
     @staticmethod
     def _usable_phrase(phrase: str) -> bool:
@@ -208,6 +238,11 @@ class GlossaryIndex:
         normalized = normalize_text(text)
         if not normalized or limit <= 0:
             return []
+        cache_key = (normalized, limit)
+        with self._lookup_lock:
+            cached = self._lookup_cache.get(cache_key)
+            if cached is not None:
+                return list(cached)
         found: dict[str, GlossaryEntry] = {}
         covered: list[tuple[int, int, str]] = []
         for phrase, entry in self._phrases:
@@ -218,7 +253,12 @@ class GlossaryIndex:
             covered.append((span[0], span[1], phrase))
             if len(found) >= limit:
                 break
-        return list(found.values())
+        result = tuple(found.values())
+        with self._lookup_lock:
+            self._lookup_cache[cache_key] = result
+            while len(self._lookup_cache) > DEFAULT_LOOKUP_CACHE_LIMIT:
+                self._lookup_cache.pop(next(iter(self._lookup_cache)))
+        return list(result)
 
     def render_matches(
         self,
@@ -232,7 +272,10 @@ class GlossaryIndex:
         lines: list[str] = []
         used = 0
         for entry in self.lookup(text, limit=limit):
-            line = f"- {entry.key or '(term)'}: {entry.en_us} = {entry.zh_cn}"
+            line = (
+                f'- {entry.key or "(term)"}: en_us "{entry.en_us}" '
+                f'<=> zh_cn "{entry.zh_cn}"'
+            )
             extra = len(line) + (1 if lines else 0)
             if used + extra > max_chars:
                 break

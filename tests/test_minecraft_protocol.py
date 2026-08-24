@@ -382,6 +382,115 @@ class AdapterEventTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second.sent[-1]["type"], "native_chat_policy")
         self.assertFalse(second.sent[-1]["enabled"])
 
+    async def test_image_translation_does_not_block_ping_and_rejects_overlap(self):
+        adapter = MinecraftPlatformAdapter({}, {}, None)
+        websocket = FakeWebSocket()
+        await adapter.connection_manager.register(
+            websocket,
+            {"server_id": "survival", "server_name": "Survival"},
+        )
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def translate_image(payload):
+            started.set()
+            await release.wait()
+            return {
+                "source_language": "en_us",
+                "source_text": "Item Vault",
+                "translations": {"zh_cn": "物品保险库"},
+                "show_original": False,
+            }
+
+        adapter.set_image_translation_handler(translate_image)
+        await adapter._handle_text(
+            websocket,
+            json.dumps(
+                {
+                    "type": "image_translate_request",
+                    "message_id": "image-1",
+                    "image_base64": "aW1hZ2U=",
+                }
+            ),
+        )
+        await started.wait()
+
+        await adapter._handle_text(
+            websocket,
+            json.dumps({"type": "ping", "time_ms": 123}),
+        )
+        self.assertEqual(websocket.sent[-1], {"type": "pong", "time_ms": 123})
+
+        await adapter._handle_text(
+            websocket,
+            json.dumps(
+                {
+                    "type": "image_translate_request",
+                    "message_id": "image-2",
+                    "image_base64": "aW1hZ2U=",
+                }
+            ),
+        )
+        busy = websocket.sent[-1]
+        self.assertEqual("image_translate_result", busy["type"])
+        self.assertEqual("image-2", busy["message_id"])
+        self.assertEqual("translation_busy", busy["error"])
+
+        pending = tuple(adapter._websocket_request_tasks[websocket])
+        release.set()
+        await asyncio.gather(*pending)
+        await asyncio.sleep(0)
+        completed = websocket.sent[-1]
+        self.assertEqual("image_translate_result", completed["type"])
+        self.assertEqual("image-1", completed["message_id"])
+        self.assertTrue(completed["ok"])
+        self.assertNotIn(websocket, adapter._websocket_request_tasks)
+
+    async def test_cancelled_background_translation_does_not_send_late_result(self):
+        adapter = MinecraftPlatformAdapter({}, {}, None)
+        websocket = FakeWebSocket()
+        await adapter.connection_manager.register(
+            websocket,
+            {"server_id": "survival", "server_name": "Survival"},
+        )
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def translate_image(payload):
+            started.set()
+            await release.wait()
+            return {
+                "source_language": "en_us",
+                "translations": {"zh_cn": "迟到译文"},
+            }
+
+        adapter.set_image_translation_handler(translate_image)
+        await adapter._handle_text(
+            websocket,
+            json.dumps(
+                {
+                    "type": "image_translate_request",
+                    "message_id": "image-cancelled",
+                    "image_base64": "aW1hZ2U=",
+                }
+            ),
+        )
+        await started.wait()
+        pending = tuple(adapter._websocket_request_tasks.pop(websocket))
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+        release.set()
+        await asyncio.sleep(0)
+
+        self.assertFalse(
+            any(
+                item.get("message_id") == "image-cancelled"
+                for item in websocket.sent
+            )
+        )
+        self.assertNotIn(websocket, adapter._websocket_request_tasks)
+
     async def test_native_chat_policy_loop_broadcasts_without_mod_ping(self):
         adapter = MinecraftPlatformAdapter({}, {}, None)
         adapter._broadcast_native_chat_policy = AsyncMock(

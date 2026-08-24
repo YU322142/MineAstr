@@ -576,7 +576,8 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
                 result["translations"], {"zh_cn": "把物品保险库放在这里"}
             )
             self.assertIn("block.create.item_vault", provider.call["system_prompt"])
-            self.assertIn("Item Vault = 物品保险库", provider.call["system_prompt"])
+            self.assertIn('en_us \\"Item Vault\\"', provider.call["system_prompt"])
+            self.assertIn('zh_cn \\"物品保险库\\"', provider.call["system_prompt"])
 
     async def test_image_ocr_match_triggers_exact_glossary_correction(self):
         class Provider:
@@ -640,8 +641,301 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(result["translations"], {"zh_cn": "物品保险库"})
             self.assertEqual(2, len(provider.calls))
-            self.assertNotIn("Item Vault = 物品保险库", provider.calls[0]["system_prompt"])
-            self.assertIn("Item Vault = 物品保险库", provider.calls[1]["system_prompt"])
+            self.assertNotIn('en_us \\"Item Vault\\"', provider.calls[0]["system_prompt"])
+            self.assertIn('en_us \\"Item Vault\\"', provider.calls[1]["system_prompt"])
+            self.assertIn('zh_cn \\"物品保险库\\"', provider.calls[1]["system_prompt"])
+
+    async def test_empty_image_glossary_correction_preserves_initial_translation(self):
+        class Provider:
+            def __init__(self):
+                self.calls = []
+
+            async def text_chat(self, **kwargs):
+                self.calls.append(kwargs)
+                if len(self.calls) == 1:
+                    completion = (
+                        '{"source_language":"en_us","source_text":"Item Vault",'
+                        '"translations":{"zh_cn":"初始可用译文"}}'
+                    )
+                else:
+                    completion = (
+                        '{"source_language":"en_us","translations":{}}'
+                    )
+                return types.SimpleNamespace(completion_text=completion)
+
+        with tempfile.TemporaryDirectory() as directory:
+            glossary_path = Path(directory) / "glossary.json"
+            glossary_path.write_text(
+                json.dumps(
+                    {
+                        "entries": [
+                            {
+                                "key": "block.create.item_vault",
+                                "en_us": "Item Vault",
+                                "zh_cn": "物品保险库",
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            provider = Provider()
+            plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+            plugin.config = {
+                "bridge_settings": {
+                    "game_translation_enabled": True,
+                    "game_translation_provider_id": "",
+                    "game_translation_languages": "zh_cn",
+                    "game_translation_show_original": False,
+                    "game_translation_timeout_seconds": 20,
+                    "image_translation_prompt": "",
+                    "translation_glossary_path": str(glossary_path),
+                    "image_translation_glossary_max_chars": 12000,
+                    "max_relay_length": 500,
+                }
+            }
+            plugin.context = types.SimpleNamespace(
+                get_using_provider=lambda origin: provider,
+                get_provider_by_id=lambda provider_id: None,
+            )
+            plugin._image_translation_cache = {}
+
+            result = await plugin._translate_image_request(
+                {
+                    "server_id": "survival",
+                    "image_base64": base64.b64encode(b"image").decode("ascii"),
+                    "mime_type": "image/png",
+                }
+            )
+
+            self.assertEqual(
+                {"zh_cn": "初始可用译文"}, result["translations"]
+            )
+            self.assertEqual(2, len(provider.calls))
+
+    async def test_timed_out_image_glossary_correction_preserves_initial_translation(self):
+        class Provider:
+            def __init__(self):
+                self.calls = []
+
+            async def text_chat(self, **kwargs):
+                self.calls.append(kwargs)
+                if len(self.calls) == 1:
+                    return types.SimpleNamespace(
+                        completion_text=(
+                            '{"source_language":"en_us","source_text":"Item Vault",'
+                            '"translations":{"zh_cn":"初始可用译文"}}'
+                        )
+                    )
+                raise asyncio.TimeoutError
+
+        with tempfile.TemporaryDirectory() as directory:
+            glossary_path = Path(directory) / "glossary.json"
+            glossary_path.write_text(
+                json.dumps(
+                    {
+                        "entries": [
+                            {
+                                "key": "block.create.item_vault",
+                                "en_us": "Item Vault",
+                                "zh_cn": "物品保险库",
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            provider = Provider()
+            plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+            plugin.config = {
+                "bridge_settings": {
+                    "game_translation_enabled": True,
+                    "game_translation_provider_id": "",
+                    "game_translation_languages": "zh_cn",
+                    "game_translation_show_original": False,
+                    "game_translation_timeout_seconds": 20,
+                    "image_translation_prompt": "",
+                    "translation_glossary_path": str(glossary_path),
+                    "image_translation_glossary_max_chars": 12000,
+                    "max_relay_length": 500,
+                }
+            }
+            plugin.context = types.SimpleNamespace(
+                get_using_provider=lambda origin: provider,
+                get_provider_by_id=lambda provider_id: None,
+            )
+            plugin._image_translation_cache = {}
+
+            result = await plugin._translate_image_request(
+                {
+                    "server_id": "survival",
+                    "image_base64": base64.b64encode(b"image").decode("ascii"),
+                    "mime_type": "image/png",
+                }
+            )
+
+            self.assertEqual(
+                {"zh_cn": "初始可用译文"}, result["translations"]
+            )
+            self.assertEqual(2, len(provider.calls))
+
+    async def test_image_cache_tracks_glossary_limit_and_original_switch(self):
+        class Provider:
+            def __init__(self):
+                self.calls = []
+
+            async def text_chat(self, **kwargs):
+                self.calls.append(kwargs)
+                if len(self.calls) == 3:
+                    completion = (
+                        '{"source_language":"en_us",'
+                        '"translations":{"zh_cn":"物品保险库"}}'
+                    )
+                else:
+                    completion = (
+                        '{"source_language":"en_us","source_text":"Item Vault",'
+                        '"translations":{"zh_cn":"错误初译"}}'
+                    )
+                return types.SimpleNamespace(completion_text=completion)
+
+        with tempfile.TemporaryDirectory() as directory:
+            glossary_path = Path(directory) / "glossary.json"
+            glossary_path.write_text(
+                json.dumps(
+                    {
+                        "entries": [
+                            {
+                                "key": "block.create.item_vault",
+                                "en_us": "Item Vault",
+                                "zh_cn": "物品保险库",
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            provider = Provider()
+            bridge = {
+                "game_translation_enabled": True,
+                "game_translation_provider_id": "",
+                "game_translation_languages": "zh_cn",
+                "game_translation_show_original": False,
+                "game_translation_timeout_seconds": 20,
+                "image_translation_prompt": "",
+                "translation_glossary_path": str(glossary_path),
+                "image_translation_glossary_max_chars": 0,
+                "max_relay_length": 500,
+            }
+            plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+            plugin.config = {"bridge_settings": bridge}
+            plugin.context = types.SimpleNamespace(
+                get_using_provider=lambda origin: provider,
+                get_provider_by_id=lambda provider_id: None,
+            )
+            plugin._image_translation_cache = {}
+            request = {
+                "server_id": "survival",
+                "image_base64": base64.b64encode(b"image").decode("ascii"),
+                "mime_type": "image/png",
+            }
+
+            first = await plugin._translate_image_request(request)
+            bridge["image_translation_glossary_max_chars"] = 12000
+            second = await plugin._translate_image_request(request)
+            bridge["game_translation_show_original"] = True
+            third = await plugin._translate_image_request(request)
+
+            self.assertEqual({"zh_cn": "错误初译"}, first["translations"])
+            self.assertEqual({"zh_cn": "物品保险库"}, second["translations"])
+            self.assertEqual({"zh_cn": "物品保险库"}, third["translations"])
+            self.assertFalse(first["show_original"])
+            self.assertFalse(second["show_original"])
+            self.assertTrue(third["show_original"])
+            self.assertEqual(4, len(provider.calls))
+
+    async def test_image_two_stage_timeouts_fit_protocol_budget(self):
+        class Provider:
+            def __init__(self):
+                self.calls = []
+
+            async def text_chat(self, **kwargs):
+                self.calls.append(kwargs)
+                return types.SimpleNamespace(
+                    completion_text=(
+                        '{"source_language":"en_us","source_text":"Item Vault",'
+                        '"translations":{"zh_cn":"物品保险库"}}'
+                    )
+                )
+
+        timeouts = []
+        clock = [0.0]
+
+        async def record_wait_for(awaitable, timeout):
+            timeouts.append(timeout)
+            result = await awaitable
+            if len(timeouts) == 1:
+                clock[0] = 19.0
+            return result
+
+        with tempfile.TemporaryDirectory() as directory:
+            glossary_path = Path(directory) / "glossary.json"
+            glossary_path.write_text(
+                json.dumps(
+                    {
+                        "entries": [
+                            {
+                                "key": "block.create.item_vault",
+                                "en_us": "Item Vault",
+                                "zh_cn": "物品保险库",
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            provider = Provider()
+            plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+            plugin.config = {
+                "bridge_settings": {
+                    "game_translation_enabled": True,
+                    "game_translation_provider_id": "",
+                    "game_translation_languages": "zh_cn",
+                    "game_translation_show_original": False,
+                    "game_translation_timeout_seconds": 20,
+                    "image_translation_prompt": "",
+                    "translation_glossary_path": str(glossary_path),
+                    "image_translation_glossary_max_chars": 12000,
+                    "max_relay_length": 500,
+                }
+            }
+            plugin.context = types.SimpleNamespace(
+                get_using_provider=lambda origin: provider,
+                get_provider_by_id=lambda provider_id: None,
+            )
+            plugin._image_translation_cache = {}
+            plugin._translation_clock = lambda: clock[0]
+
+            with patch.object(MAIN.asyncio, "wait_for", new=record_wait_for):
+                await plugin._translate_image_request(
+                    {
+                        "server_id": "survival",
+                        "image_base64": base64.b64encode(b"image").decode("ascii"),
+                        "mime_type": "image/png",
+                    }
+                )
+
+            self.assertEqual(2, len(timeouts))
+            self.assertLessEqual(
+                clock[0] + timeouts[1],
+                MAIN.IMAGE_TRANSLATION_PROTOCOL_BUDGET_SECONDS,
+            )
+            self.assertLessEqual(
+                timeouts[1], MAIN.IMAGE_TRANSLATION_CORRECTION_RESERVE_SECONDS
+            )
 
     async def test_image_without_glossary_match_keeps_single_model_call(self):
         class Provider:
@@ -1648,6 +1942,12 @@ class CacheCleanupTests(unittest.IsolatedAsyncioTestCase):
             ("en_us",),
             "",
             "",
+            plugin._bounded_cfg_int(
+                "image_translation_glossary_max_chars", 0, 12_000
+            ),
+            plugin._cfg_bool("game_translation_show_original"),
+            plugin._cfg_int("max_relay_length"),
+            str(plugin._cfg("game_translation_provider_id")).strip(),
         )
         plugin._image_translation_cache[image_key] = {
             "source_language": "zh_cn",

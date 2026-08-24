@@ -107,7 +107,7 @@
       "game_translation_timeout_seconds": {
         "description": "翻译等待超时（秒）",
         "type": "int",
-        "hint": "超时后不阻塞聊天，直接发送原文。允许 1–60 秒。",
+        "hint": "普通文字超时后直接发送原文，允许 1–60 秒。图片 OCR 与可选术语校正受 MineAstr 协议保护，共用最长 27 秒总预算，避免超过 Mod 的 30 秒等待上限。",
         "default": 20
       },
       "translation_context_messages": {
@@ -146,7 +146,7 @@
       "image_translation_glossary_max_chars": {
         "description": "图片 OCR 术语校正上限",
         "type": "int",
-        "hint": "多模态模型先识别图片文字；识别结果命中 JSON 术语时，再使用精确中英映射校正译文。没有命中时保持单次模型调用。范围 0–12000，0 表示关闭图片术语校正。",
+        "hint": "多模态模型先识别图片文字；识别结果命中 JSON 术语时，再使用精确中英双向映射校正译文。两段处理共用最长 27 秒，校正失败会保留首轮译文；没有命中时保持单次模型调用。范围 0–12000，0 表示关闭图片术语校正。",
         "default": 12000
       },
       "discord_channel_settings": {

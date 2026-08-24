@@ -83,6 +83,8 @@ MAX_SCREENSHOT_SAVE_BYTES = 2 * 1024 * 1024
 TRANSLATION_PROMPT_MAX_LENGTH = 40_000
 GAME_TRANSLATION_CACHE_LIMIT = 256
 IMAGE_TRANSLATION_CACHE_LIMIT = 128
+IMAGE_TRANSLATION_PROTOCOL_BUDGET_SECONDS = 27.0
+IMAGE_TRANSLATION_CORRECTION_RESERVE_SECONDS = 7.0
 RELAY_MESSAGE_RECORD_LIMIT = 2048
 _ACTIVE_RELAY_SESSIONS: set[str] = set()
 DEFAULT_PLAYER_NAME_REGEX = r"^\S{1,64}$"
@@ -675,6 +677,12 @@ class MineAstrPlugin(Star):
 
     def _bounded_cfg_int(self, key: str, minimum: int, maximum: int) -> int:
         return max(minimum, min(maximum, self._cfg_int(key)))
+
+    @staticmethod
+    def _translation_clock() -> float:
+        """Monotonic clock isolated for deadline tests and provider budgeting."""
+
+        return time.monotonic()
 
     def _translation_glossary_provider(self) -> GlossaryProvider:
         provider = getattr(self, "_glossary_provider", None)
@@ -2336,6 +2344,7 @@ class MineAstrPlugin(Star):
         context: tuple[tuple[str, str], ...] = (),
         detect_bilingual_equivalence: bool = False,
         inject_glossary: bool = True,
+        timeout_seconds: float | None = None,
     ) -> dict[str, Any]:
         source = trim_message(content, self._cfg_int("max_relay_length"))
         if not source or not languages:
@@ -2444,8 +2453,16 @@ class MineAstrPlugin(Star):
                         session_id=f"mineastr-translation-{time.monotonic_ns()}",
                         persist=False,
                     ),
-                    timeout=max(
-                        1, min(60, self._cfg_int("game_translation_timeout_seconds"))
+                    timeout=(
+                        max(0.1, min(60.0, float(timeout_seconds)))
+                        if timeout_seconds is not None
+                        else max(
+                            1,
+                            min(
+                                60,
+                                self._cfg_int("game_translation_timeout_seconds"),
+                            ),
+                        )
                     ),
                 )
                 translations = self._parse_translation_response(
@@ -2653,12 +2670,35 @@ class MineAstrPlugin(Star):
             TRANSLATION_PROMPT_MAX_LENGTH,
         )
         context = trim_message(str(request.get("context") or "").strip(), 2000)
+        configured_timeout = float(
+            max(1, min(60, self._cfg_int("game_translation_timeout_seconds")))
+        )
+        total_budget = min(
+            IMAGE_TRANSLATION_PROTOCOL_BUDGET_SECONDS,
+            configured_timeout
+            + min(IMAGE_TRANSLATION_CORRECTION_RESERVE_SECONDS, configured_timeout),
+        )
+        correction_reserve = min(
+            IMAGE_TRANSLATION_CORRECTION_RESERVE_SECONDS,
+            configured_timeout,
+            max(1.0, total_budget / 3.0),
+        )
+        glossary_max_chars = self._bounded_cfg_int(
+            "image_translation_glossary_max_chars", 0, 12_000
+        )
+        show_original = self._cfg_bool("game_translation_show_original")
+        max_relay_length = self._cfg_int("max_relay_length")
+        provider_id = str(self._cfg("game_translation_provider_id")).strip()
         glossary_token = await self._translation_glossary_cache_token()
         cache_key: tuple[Any, ...] = (
             hashlib.sha256(image_bytes).hexdigest(),
             languages,
             prompt_instructions,
             context,
+            glossary_max_chars,
+            show_original,
+            max_relay_length,
+            provider_id,
         )
         if glossary_token is not None:
             cache_key += (glossary_token,)
@@ -2671,8 +2711,8 @@ class MineAstrPlugin(Star):
             accessed_at[cache_key] = time.monotonic()
             return copy.deepcopy(cached)
 
+        request_deadline = self._translation_clock() + total_budget
         try:
-            provider_id = str(self._cfg("game_translation_provider_id")).strip()
             provider = (
                 self.context.get_provider_by_id(provider_id)
                 if provider_id
@@ -2705,6 +2745,11 @@ class MineAstrPlugin(Star):
                     "\nApply these image-translation instructions while keeping the JSON "
                     "shape: " + json.dumps(prompt_instructions, ensure_ascii=False)
                 )
+            remaining = request_deadline - self._translation_clock()
+            initial_timeout = min(
+                configured_timeout,
+                max(0.1, remaining - correction_reserve),
+            )
             response = await asyncio.wait_for(
                 provider.text_chat(
                     prompt=prompt,
@@ -2715,13 +2760,11 @@ class MineAstrPlugin(Star):
                     session_id=f"mineastr-image-translation-{time.monotonic_ns()}",
                     persist=False,
                 ),
-                timeout=max(
-                    1, min(60, self._cfg_int("game_translation_timeout_seconds"))
-                ),
+                timeout=initial_timeout,
             )
             raw = getattr(response, "completion_text", "")
             result = self._parse_translation_response(
-                raw, languages, self._cfg_int("max_relay_length")
+                raw, languages, max_relay_length
             )
             parsed_source = ""
             match = re.search(r"\{.*\}", str(raw or "").strip(), flags=re.DOTALL)
@@ -2731,7 +2774,7 @@ class MineAstrPlugin(Star):
                     if isinstance(parsed, dict):
                         parsed_source = trim_message(
                             parsed.get("source_text") or parsed.get("ocr_text"),
-                            self._cfg_int("max_relay_length"),
+                            max_relay_length,
                         )
                 except (json.JSONDecodeError, TypeError):
                     pass
@@ -2745,24 +2788,37 @@ class MineAstrPlugin(Star):
                     image=True,
                 )
                 if glossary_instructions != prompt_instructions:
-                    corrected = await self._translate_text(
-                        parsed_source,
-                        languages,
-                        f"minecraft://{str(request.get('server_id') or 'minecraft')}",
-                        custom_instructions=glossary_instructions,
-                        cache_scope="game-image-ocr",
-                        context=(("image-context", context),) if context else (),
-                        inject_glossary=False,
-                    )
-                    if isinstance(corrected, dict) and (
-                        corrected.get("translations")
-                        or corrected.get("source_language")
-                    ):
-                        result = corrected
-                        result["source_text"] = parsed_source
-            result["show_original"] = self._cfg_bool(
-                "game_translation_show_original"
-            )
+                    remaining = request_deadline - self._translation_clock() - 0.25
+                    if remaining > 0.1:
+                        corrected = await self._translate_text(
+                            parsed_source,
+                            languages,
+                            f"minecraft://{str(request.get('server_id') or 'minecraft')}",
+                            custom_instructions=glossary_instructions,
+                            cache_scope="game-image-ocr",
+                            context=(("image-context", context),) if context else (),
+                            inject_glossary=False,
+                            timeout_seconds=min(
+                                configured_timeout,
+                                IMAGE_TRANSLATION_CORRECTION_RESERVE_SECONDS,
+                                remaining,
+                            ),
+                        )
+                        corrected_source, corrected_translations = (
+                            self._translation_result_parts(corrected)
+                        )
+                        if corrected_translations:
+                            initial_source, initial_translations = (
+                                self._translation_result_parts(result)
+                            )
+                            merged_translations = dict(initial_translations)
+                            merged_translations.update(corrected_translations)
+                            result["source_language"] = (
+                                corrected_source or initial_source
+                            )
+                            result["translations"] = merged_translations
+                            result["source_text"] = parsed_source
+            result["show_original"] = show_original
             self._image_translation_cache[cache_key] = copy.deepcopy(result)
             accessed_at[cache_key] = time.monotonic()
             while len(self._image_translation_cache) > IMAGE_TRANSLATION_CACHE_LIMIT:
