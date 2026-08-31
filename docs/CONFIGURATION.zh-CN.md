@@ -1,4 +1,4 @@
-# MineAstr 0.6.29 配置参考
+# MineAstr 0.6.30 配置参考
 
 本文只描述当前配置。历史字段变化见 [`CHANGELOG.md`](../CHANGELOG.md)。
 
@@ -23,6 +23,7 @@
 | `botDisplayName` | `AstrBot` | 游戏内机器人名称 |
 | `reconnectSeconds` | `5` | 断线重连间隔 |
 | `maxMessageLength` | `1000` | 转发聊天长度上限 |
+| `enableBotImageMessages` | `true` | 服务端是否允许向已安装 ChatImage 且主动接受的客户端下发 Bot 图片 |
 
 远程 AstrBot 应通过受控网络、TLS 终结或可信反向代理暴露，不要把管理接口直接公开到互联网。
 
@@ -53,11 +54,14 @@
 | `localWorldServerEnabled` | `false` | 单人集成服务器是否连接 AstrBot |
 | `gameTranslationsEnabled` | `true` | 游戏翻译总开关 |
 | `showOriginalTranslatedMessages` | `true` | 普通聊天是否同时显示原文 |
+| `acceptBotImages` | `true` | 是否接收 Bot 图片；未安装 ChatImage 时强制无效且不会向服务端声明能力 |
 | `signTranslationsEnabled` | `true` | 准星目标浮选总开关 |
 | `signTranslationMaxDistance` | `8` | 浮选最大距离 |
 | `signTranslationScale` | `1.0` | 浮选缩放 |
 
-`showOriginalTranslatedMessages` 只控制普通聊天。0.6.29 的目标 HUD 默认只显示译文。
+`showOriginalTranslatedMessages` 只控制普通聊天。0.6.30 的目标 HUD 默认只显示译文。
+
+Bot 端另有 `bridge_settings.relay_images_to_game` 总开关、`game_image_inline_max_bytes` 本地图片内联总上限和 `game_image_max_items` 单条消息图片数上限。关闭任意一端的开关都只停止图片，不影响文字桥接。图片路径和 URL 不会作为普通聊天文本显示。
 
 ## 截图
 

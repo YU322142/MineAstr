@@ -20,6 +20,9 @@ public final class MineAstrClientConfig {
     public static final ModConfigSpec.BooleanValue SHOW_ORIGINAL_TRANSLATED_MESSAGES = BUILDER
             .comment("显示译文时是否同时保留原文。")
             .define("showOriginalTranslatedMessages", true);
+    public static final ModConfigSpec.BooleanValue ACCEPT_BOT_IMAGES = BUILDER
+            .comment("是否接收 AstrBot 图片消息；仅在客户端安装 ChatImage 时生效。")
+            .define("acceptBotImages", true);
     public static final ModConfigSpec.BooleanValue SIGN_TRANSLATIONS_ENABLED = BUILDER
             .comment("是否显示准星所指告示牌及外部画框接口的浮选译文。")
             .define("signTranslationsEnabled", true);

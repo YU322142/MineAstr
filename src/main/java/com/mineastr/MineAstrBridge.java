@@ -15,6 +15,7 @@ import java.net.http.WebSocket;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.HashMap;
@@ -102,6 +103,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
     private final StringBuilder inboundBuffer = new StringBuilder();
     private final ConcurrentMap<UUID, ClientCapability> clientCapabilities = new ConcurrentHashMap<>();
     private final ConcurrentMap<UUID, TranslationPreference> translationPreferences = new ConcurrentHashMap<>();
+    private final ConcurrentMap<UUID, BotImagePreference> botImagePreferences = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, PendingScreenshot> pendingScreenshots = new ConcurrentHashMap<>();
     private final ConcurrentMap<UUID, String> pendingScreenshotByPlayer = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, ScreenshotAssembly> screenshotAssemblies = new ConcurrentHashMap<>();
@@ -173,6 +175,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         clearPendingImageTranslations("Minecraft 服务器正在停止。");
         signTranslationStore.save();
         translationPreferences.clear();
+        botImagePreferences.clear();
         observedLoginIdentities.clear();
         syncedTrustedCommandUsers.clear();
         syncedTrustedCommandUsersRevision.set(-1L);
@@ -532,6 +535,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         clientCapabilities.remove(player.getUUID());
         nativeChatRateWindows.remove(player.getUUID());
         translationPreferences.remove(player.getUUID());
+        botImagePreferences.remove(player.getUUID());
         pendingScreenshots.values().removeIf(pending -> {
             if (!pending.playerUuid.equals(player.getUUID())) {
                 return false;
@@ -554,6 +558,18 @@ public final class MineAstrBridge implements WebSocket.Listener {
                 player.getGameProfile().getName(),
                 translationsEnabled,
                 showOriginal);
+    }
+
+    public void registerBotImagePreference(
+            ServerPlayer player, boolean enabled, boolean chatImageAvailable) {
+        botImagePreferences.put(
+                player.getUUID(),
+                new BotImagePreference(enabled && chatImageAvailable, chatImageAvailable));
+        MineAstr.LOGGER.debug(
+                "MineAstr 已记录玩家 {} 的 Bot 图片偏好：enabled={} chatimage={}",
+                player.getGameProfile().getName(),
+                enabled && chatImageAvailable,
+                chatImageAvailable);
     }
 
     /** Returns cache details for the sign side currently under the player's crosshair. */
@@ -983,6 +999,35 @@ public final class MineAstrBridge implements WebSocket.Listener {
         }
     }
 
+    private static String sha256(byte[] value) {
+        try {
+            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(value));
+        } catch (java.security.NoSuchAlgorithmException exc) {
+            throw new IllegalStateException("SHA-256 不可用", exc);
+        }
+    }
+
+    private static String safePublicImageUrl(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        try {
+            URI uri = URI.create(value.strip());
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            if (!("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme))
+                    || host == null
+                    || host.isBlank()) {
+                return "";
+            }
+            String result = uri.toASCIIString();
+            return result.length() <= MineAstrPayloads.MAX_BOT_IMAGE_URL_LENGTH ? result : "";
+        } catch (IllegalArgumentException exc) {
+            return "";
+        }
+    }
+
     private void connectNow() {
         if (server == null || stopping || !MineAstrConfig.ENABLED.getAsBoolean() || isConnected() || !connecting.compareAndSet(false, true)) {
             return;
@@ -1359,26 +1404,8 @@ public final class MineAstrBridge implements WebSocket.Listener {
         if (senderName.isEmpty()) {
             senderName = trimFlatContent(MineAstrConfig.BOT_DISPLAY_NAME.get(), MAX_BROADCAST_SENDER_LENGTH);
         }
-        if (payload.has("media") && payload.get("media").isJsonArray()) {
-            StringBuilder mediaSuffix = new StringBuilder(content);
-            int count = 0;
-            for (JsonElement item : payload.getAsJsonArray("media")) {
-                if (count++ >= 8 || !item.isJsonObject()) {
-                    break;
-                }
-                JsonObject media = item.getAsJsonObject();
-                String mediaType = trimFlatContent(getString(media, "type", "image"), 16);
-                String mediaUrl = trimFlatContent(getString(media, "url", ""), 1024);
-                String marker = "[图片] " + mediaUrl;
-                if (!mediaUrl.isBlank()
-                        && "image".equalsIgnoreCase(mediaType)
-                        && !mediaSuffix.toString().contains(marker)) {
-                    mediaSuffix.append("\n[图片] ").append(mediaUrl);
-                }
-            }
-            content = trimFlatContent(mediaSuffix.toString(), MAX_BROADCAST_CONTENT_LENGTH);
-        }
-        if (content.isBlank()) {
+        List<BotImage> images = parseBotImages(payload);
+        if (content.isBlank() && images.isEmpty()) {
             return;
         }
         MinecraftServer currentServer = server;
@@ -1403,16 +1430,153 @@ public final class MineAstrBridge implements WebSocket.Listener {
         String finalSenderName = senderName;
         String finalContent = content;
         currentServer.execute(() -> {
-            MineAstr.LOGGER.info("[{}] {}", finalSenderName, finalContent);
+            MineAstr.LOGGER.info(
+                    "[{}] {}{}",
+                    finalSenderName,
+                    finalContent,
+                    images.isEmpty() ? "" : " [图片×" + images.size() + "]");
             for (ServerPlayer player : currentServer.getPlayerList().getPlayers()) {
-                player.sendSystemMessage(renderTranslatedChat(
-                        player,
-                        finalSenderName,
-                        finalContent,
-                        translations,
-                        defaultShowOriginal));
+                boolean receivesImages = canReceiveBotImages(player);
+                boolean imageOnlyPlaceholder = "[图片]".equals(finalContent.strip());
+                if (!finalContent.isBlank() && !(receivesImages && imageOnlyPlaceholder && !images.isEmpty())) {
+                    player.sendSystemMessage(renderTranslatedChat(
+                            player,
+                            finalSenderName,
+                            finalContent,
+                            translations,
+                            defaultShowOriginal));
+                }
+                if (receivesImages) {
+                    images.forEach(image -> sendBotImage(player, finalSenderName, image));
+                }
             }
         });
+    }
+
+    private List<BotImage> parseBotImages(JsonObject payload) {
+        if (!MineAstrConfig.ENABLE_BOT_IMAGE_MESSAGES.getAsBoolean()
+                || !payload.has("media")
+                || !payload.get("media").isJsonArray()) {
+            return List.of();
+        }
+        List<BotImage> images = new ArrayList<>();
+        for (JsonElement item : payload.getAsJsonArray("media")) {
+            if (images.size() >= 8) {
+                break;
+            }
+            if (!item.isJsonObject()) {
+                continue;
+            }
+            JsonObject media = item.getAsJsonObject();
+            if (!"image".equalsIgnoreCase(trimFlatContent(getString(media, "type", "image"), 16))) {
+                continue;
+            }
+            String name = trimFlatContent(
+                    getString(media, "name", "image"),
+                    MineAstrPayloads.MAX_BOT_IMAGE_NAME_LENGTH);
+            if (name.isBlank()) {
+                name = "image";
+            }
+            String sourceUrl = safePublicImageUrl(getString(media, "url", ""));
+            String mimeType = trimFlatContent(
+                    getString(media, "mime_type", ""),
+                    MineAstrPayloads.MAX_MIME_LENGTH).toLowerCase(Locale.ROOT);
+            byte[] bytes = new byte[0];
+            String encoded = media.has("data_base64")
+                            && media.get("data_base64").isJsonPrimitive()
+                            && media.get("data_base64").getAsJsonPrimitive().isString()
+                    ? media.get("data_base64").getAsString().strip()
+                    : "";
+            if (!encoded.isBlank()) {
+                int maxEncodedLength = ((MineAstrPayloads.MAX_BOT_IMAGE_BYTES + 2) / 3) * 4 + 8;
+                if (encoded.length() > maxEncodedLength) {
+                    MineAstr.LOGGER.warn("MineAstr 忽略超过内联上限的 Bot 图片：{}", name);
+                    continue;
+                }
+                try {
+                    bytes = Base64.getDecoder().decode(encoded);
+                } catch (IllegalArgumentException exc) {
+                    MineAstr.LOGGER.warn("MineAstr 忽略 Base64 无效的 Bot 图片：{}", name);
+                    continue;
+                }
+                if (bytes.length == 0 || bytes.length > MineAstrPayloads.MAX_BOT_IMAGE_BYTES) {
+                    continue;
+                }
+                int declaredSize = getInt(
+                        media, "size", bytes.length, 0, MineAstrPayloads.MAX_BOT_IMAGE_BYTES);
+                if (declaredSize > 0 && declaredSize != bytes.length) {
+                    MineAstr.LOGGER.warn("MineAstr 忽略长度声明不一致的 Bot 图片：{}", name);
+                    continue;
+                }
+                if (!isSupportedImage(bytes, mimeType)) {
+                    MineAstr.LOGGER.warn("MineAstr 忽略格式无效的 Bot 图片：{}", name);
+                    continue;
+                }
+                String actualSha = sha256(bytes);
+                String declaredSha = trimFlatContent(getString(media, "sha256", ""), 64)
+                        .toLowerCase(Locale.ROOT);
+                if (!declaredSha.isBlank()
+                        && (!declaredSha.matches("[0-9a-f]{64}") || !declaredSha.equals(actualSha))) {
+                    MineAstr.LOGGER.warn("MineAstr 忽略哈希不匹配的 Bot 图片：{}", name);
+                    continue;
+                }
+                images.add(new BotImage(name, mimeType, sourceUrl, actualSha, bytes));
+            } else if (!sourceUrl.isBlank()) {
+                images.add(new BotImage(name, mimeType, sourceUrl, "", bytes));
+            }
+        }
+        return List.copyOf(images);
+    }
+
+    private boolean canReceiveBotImages(ServerPlayer player) {
+        BotImagePreference preference = botImagePreferences.get(player.getUUID());
+        return MineAstrConfig.ENABLE_BOT_IMAGE_MESSAGES.getAsBoolean()
+                && preference != null
+                && preference.enabled
+                && preference.chatImageAvailable
+                && MineAstrNetwork.canSendBotImageChunk(player);
+    }
+
+    private static void sendBotImage(ServerPlayer player, String senderName, BotImage image) {
+        String messageId = UUID.randomUUID().toString();
+        if (image.bytes.length == 0) {
+            MineAstrNetwork.sendBotImageChunk(
+                    player,
+                    new MineAstrPayloads.BotImageChunk(
+                            messageId,
+                            senderName,
+                            image.name,
+                            image.mimeType,
+                            image.sourceUrl,
+                            image.sha256,
+                            0,
+                            0,
+                            0,
+                            new byte[0]));
+            return;
+        }
+        int totalChunks = (image.bytes.length + MineAstrPayloads.MAX_CHUNK_BYTES - 1)
+                / MineAstrPayloads.MAX_CHUNK_BYTES;
+        if (totalChunks < 1 || totalChunks > MineAstrPayloads.MAX_BOT_IMAGE_CHUNKS) {
+            return;
+        }
+        for (int index = 0; index < totalChunks; index++) {
+            int start = index * MineAstrPayloads.MAX_CHUNK_BYTES;
+            int end = Math.min(image.bytes.length, start + MineAstrPayloads.MAX_CHUNK_BYTES);
+            MineAstrNetwork.sendBotImageChunk(
+                    player,
+                    new MineAstrPayloads.BotImageChunk(
+                            messageId,
+                            senderName,
+                            image.name,
+                            image.mimeType,
+                            image.sourceUrl,
+                            image.sha256,
+                            index,
+                            totalChunks,
+                            image.bytes.length,
+                            Arrays.copyOfRange(image.bytes, start, end)));
+        }
     }
 
     private void handleSignTranslationResult(WebSocket socket, JsonObject payload) {
@@ -3202,6 +3366,49 @@ public final class MineAstrBridge implements WebSocket.Listener {
                 && (imageBytes[imageBytes.length - 1] & 0xFF) == 0xD9;
     }
 
+    private static boolean isSupportedImage(byte[] imageBytes, String mimeType) {
+        if (imageBytes == null || imageBytes.length < 4 || mimeType == null
+                || !mimeType.strip().toLowerCase(Locale.ROOT).startsWith("image/")) {
+            return false;
+        }
+        return looksLikeJpeg(imageBytes)
+                || startsWith(imageBytes, new int[] {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A})
+                || startsWith(imageBytes, "GIF87a".getBytes(StandardCharsets.US_ASCII))
+                || startsWith(imageBytes, "GIF89a".getBytes(StandardCharsets.US_ASCII))
+                || startsWith(imageBytes, new int[] {0x42, 0x4D})
+                || startsWith(imageBytes, new int[] {0x00, 0x00, 0x01, 0x00})
+                || (imageBytes.length >= 12
+                        && startsWith(imageBytes, "RIFF".getBytes(StandardCharsets.US_ASCII))
+                        && imageBytes[8] == 'W'
+                        && imageBytes[9] == 'E'
+                        && imageBytes[10] == 'B'
+                        && imageBytes[11] == 'P');
+    }
+
+    private static boolean startsWith(byte[] value, byte[] prefix) {
+        if (value == null || value.length < prefix.length) {
+            return false;
+        }
+        for (int index = 0; index < prefix.length; index++) {
+            if (value[index] != prefix[index]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean startsWith(byte[] value, int[] prefix) {
+        if (value == null || value.length < prefix.length) {
+            return false;
+        }
+        for (int index = 0; index < prefix.length; index++) {
+            if ((value[index] & 0xFF) != prefix[index]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static String safeErrorMessage(Throwable throwable) {
         String message = throwable == null ? "未知错误" : throwable.getMessage();
         if (message == null || message.isBlank()) {
@@ -3382,6 +3589,17 @@ public final class MineAstrBridge implements WebSocket.Listener {
     }
 
     private record TranslationPreference(boolean translationsEnabled, boolean showOriginal) {
+    }
+
+    private record BotImagePreference(boolean enabled, boolean chatImageAvailable) {
+    }
+
+    private record BotImage(
+            String name,
+            String mimeType,
+            String sourceUrl,
+            String sha256,
+            byte[] bytes) {
     }
 
     private record NativeChatPolicy(WebSocket socket, boolean enabled, int timeoutMs) {

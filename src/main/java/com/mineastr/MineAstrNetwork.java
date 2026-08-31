@@ -19,6 +19,8 @@ public final class MineAstrNetwork {
                 MineAstrNetwork::handleClientHello);
         registrar.playToServer(MineAstrPayloads.TranslationPreferences.TYPE,
                 MineAstrPayloads.TranslationPreferences.CODEC, MineAstrNetwork::handleTranslationPreferences);
+        registrar.playToServer(MineAstrPayloads.BotImagePreferences.TYPE,
+                MineAstrPayloads.BotImagePreferences.CODEC, MineAstrNetwork::handleBotImagePreferences);
         registrar.playToServer(MineAstrPayloads.SignTranslationQuery.TYPE,
                 MineAstrPayloads.SignTranslationQuery.CODEC, MineAstrNetwork::handleSignTranslationQuery);
         registrar.playToServer(MineAstrPayloads.ImageTranslationQuery.TYPE,
@@ -43,6 +45,10 @@ public final class MineAstrNetwork {
                 MineAstrPayloads.ImageTranslationResult.CODEC,
                 (payload, context) -> invokeClientHandler(context, "handleImageTranslationResult",
                         MineAstrPayloads.ImageTranslationResult.class, payload));
+        registrar.playToClient(MineAstrPayloads.BotImageChunk.TYPE,
+                MineAstrPayloads.BotImageChunk.CODEC,
+                (payload, context) -> invokeClientHandler(context, "handleBotImageChunk",
+                        MineAstrPayloads.BotImageChunk.class, payload));
     }
 
     private static void handleClientHello(MineAstrPayloads.ClientHello payload, IPayloadContext context) {
@@ -54,6 +60,12 @@ public final class MineAstrNetwork {
             MineAstrPayloads.TranslationPreferences payload, IPayloadContext context) {
         context.enqueueWork(() -> withServerPlayer(context, player -> MineAstr.bridge().registerTranslationPreference(
                 player, payload.translationsEnabled(), payload.showOriginal())));
+    }
+
+    private static void handleBotImagePreferences(
+            MineAstrPayloads.BotImagePreferences payload, IPayloadContext context) {
+        context.enqueueWork(() -> withServerPlayer(context, player -> MineAstr.bridge().registerBotImagePreference(
+                player, payload.enabled(), payload.chatImageAvailable())));
     }
 
     private static void handleSignTranslationQuery(
@@ -133,6 +145,16 @@ public final class MineAstrNetwork {
     public static void sendImageTranslationResult(ServerPlayer player, MineAstrPayloads.ImageTranslationResult result) {
         if (canSendImageTranslationResult(player)) {
             PacketDistributor.sendToPlayer(player, result);
+        }
+    }
+
+    public static boolean canSendBotImageChunk(ServerPlayer player) {
+        return canSend(player, MineAstrPayloads.BotImageChunk.TYPE);
+    }
+
+    public static void sendBotImageChunk(ServerPlayer player, MineAstrPayloads.BotImageChunk chunk) {
+        if (canSendBotImageChunk(player)) {
+            PacketDistributor.sendToPlayer(player, chunk);
         }
     }
 

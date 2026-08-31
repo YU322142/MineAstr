@@ -4,6 +4,16 @@
 
 Community fork: [YU322142/MineAstr](https://github.com/YU322142/MineAstr) · Upstream: [Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr) · Integration fork: [YU322142/ImmersivePaintings](https://github.com/YU322142/ImmersivePaintings)
 
+## 0.6.30 - NeoForge 1.21.1
+
+- Added optional client integration with ChatImage so AstrBot images can render directly in Minecraft chat.
+- Clients advertise image capability only when ChatImage is installed and image receiving is enabled under F8; clients without ChatImage never receive image packets.
+- Added a Bot-side image master switch, inline byte limit, and per-message image count limit; disabling images does not affect text bridging.
+- Bot-local temporary images now use bounded inline data while public images use restricted HTTP(S) URLs; Bot-local paths and image URLs are no longer printed as ordinary chat text.
+- The server validates image type, size, and SHA-256, then sends bounded 24 KiB chunks only to consenting clients.
+- The client validates again, caches the image, and renders it through ChatImage CICode; cached images are retained for seven days by default.
+- Players without ChatImage or with image receiving disabled keep normal text messages; an image-only message uses at most a path-free `[图片]` placeholder.
+
 ## 0.6.29 - NeoForge 1.21.1
 
 - Replaced entity world-space text with a crosshair-target HUD.

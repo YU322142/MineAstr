@@ -1,4 +1,4 @@
-# MineAstr 0.6.29
+# MineAstr 0.6.30
 
 [English](README.en.md) · [配置参考](docs/CONFIGURATION.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md) · [Changelog](CHANGELOG.md) · [外部翻译 API](EXTERNAL_TRANSLATION_API.md)
 
@@ -10,11 +10,11 @@ MineAstr 是面向 Minecraft 1.21.1 / NeoForge 的 AstrBot 桥接模组。它把
 - 原始上游：[Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr)。
 - 沉浸画框联动 Fork：[YU322142/ImmersivePaintings](https://github.com/YU322142/ImmersivePaintings)，对应分支为 `1.21.1-neoforge`。
 
-0.6.29 与 Immersive Paintings 0.7.15 的联动由上述两个社区 Fork 共同维护，并非两个上游项目的官方联动。相关问题请提交到对应 Fork。
+0.6.30 与 Immersive Paintings 0.7.15 的联动由上述两个社区 Fork 共同维护，并非两个上游项目的官方联动。相关问题请提交到对应 Fork。
 
 | 项目 | 要求 |
 | --- | --- |
-| MineAstr | `0.6.29` |
+| MineAstr | `0.6.30` |
 | Minecraft | `1.21.1` |
 | NeoForge | `21.1.219` 或更高 |
 | Java | `21` |
@@ -27,6 +27,7 @@ MineAstr 是面向 Minecraft 1.21.1 / NeoForge 的 AstrBot 桥接模组。它把
 - 为告示牌、实体和外部图片提供准星目标译文 HUD。
 - 向 AstrBot 提供服务器、玩家、背包、附近实体和区域特征查询。
 - 在玩家明确允许时提供低清晰度截图。
+- 与 [ChatImage](https://github.com/kitUIN/ChatImage) 可选联动，在聊天中显示 Bot 图片，并允许 Bot 端和每个客户端分别关闭图片传递。
 - 提供账号绑定、可选白名单同步和严格受控的命令工具。
 
 MineAstr 不负责替换模组文件、同步客户端目录或保存画作图片；这些分别属于 MCSync 和对应内容模组的职责。
@@ -47,7 +48,7 @@ AstrBot
 
 ## 安装
 
-1. 把 `mineastr-neoforge-1.21.1-0.6.29.jar` 放入服务端 `mods/`。
+1. 把 `mineastr-neoforge-1.21.1-0.6.30.jar` 放入服务端 `mods/`。
 2. 把同一个 JAR 放入参与翻译功能的客户端 `mods/`。
 3. 首次启动后编辑服务端 `config/mineastr-common.toml`。
 4. 在 AstrBot 的 Minecraft 适配器中设置相同的 WebSocket 路径和 Token。
@@ -66,7 +67,7 @@ serverId = "minecraft"
 
 ## 翻译显示行为
 
-0.6.29 将告示牌、实体和沉浸画框统一为“当前准星目标”生命周期：
+0.6.30 将告示牌、实体和沉浸画框统一为“当前准星目标”生命周期：
 
 - 只在目标仍然有效时显示译文。
 - 移开准星、打开界面、隐藏 HUD、切换世界或目标失效时立即清理。
@@ -75,13 +76,21 @@ serverId = "minecraft"
 
 普通聊天的“是否同时显示原文”是独立设置，不影响目标 HUD。
 
+## Bot 图片与 ChatImage 联动
+
+- 服务端和客户端均需安装 MineAstr `0.6.30`；希望显示图片的客户端还需安装 ChatImage。
+- AstrBot 插件的 `bridge_settings.relay_images_to_game` 是 Bot 端总开关。
+- 客户端按 F8 后可单独关闭“接收 Bot 图片”；没有 ChatImage 时该选项不可用，客户端也不会上报图片接收能力。
+- Bot 本机临时图片会在限定大小内安全内联；公网 HTTP(S) 图片由 ChatImage 获取。Bot 本机路径和图片 URL 都不会作为普通聊天正文显示。
+- 内联图片经服务端限额、格式与 SHA-256 校验后分块下发，客户端写入 `cache/mineastr/chat-images/`，缓存默认保留 7 天。
+
 启用原生聊天翻译后，MineAstr 会用未签名消息重发译文，因此不保留完整的 Secure Chat 举报链路。如果服务器需要原版签名和过滤语义，应在 AstrBot 策略中关闭原生聊天翻译。
 
 ## 与沉浸画框联动
 
 图片翻译要求：
 
-- 客户端与服务端均安装 MineAstr `0.6.29`。
+- 客户端与服务端均安装 MineAstr `0.6.30`。
 - 客户端与服务端均安装 Immersive Paintings `0.7.15+1.21.1`。
 - AstrBot 桥接已连接并支持图片翻译。
 - 客户端开启游戏翻译和悬浮翻译。
@@ -113,7 +122,8 @@ serverId = "minecraft"
 | --- | --- |
 | 日志显示“已被配置禁用” | 活动 `mineastr-common.toml` 的 `enabled` |
 | 一直未连接 | `websocketUrl`、AstrBot 监听地址、防火墙和 Token |
-| 告示牌正常、画作不翻译 | Immersive Paintings 0.7.15，客户端是否同样安装 MineAstr 0.6.29 |
+| 告示牌正常、画作不翻译 | Immersive Paintings 0.7.15，客户端是否同样安装 MineAstr 0.6.30 |
+| Bot 图片只显示为 `[图片]` | 客户端是否安装 ChatImage、F8 图片接收是否开启、Bot 端图片转发是否开启 |
 | 移开准星仍显示 | 客户端是否混装旧 MineAstr 或旧画框 JAR |
 | 图片请求没有结果 | AstrBot 图片能力和客户端完整图缓存 |
 | 单人世界不连接 | `localWorldServerEnabled` 是否启用 |

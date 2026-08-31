@@ -32,6 +32,9 @@ public final class MineAstrConfig {
     public static final ModConfigSpec.IntValue MAX_MESSAGE_LENGTH = BUILDER
             .comment("转发到 AstrBot 的单条玩家聊天最大长度。")
             .defineInRange("maxMessageLength", 1000, 1, 4096);
+    public static final ModConfigSpec.BooleanValue ENABLE_BOT_IMAGE_MESSAGES = BUILDER
+            .comment("是否允许 AstrBot 向安装 ChatImage 且主动开启接收的客户端发送图片。")
+            .define("enableBotImageMessages", true);
 
     public static final ModConfigSpec.BooleanValue ENABLE_PLAYER_STATE_TOOL = BUILDER
             .comment("是否允许 AstrBot 查询在线玩家状态。")

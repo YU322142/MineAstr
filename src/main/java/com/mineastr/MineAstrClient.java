@@ -46,6 +46,7 @@ import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.block.entity.SignText;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
@@ -116,6 +117,7 @@ public final class MineAstrClient {
         MineAstrDisplayApi.clear();
         sendPayloadToServer(new MineAstrPayloads.ClientHello(MineAstr.MOD_VERSION, true));
         sendTranslationPreferences();
+        sendBotImagePreferences();
     }
 
     @SubscribeEvent
@@ -125,6 +127,7 @@ public final class MineAstrClient {
         IMAGE_TRANSLATION_REQUESTS.values().forEach(future ->
                 future.completeExceptionally(new IllegalStateException("Minecraft connection closed")));
         IMAGE_TRANSLATION_REQUESTS.clear();
+        MineAstrBotImageClient.clear();
         MineAstrDisplayApi.clear();
     }
 
@@ -256,6 +259,10 @@ public final class MineAstrClient {
         Minecraft.getInstance().execute(() -> applyImageTranslationResult(result));
     }
 
+    public static void handleBotImageChunk(MineAstrPayloads.BotImageChunk chunk) {
+        Minecraft.getInstance().execute(() -> MineAstrBotImageClient.handle(chunk));
+    }
+
     public static void applyLocalWorldServerSettings(boolean enabled) {
         Minecraft minecraft = Minecraft.getInstance();
         if (!minecraft.hasSingleplayerServer() || minecraft.getSingleplayerServer() == null) {
@@ -278,6 +285,7 @@ public final class MineAstrClient {
             minecraft.execute(() -> {
                 sendPayloadToServer(new MineAstrPayloads.ClientHello(MineAstr.MOD_VERSION, true));
                 sendTranslationPreferences();
+                sendBotImagePreferences();
             });
         });
     }
@@ -892,6 +900,21 @@ public final class MineAstrClient {
         sendPayloadToServer(new MineAstrPayloads.TranslationPreferences(
                 MineAstrClientConfig.GAME_TRANSLATIONS_ENABLED.getAsBoolean(),
                 MineAstrClientConfig.SHOW_ORIGINAL_TRANSLATED_MESSAGES.getAsBoolean()));
+    }
+
+    public static boolean isChatImageAvailable() {
+        try {
+            return ModList.get().isLoaded("chatimage");
+        } catch (RuntimeException exc) {
+            return false;
+        }
+    }
+
+    public static void sendBotImagePreferences() {
+        boolean chatImageAvailable = isChatImageAvailable();
+        sendPayloadToServer(new MineAstrPayloads.BotImagePreferences(
+                chatImageAvailable && MineAstrClientConfig.ACCEPT_BOT_IMAGES.getAsBoolean(),
+                chatImageAvailable));
     }
 
     private static void sendPayloadToServer(CustomPacketPayload payload) {

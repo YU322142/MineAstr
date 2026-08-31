@@ -17,7 +17,7 @@ MineAstr 将 Minecraft 服务器聊天接入 AstrBot，并按玩家语言显示 
 
 账号绑定可同步到服务器，并可在登录前校验；服务器命令工具默认关闭，非公开命令必须由同步或静态管理员审批。
 
-如果玩家客户端也安装 MineAstr，可以按 F8 调整游戏翻译、告示牌/画框浮选和截图隐私；告示牌译文会按原文指纹持久化到世界存档。
+如果玩家客户端也安装 MineAstr，可以按 F8 调整游戏翻译、告示牌/画框浮选和截图隐私；同时安装 ChatImage 后，还可自行开启或关闭 Bot 图片接收。告示牌译文会按原文指纹持久化到世界存档。
 
 本 Mod 支持 NeoForge 独立服务端无 GUI 运行；未安装客户端 Mod 的玩家仍可加入服务器，只是不提供截图、浮选和外部图片翻译等客户端能力。
 '''
@@ -35,3 +35,10 @@ MineAstr 将 Minecraft 服务器聊天接入 AstrBot，并按玩家语言显示 
     versionRange="${minecraft_version_range}"
     ordering="NONE"
     side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="chatimage"
+    type="optional"
+    versionRange="[1,)"
+    ordering="AFTER"
+    side="CLIENT"

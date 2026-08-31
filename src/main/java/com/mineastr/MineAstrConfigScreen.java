@@ -12,7 +12,7 @@ import net.minecraft.util.Mth;
 
 public final class MineAstrConfigScreen extends Screen {
     private static final int PANEL_WIDTH = 430;
-    private static final int PANEL_HEIGHT = 380;
+    private static final int PANEL_HEIGHT = 408;
     private static final int ACCENT = 0xFF72E6C1;
     private static final int TEXT = 0xFFF3F7FF;
     private static final int MUTED = 0xFFA8B4C8;
@@ -21,6 +21,7 @@ public final class MineAstrConfigScreen extends Screen {
     private MineAstrClientConfig.ScreenshotMode screenshotMode;
     private boolean gameTranslationsEnabled;
     private boolean showOriginalTranslatedMessages;
+    private boolean acceptBotImages;
     private boolean signTranslationsEnabled;
     private int signTranslationMaxDistance;
     private double signTranslationScale;
@@ -39,6 +40,7 @@ public final class MineAstrConfigScreen extends Screen {
         screenshotMode = MineAstrClientConfig.SCREENSHOT_MODE.get();
         gameTranslationsEnabled = MineAstrClientConfig.GAME_TRANSLATIONS_ENABLED.getAsBoolean();
         showOriginalTranslatedMessages = MineAstrClientConfig.SHOW_ORIGINAL_TRANSLATED_MESSAGES.getAsBoolean();
+        acceptBotImages = MineAstrClientConfig.ACCEPT_BOT_IMAGES.getAsBoolean();
         signTranslationsEnabled = MineAstrClientConfig.SIGN_TRANSLATIONS_ENABLED.getAsBoolean();
         signTranslationMaxDistance = MineAstrClientConfig.SIGN_TRANSLATION_MAX_DISTANCE.getAsInt();
         signTranslationScale = MineAstrClientConfig.SIGN_TRANSLATION_SCALE.getAsDouble();
@@ -73,6 +75,12 @@ public final class MineAstrConfigScreen extends Screen {
         addRenderableWidget(CycleButton.onOffBuilder(showOriginalTranslatedMessages)
                 .create(controlLeft, row, controlWidth, 20, Component.empty(),
                         (button, value) -> showOriginalTranslatedMessages = value));
+        row += 28;
+        CycleButton<Boolean> imageButton = CycleButton.onOffBuilder(acceptBotImages)
+                .create(controlLeft, row, controlWidth, 20, Component.empty(),
+                        (button, value) -> acceptBotImages = value);
+        imageButton.active = MineAstrClient.isChatImageAvailable();
+        addRenderableWidget(imageButton);
         row += 28;
         addRenderableWidget(CycleButton.onOffBuilder(signTranslationsEnabled)
                 .create(controlLeft, row, controlWidth, 20, Component.empty(),
@@ -131,6 +139,7 @@ public final class MineAstrConfigScreen extends Screen {
         screenshotMode = MineAstrClientConfig.SCREENSHOT_MODE.getDefault();
         gameTranslationsEnabled = MineAstrClientConfig.GAME_TRANSLATIONS_ENABLED.getDefault();
         showOriginalTranslatedMessages = MineAstrClientConfig.SHOW_ORIGINAL_TRANSLATED_MESSAGES.getDefault();
+        acceptBotImages = MineAstrClientConfig.ACCEPT_BOT_IMAGES.getDefault();
         signTranslationsEnabled = MineAstrClientConfig.SIGN_TRANSLATIONS_ENABLED.getDefault();
         signTranslationMaxDistance = MineAstrClientConfig.SIGN_TRANSLATION_MAX_DISTANCE.getDefault();
         signTranslationScale = MineAstrClientConfig.SIGN_TRANSLATION_SCALE.getDefault();
@@ -144,6 +153,7 @@ public final class MineAstrConfigScreen extends Screen {
         MineAstrClientConfig.SCREENSHOT_MODE.set(screenshotMode);
         MineAstrClientConfig.GAME_TRANSLATIONS_ENABLED.set(gameTranslationsEnabled);
         MineAstrClientConfig.SHOW_ORIGINAL_TRANSLATED_MESSAGES.set(showOriginalTranslatedMessages);
+        MineAstrClientConfig.ACCEPT_BOT_IMAGES.set(acceptBotImages);
         MineAstrClientConfig.SIGN_TRANSLATIONS_ENABLED.set(signTranslationsEnabled);
         MineAstrClientConfig.SIGN_TRANSLATION_MAX_DISTANCE.set(signTranslationMaxDistance);
         MineAstrClientConfig.SIGN_TRANSLATION_SCALE.set(signTranslationScale);
@@ -153,6 +163,7 @@ public final class MineAstrConfigScreen extends Screen {
         MineAstrClientConfig.SCREENSHOT_MAX_BYTES.set(maxBytes);
         MineAstrClientConfig.SPEC.save();
         MineAstrClient.sendTranslationPreferences();
+        MineAstrClient.sendBotImagePreferences();
         onClose();
     }
 
@@ -187,6 +198,7 @@ public final class MineAstrConfigScreen extends Screen {
                 "screen.mineastr.config.mode.label",
                 "screen.mineastr.config.translation.label",
                 "screen.mineastr.config.translation_original.label",
+                "screen.mineastr.config.bot_images.label",
                 "screen.mineastr.config.sign_translation.label",
                 "screen.mineastr.config.sign_distance.label",
                 "screen.mineastr.config.sign_scale.label",

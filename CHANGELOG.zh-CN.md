@@ -4,6 +4,16 @@
 
 社区 Fork：[YU322142/MineAstr](https://github.com/YU322142/MineAstr) · 原始上游：[Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr) · 联动 Fork：[YU322142/ImmersivePaintings](https://github.com/YU322142/ImmersivePaintings)
 
+## 0.6.30 - NeoForge 1.21.1
+
+- 新增与 ChatImage 的可选客户端联动，AstrBot 图片可直接显示在 Minecraft 聊天中。
+- 客户端只有安装 ChatImage 且在 F8 中开启图片接收后才声明能力；没有 ChatImage 时不接收图片包。
+- 新增 Bot 端图片总开关、内联大小上限和单条消息图片数上限；关闭图片不影响文字桥接。
+- Bot 本机临时图片改为有界内联数据，公网图片使用受限 HTTP(S) 地址；不再把 Bot 本机路径或图片 URL 显示为普通聊天正文。
+- 服务端验证图片类型、大小和 SHA-256，并以 24 KiB 有界分块定向发送给已同意的客户端。
+- 客户端再次验证并缓存图片，使用 ChatImage CICode 渲染；缓存默认保留 7 天。
+- 未安装 ChatImage 或关闭图片接收的玩家只保留正常文字消息；纯图片消息最多显示不含路径的 `[图片]` 占位。
+
 ## 0.6.29 - NeoForge 1.21.1
 
 - 将实体的世界空间文字改为准星目标 HUD。

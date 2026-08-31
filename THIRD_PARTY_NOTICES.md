@@ -30,3 +30,12 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## ChatImage
+
+MineAstr 0.6.30 optionally emits ChatImageCode (`CICode`) text after a verified
+Bot image has been cached on the client. No ChatImage source code, binaries, or
+assets are bundled into MineAstr. ChatImage remains an independently installed
+optional client mod.
+
+ChatImage project: https://github.com/kitUIN/ChatImage

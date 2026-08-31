@@ -1,4 +1,4 @@
-# MineAstr 0.6.29 Configuration Reference
+# MineAstr 0.6.30 Configuration Reference
 
 This document describes the current configuration only. See [`CHANGELOG.md`](../CHANGELOG.md) for historical field changes.
 
@@ -23,6 +23,7 @@ A dedicated server reads only the common configuration. When the local bridge is
 | `botDisplayName` | `AstrBot` | In-game bot name |
 | `reconnectSeconds` | `5` | Reconnection interval after disconnection |
 | `maxMessageLength` | `1000` | Maximum forwarded chat length |
+| `enableBotImageMessages` | `true` | Whether the server may deliver Bot images to clients that have ChatImage and explicitly accept them |
 
 A remote AstrBot should be exposed through a controlled network, TLS termination, or a trusted reverse proxy. Do not expose its management interface directly to the public Internet.
 
@@ -53,11 +54,14 @@ Whitelist synchronization and login checks are independent features. Define acco
 | `localWorldServerEnabled` | `false` | Whether the single-player integrated server connects to AstrBot |
 | `gameTranslationsEnabled` | `true` | Master game-translation switch |
 | `showOriginalTranslatedMessages` | `true` | Whether ordinary chat also displays the source text |
+| `acceptBotImages` | `true` | Whether to accept Bot images; forced inactive and not advertised to the server when ChatImage is absent |
 | `signTranslationsEnabled` | `true` | Master crosshair-target overlay switch |
 | `signTranslationMaxDistance` | `8` | Maximum overlay distance |
 | `signTranslationScale` | `1.0` | Overlay scale |
 
-`showOriginalTranslatedMessages` controls ordinary chat only. In 0.6.29, the target HUD displays translated text only by default.
+`showOriginalTranslatedMessages` controls ordinary chat only. In 0.6.30, the target HUD displays translated text only by default.
+
+The Bot side also provides the `bridge_settings.relay_images_to_game` master switch, the `game_image_inline_max_bytes` total limit for Bot-local images, and the `game_image_max_items` per-message count limit. Disabling either side stops only image delivery and does not affect text bridging. Image paths and URLs are never printed as ordinary chat text.
 
 ## Screenshots
 

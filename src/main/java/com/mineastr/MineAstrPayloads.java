@@ -19,6 +19,10 @@ public final class MineAstrPayloads {
     public static final int MAX_IMAGE_TRANSLATION_BYTES = 768 * 1024;
     public static final int MAX_IMAGE_TRANSLATION_CONTEXT_LENGTH = 2048;
     public static final int MAX_IMAGE_TRANSLATION_PROMPT_LENGTH = 4096;
+    public static final int MAX_BOT_IMAGE_BYTES = 1400 * 1024;
+    public static final int MAX_BOT_IMAGE_CHUNKS = 64;
+    public static final int MAX_BOT_IMAGE_NAME_LENGTH = 128;
+    public static final int MAX_BOT_IMAGE_URL_LENGTH = 2048;
 
     private MineAstrPayloads() {
     }
@@ -61,6 +65,77 @@ public final class MineAstrPayloads {
         private void write(RegistryFriendlyByteBuf buffer) {
             buffer.writeBoolean(translationsEnabled);
             buffer.writeBoolean(showOriginal);
+        }
+
+        @Override
+        public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record BotImagePreferences(boolean enabled, boolean chatImageAvailable)
+            implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<BotImagePreferences> TYPE =
+                MineAstrPayloads.type("bot_image_preferences");
+        public static final StreamCodec<RegistryFriendlyByteBuf, BotImagePreferences> CODEC =
+                StreamCodec.ofMember(BotImagePreferences::write, BotImagePreferences::read);
+
+        private static BotImagePreferences read(RegistryFriendlyByteBuf buffer) {
+            return new BotImagePreferences(buffer.readBoolean(), buffer.readBoolean());
+        }
+
+        private void write(RegistryFriendlyByteBuf buffer) {
+            buffer.writeBoolean(enabled);
+            buffer.writeBoolean(chatImageAvailable);
+        }
+
+        @Override
+        public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record BotImageChunk(
+            String messageId,
+            String senderName,
+            String imageName,
+            String mimeType,
+            String sourceUrl,
+            String sha256,
+            int index,
+            int totalChunks,
+            int totalBytes,
+            byte[] bytes) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<BotImageChunk> TYPE =
+                MineAstrPayloads.type("bot_image_chunk");
+        public static final StreamCodec<RegistryFriendlyByteBuf, BotImageChunk> CODEC =
+                StreamCodec.ofMember(BotImageChunk::write, BotImageChunk::read);
+
+        private static BotImageChunk read(RegistryFriendlyByteBuf buffer) {
+            return new BotImageChunk(
+                    buffer.readUtf(64),
+                    buffer.readUtf(64),
+                    buffer.readUtf(MAX_BOT_IMAGE_NAME_LENGTH),
+                    buffer.readUtf(MAX_MIME_LENGTH),
+                    buffer.readUtf(MAX_BOT_IMAGE_URL_LENGTH),
+                    buffer.readUtf(64),
+                    buffer.readVarInt(),
+                    buffer.readVarInt(),
+                    buffer.readVarInt(),
+                    buffer.readByteArray(MAX_CHUNK_BYTES));
+        }
+
+        private void write(RegistryFriendlyByteBuf buffer) {
+            buffer.writeUtf(messageId, 64);
+            buffer.writeUtf(senderName, 64);
+            buffer.writeUtf(imageName, MAX_BOT_IMAGE_NAME_LENGTH);
+            buffer.writeUtf(mimeType, MAX_MIME_LENGTH);
+            buffer.writeUtf(sourceUrl, MAX_BOT_IMAGE_URL_LENGTH);
+            buffer.writeUtf(sha256, 64);
+            buffer.writeVarInt(index);
+            buffer.writeVarInt(totalChunks);
+            buffer.writeVarInt(totalBytes);
+            buffer.writeByteArray(bytes);
         }
 
         @Override
