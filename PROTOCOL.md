@@ -1,8 +1,8 @@
 # MineAstr WebSocket 协议
 
-v0.6.29 延续可选的聊天媒体字段：`chat` 消息可带 `media` 数组，每项包含 `type=image`、`url` 和可选 `name`。旧版 Mod 会忽略该字段；新版 Mod 会在游戏聊天中以 `[图片] URL` 形式保留可访问入口，QQ/Discord 侧则发送原生图片消息。
+v0.6.30 扩展可选的聊天媒体字段：`chat` 消息可带 `media` 数组。旧版 Mod 会忽略该字段；新版 Mod 只向已声明 ChatImage 能力且允许接收的客户端发送图片，不会把本地路径回显到聊天。
 
-本文描述 AstrBot 插件 `v0.6.29` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。外置翻译术语库仅在 AstrBot 端读取，不增加协议字段。
+本文描述 AstrBot 插件 `v0.6.30` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。外置翻译术语库仅在 AstrBot 端读取，不增加协议字段。
 
 ## 连接与认证
 
@@ -21,7 +21,7 @@ Authorization: Bearer <token>
   "protocol": 1,
   "server_id": "survival",
   "server_name": "Survival Server",
-  "mod_version": "0.6.29",
+  "mod_version": "0.6.30",
   "chat_capabilities": ["native_chat_translation"]
 }
 ```
@@ -105,6 +105,33 @@ Authorization: Bearer <token>
 `translations` 与 `show_original` 均为 v0.6.7 可选扩展。v0.6.11 AstrBot 翻译器先检测原文语言，不会为与源语言相同的目标 locale 写入重复译文；对应玩家自然回退显示 `content`。Mod 应按每位在线玩家的 `clientInformation().language()` 选择精确 locale，找不到时可回退到同语言族；仍找不到、译文无效或玩家关闭翻译时显示 `content`。安装同版客户端 Mod 的玩家可通过单独的 C2S 偏好包覆盖 `show_original` 并关闭译文；不要修改旧版客户端能力包的 codec，以免协议不匹配导致断线。
 
 AstrBot 插件只发送纯文本，不把译文解析为命令或 JSON 组件。目标语言数量、文本长度和模型等待时间都必须受限；翻译模型失败时不得丢弃原文。
+
+#### 可选图片媒体
+
+`chat.media` 是协议号 1 下的可选扩展。每项 `type` 必须为 `image`，并可使用以下两种安全形式：
+
+```json
+{
+  "type": "image",
+  "url": "https://example.invalid/image.png",
+  "name": "image.png"
+}
+```
+
+公共 `http(s)` 地址只允许带主机名的 URL。机器人本地文件或 base64 图片必须先由插件校验真实图片签名、大小和 `sha256`，再使用：
+
+```json
+{
+  "type": "image",
+  "data_base64": "iVBORw0KGgo...",
+  "mime_type": "image/png",
+  "size": 12345,
+  "sha256": "<64 lowercase hex>",
+  "name": "image.png"
+}
+```
+
+服务端不会转发本地路径；客户端只有在安装 ChatImage 并在 F8 开启 Bot 图片接收时才会显示图片。图片分片完成后由客户端写入 MineAstr 缓存，并以 ChatImage CICode 渲染；缺少 ChatImage、校验失败或玩家关闭接收时只保留文字，不显示 URL 或文件路径。
 
 ### Minecraft 告示牌翻译
 

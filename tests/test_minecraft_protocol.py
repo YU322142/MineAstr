@@ -221,6 +221,41 @@ class ConnectionManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(translated["translations"], {"zh_cn": "译文"})
         self.assertTrue(translated["show_original"])
 
+    async def test_chat_media_keeps_verified_inline_fields_without_paths(self):
+        manager = MinecraftConnectionManager("AstrBot", 2000)
+        websocket = FakeWebSocket()
+        await manager.register(websocket, {"server_id": "one"})
+
+        await manager.send_chat(
+            "[图片]",
+            "AstrBot",
+            media=[
+                {
+                    "type": "image",
+                    "data_base64": "iVBORw0KGgo=",
+                    "mime_type": "image/png",
+                    "size": 8,
+                    "sha256": "a" * 64,
+                    "name": "safe.png",
+                }
+            ],
+        )
+        payload = websocket.sent[-1]
+        self.assertEqual(payload["media"][0]["data_base64"], "iVBORw0KGgo=")
+        self.assertNotIn("path", payload["media"][0])
+        self.assertNotIn("file", payload["media"][0])
+
+    async def test_chat_media_drops_file_urls_at_transport_boundary(self):
+        manager = MinecraftConnectionManager("AstrBot", 2000)
+        websocket = FakeWebSocket()
+        await manager.register(websocket, {"server_id": "one"})
+        await manager.send_chat(
+            "[图片]",
+            "AstrBot",
+            media=[{"type": "image", "url": "file:///private/a.png"}],
+        )
+        self.assertNotIn("media", websocket.sent[-1])
+
     async def test_native_chat_result_is_targeted_and_keeps_empty_fallback(self):
         manager = MinecraftConnectionManager("AstrBot", 2000)
         first = FakeWebSocket()
@@ -290,6 +325,35 @@ class ConnectionManagerTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AdapterEventTests(unittest.IsolatedAsyncioTestCase):
+    async def test_send_by_session_relays_image_components_through_handler(self):
+        adapter = MinecraftPlatformAdapter({}, {}, None)
+        websocket = FakeWebSocket()
+        await adapter.connection_manager.register(websocket, {"server_id": "one"})
+
+        class Image:
+            def __init__(self):
+                self.file = "file:///private/image.png"
+
+        adapter.set_image_relay_handler(
+            lambda media: [
+                {
+                    "type": "image",
+                    "data_base64": "iVBORw0KGgo=",
+                    "mime_type": "image/png",
+                    "size": 8,
+                    "sha256": "a" * 64,
+                    "name": media[0]["name"],
+                }
+            ]
+        )
+        await adapter.send_by_session(
+            object(), MessageChain([Image()])
+        )
+        payload = websocket.sent[-1]
+        self.assertEqual(payload["content"], "[图片]")
+        self.assertEqual(payload["media"][0]["name"], "image")
+        self.assertNotIn("private", json.dumps(payload))
+
     async def test_native_chat_keeps_raw_original_when_mention_parser_rewrites_message(self):
         adapter = MinecraftPlatformAdapter(
             {"bot_id": "AstrBot", "bot_display_name": "AstrBot"},

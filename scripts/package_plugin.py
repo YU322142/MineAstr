@@ -31,6 +31,7 @@ PACKAGE_FILES = (
     "IMAGE_TRANSLATION_API.md",
     "THIRD_PARTY_NOTICES.md",
     "CHANGELOG.md",
+    "DEVELOPMENT.md",
     "LICENSE",
 )
 ZIP_TIMESTAMP = (2026, 1, 1, 0, 0, 0)
@@ -78,7 +79,7 @@ def main() -> None:
         "output",
         nargs="?",
         type=Path,
-        default=Path("dist") / "astrbot_plugin_mineastr-v0.6.29.zip",
+        default=Path("dist") / "astrbot_plugin_mineastr-v0.6.30.zip",
     )
     args = parser.parse_args()
     repo_root = Path(__file__).resolve().parents[1]

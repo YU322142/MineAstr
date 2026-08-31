@@ -376,6 +376,37 @@ class NotificationLocalizationTests(unittest.IsolatedAsyncioTestCase):
 
 
 class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_game_media_inlines_valid_base64_without_exposing_path(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "bridge_settings": {
+                "relay_images_to_game": True,
+                "game_image_inline_max_bytes": 1024,
+                "game_image_max_items": 4,
+            }
+        }
+        payloads = await plugin._game_media_payloads(
+            [{"type": "image", "url": "base64://iVBORw0KGgo=", "name": "x.png"}]
+        )
+        self.assertEqual(payloads[0]["mime_type"], "image/png")
+        self.assertEqual(payloads[0]["size"], 8)
+        self.assertNotIn("url", payloads[0])
+        self.assertNotIn("path", payloads[0])
+
+    async def test_game_media_switch_drops_all_images(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {
+            "bridge_settings": {
+                "relay_images_to_game": False,
+            }
+        }
+        self.assertEqual(
+            await plugin._game_media_payloads(
+                [{"type": "image", "url": "https://example.invalid/a.png"}]
+            ),
+            [],
+        )
+
     async def test_llm_translation_returns_locale_map_and_is_cached(self):
         class Provider:
             def __init__(self):

@@ -6,6 +6,7 @@ import json
 import math
 import re
 import time
+import urllib.parse
 from collections import deque
 from pathlib import Path
 from typing import Any, Callable
@@ -86,6 +87,9 @@ IMAGE_TRANSLATION_CACHE_LIMIT = 128
 IMAGE_TRANSLATION_PROTOCOL_BUDGET_SECONDS = 27.0
 IMAGE_TRANSLATION_CORRECTION_RESERVE_SECONDS = 7.0
 RELAY_MESSAGE_RECORD_LIMIT = 2048
+DEFAULT_GAME_IMAGE_INLINE_MAX_BYTES = 1_048_576
+MAX_GAME_IMAGE_INLINE_BYTES = 1_400_000
+DEFAULT_GAME_IMAGE_MAX_ITEMS = 4
 _ACTIVE_RELAY_SESSIONS: set[str] = set()
 DEFAULT_PLAYER_NAME_REGEX = r"^\S{1,64}$"
 LEGACY_PLAYER_NAME_REGEX = r"^[A-Za-z0-9_]{3,16}$"
@@ -261,6 +265,9 @@ AQQBOT_DEFAULT_CONFIG: dict[str, Any] = {
     "relay_prefix": "",
     "relay_wake_messages": False,
     "relay_bot_conversations_to_game": True,
+    "relay_images_to_game": True,
+    "game_image_inline_max_bytes": DEFAULT_GAME_IMAGE_INLINE_MAX_BYTES,
+    "game_image_max_items": DEFAULT_GAME_IMAGE_MAX_ITEMS,
     "relay_commands": False,
     "chat_to_game_template": "{message}",
     "game_to_chat_template": "[MC/{server}] {player}: {message}",
@@ -337,6 +344,9 @@ CONFIG_GROUP_KEYS: dict[str, tuple[str, ...]] = {
         "relay_prefix",
         "relay_wake_messages",
         "relay_bot_conversations_to_game",
+        "relay_images_to_game",
+        "game_image_inline_max_bytes",
+        "game_image_max_items",
         "relay_commands",
         "chat_to_game_template",
         "game_to_chat_template",
@@ -437,7 +447,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.6.29",
+    "0.6.30",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -564,6 +574,10 @@ class MineAstrPlugin(Star):
             self._listener_adapter, "set_image_translation_handler"
         ):
             self._listener_adapter.set_image_translation_handler(None)
+        if self._listener_adapter is not None and hasattr(
+            self._listener_adapter, "set_image_relay_handler"
+        ):
+            self._listener_adapter.set_image_relay_handler(None)
         if self._listener_adapter is not None and hasattr(
             self._listener_adapter, "set_native_chat_policy_handler"
         ):
@@ -1023,6 +1037,10 @@ class MineAstrPlugin(Star):
         ):
             self._listener_adapter.set_chat_translation_handler(None)
         if self._listener_adapter is not None and hasattr(
+            self._listener_adapter, "set_image_relay_handler"
+        ):
+            self._listener_adapter.set_image_relay_handler(None)
+        if self._listener_adapter is not None and hasattr(
             self._listener_adapter, "set_native_chat_policy_handler"
         ):
             self._listener_adapter.set_native_chat_policy_handler(None)
@@ -1041,6 +1059,8 @@ class MineAstrPlugin(Star):
                 adapter.set_image_translation_handler(
                     self._translate_image_request
                 )
+            if hasattr(adapter, "set_image_relay_handler"):
+                adapter.set_image_relay_handler(self._game_media_payloads)
             if hasattr(adapter, "set_native_chat_policy_handler"):
                 adapter.set_native_chat_policy_handler(
                     self._native_chat_policy
@@ -1985,11 +2005,8 @@ class MineAstrPlugin(Star):
                 {**game_values, "message": message},
             )
 
-        media_suffix = "".join(
-            f"\n[图片] {item.get('url')}"
-            for item in media
-            if str(item.get("url") or "").strip()
-        )
+        game_media = await self._game_media_payloads(media)
+        media_marker = "\n[图片]" if game_media else ""
         try:
             relay_kwargs = {
                 "origin": origin,
@@ -1997,16 +2014,16 @@ class MineAstrPlugin(Star):
                     self._transform_translation_result(
                         translation_result,
                         lambda translated: game_content(
-                            edited_prefix + translated + media_suffix
+                            edited_prefix + translated + media_marker
                         ),
                     )
                 ),
             }
-            if media:
-                relay_kwargs["media"] = media
+            if game_media:
+                relay_kwargs["media"] = game_media
             await adapter.relay_chat(
                 trim_message(
-                    game_content(edited_prefix + filtered + media_suffix),
+                    game_content(edited_prefix + filtered + media_marker),
                     self._cfg_int("max_relay_length"),
                 ),
                 sender_name,
@@ -2307,6 +2324,145 @@ class MineAstrPlugin(Star):
                     or "image",
                 }
             )
+        return media[:8]
+
+    @staticmethod
+    def _image_mime_type(data: bytes) -> str:
+        if data.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "image/png"
+        if data.startswith(b"\xff\xd8\xff"):
+            return "image/jpeg"
+        if data.startswith((b"GIF87a", b"GIF89a")):
+            return "image/gif"
+        if data.startswith(b"BM"):
+            return "image/bmp"
+        if data.startswith(b"\x00\x00\x01\x00"):
+            return "image/x-icon"
+        if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            return "image/webp"
+        return ""
+
+    @staticmethod
+    def _safe_public_image_url(reference: str) -> str:
+        try:
+            parsed = urllib.parse.urlparse(reference.strip())
+        except ValueError:
+            return ""
+        if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+            return ""
+        return reference.strip()
+
+    @staticmethod
+    def _read_local_image(reference: str) -> tuple[bytes, str] | None:
+        value = reference.strip()
+        if not value:
+            return None
+        encoded = value
+        if encoded.startswith("data:") and ";base64," in encoded:
+            encoded = encoded.split(";base64,", 1)[1]
+        if encoded.startswith("base64://"):
+            encoded = encoded[len("base64://") :]
+        if encoded != value or value.startswith("base64://"):
+            try:
+                data = base64.b64decode(encoded, validate=True)
+            except (ValueError, base64.binascii.Error):
+                return None
+            mime = MineAstrPlugin._image_mime_type(data)
+            return (data, mime) if mime else None
+
+        path_value = value
+        if value.lower().startswith("file:"):
+            try:
+                parsed = urllib.parse.urlparse(value)
+                path_value = urllib.parse.unquote(parsed.path)
+                if re.match(r"^/[A-Za-z]:/", path_value):
+                    path_value = path_value[1:]
+            except ValueError:
+                return None
+        try:
+            path = Path(path_value).expanduser()
+            if not path.is_file() or path.stat().st_size <= 0:
+                return None
+            if path.stat().st_size > MAX_GAME_IMAGE_INLINE_BYTES:
+                return None
+            data = path.read_bytes()
+        except (OSError, ValueError):
+            return None
+        mime = MineAstrPlugin._image_mime_type(data)
+        return (data, mime) if mime else None
+
+    async def _game_media_payloads(
+        self, media: list[dict[str, Any]] | None
+    ) -> list[dict[str, Any]]:
+        """Convert AstrBot image components to the path-free MineAstr media protocol."""
+        if not self._cfg_bool("relay_images_to_game"):
+            return []
+        max_items = self._bounded_cfg_int("game_image_max_items", 1, 8)
+        inline_limit = self._bounded_cfg_int(
+            "game_image_inline_max_bytes", 65_536, MAX_GAME_IMAGE_INLINE_BYTES
+        )
+        prepared: list[dict[str, Any]] = []
+        inline_bytes = 0
+        for item in (media or ()):
+            if len(prepared) >= max_items or not isinstance(item, dict):
+                break
+            reference = str(item.get("url") or item.get("file") or "").strip()
+            if not reference:
+                continue
+            name = str(item.get("name") or "image").strip()[:96] or "image"
+            public_url = self._safe_public_image_url(reference)
+            if public_url:
+                prepared.append({"type": "image", "url": public_url, "name": name})
+                continue
+            loaded = await asyncio.to_thread(self._read_local_image, reference)
+            if not loaded:
+                logger.warning("MineAstr 跳过无法安全读取的图片，不会把本地路径发送到游戏：%s", name)
+                continue
+            data, mime_type = loaded
+            if len(data) > inline_limit or inline_bytes + len(data) > inline_limit:
+                logger.warning("MineAstr 跳过超过内联上限的图片：%s", name)
+                continue
+            inline_bytes += len(data)
+            prepared.append(
+                {
+                    "type": "image",
+                    "data_base64": base64.b64encode(data).decode("ascii"),
+                    "mime_type": mime_type,
+                    "size": len(data),
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                    "name": name,
+                }
+            )
+        return prepared
+
+    @classmethod
+    def _chain_media(cls, chain: Any) -> list[dict[str, str]]:
+        components = getattr(chain, "chain", chain)
+        if components is None:
+            return []
+        try:
+            components = list(components)
+        except TypeError:
+            return []
+        media: list[dict[str, str]] = []
+        for component in components:
+            if not isinstance(component, Image):
+                continue
+            reference = str(
+                getattr(component, "url", None)
+                or getattr(component, "file", None)
+                or getattr(component, "path", None)
+                or ""
+            ).strip()
+            if reference:
+                media.append(
+                    {
+                        "type": "image",
+                        "url": reference,
+                        "name": str(getattr(component, "filename", None) or "image").strip()
+                        or "image",
+                    }
+                )
         return media[:8]
 
     @classmethod
@@ -4055,15 +4211,12 @@ class MineAstrPlugin(Star):
                 if quoted_text:
                     reply_prefix += f": {quoted_text}" if quoted_sender else quoted_text
                 reply_prefix += "\n"
-        media_suffix = "".join(
-            f"\n[图片] {item.get('url')}"
-            for item in media
-            if str(item.get("url") or "").strip()
-        )
-        content = game_content(reply_prefix + filtered + media_suffix)
+        game_media = await self._game_media_payloads(media)
+        media_marker = "\n[图片]" if game_media and filtered else ("[图片]" if game_media else "")
+        content = game_content(reply_prefix + filtered + media_marker)
         game_translation_result = self._transform_translation_result(
             translation_result,
-            lambda translated: game_content(reply_prefix + translated + media_suffix),
+            lambda translated: game_content(reply_prefix + translated + media_marker),
         )
         try:
             relay_kwargs = {
@@ -4072,8 +4225,8 @@ class MineAstrPlugin(Star):
                     game_translation_result
                 ),
             }
-            if media:
-                relay_kwargs["media"] = media
+            if game_media:
+                relay_kwargs["media"] = game_media
             await adapter.relay_chat(
                 trim_message(content, self._cfg_int("max_relay_length")),
                 identity["owner_display"],
@@ -4110,22 +4263,27 @@ class MineAstrPlugin(Star):
             str(result.get_plain_text() or "").strip(),
             self._cfg_int("max_relay_length"),
         )
-        if not text:
+        result_media = await self._game_media_payloads(self._chain_media(result))
+        if not text and not result_media:
             return
         adapter = self._minecraft_adapter()
         if adapter is None or not hasattr(adapter, "relay_chat"):
             logger.warning("MineAstr minecraft 平台适配器未启用，无法转发机器人回复。")
             return
         try:
-            translation_options = await self._translate_game_message(
-                text,
-                event.unified_msg_origin,
+            translation_options = (
+                await self._translate_game_message(text, event.unified_msg_origin)
+                if text
+                else {}
             )
+            if result_media and not text:
+                text = "[图片]"
             await adapter.relay_chat(
                 text,
                 str(getattr(adapter, "bot_display_name", "AstrBot") or "AstrBot"),
                 origin=event.unified_msg_origin,
                 translation_options=translation_options,
+                media=result_media,
             )
         except Exception as exc:
             logger.warning("MineAstr 转发机器人回复到 Minecraft 失败：%s", exc)

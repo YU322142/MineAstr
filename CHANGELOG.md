@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.30 - 2026-08-31
+
+- 新增可选 ChatImage 联动：机器人回复中的 URL、base64 或本地图片可安全同步到 Minecraft。
+- 本地图片仅在真实格式、大小和 SHA-256 校验通过后内联传输；不会把 `file://` 或本地路径显示到游戏聊天。
+- 服务端按客户端能力和玩家 F8 偏好定向发送图片；未安装 ChatImage 或关闭接收时仍保留文字链路。
+- AstrBot WebUI 新增图片总开关、内联字节上限和单条图片数量上限；直接出站的 `MessageChain/Image` 也纳入同一策略。
+- 客户端采用 ChatImage CICode 显示，分片重组后写入 MineAstr 缓存并定期清理，不在聊天中回显图片地址。
+
 ## 0.6.29 - 2026-08-24
 
 - 新增 AstrBot 机器人端外置 JSON 翻译术语库，支持生成的 `entries[]` 配对格式以及原始 `languages.en_us` / `languages.zh_cn` 语言目录格式。

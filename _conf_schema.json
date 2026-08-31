@@ -39,9 +39,28 @@
       "relay_bot_conversations_to_game": {
         "description": "把玩家 @机器人及机器人回复同步到游戏",
         "type": "bool",
-        "hint": "开启后，桥接 QQ/Discord 中唤醒机器人的玩家消息会进入 MC，AstrBot 最终的纯文本回复也会进入 MC；不会转发只有 Reply/At 的空中间消息。",
+        "hint": "开启后，桥接 QQ/Discord 中唤醒机器人的玩家消息会进入 MC，AstrBot 最终的文字和图片回复也会进入 MC；不会转发只有 Reply/At 的空中间消息。",
         "obvious_hint": true,
         "default": true
+      },
+      "relay_images_to_game": {
+        "description": "允许把机器人图片发送到游戏",
+        "type": "bool",
+        "hint": "需要玩家客户端安装 ChatImage。关闭后仅发送文字，不发送图片；本地路径不会原样写入游戏聊天。",
+        "obvious_hint": true,
+        "default": true
+      },
+      "game_image_inline_max_bytes": {
+        "description": "本地图片内联上限（字节）",
+        "type": "int",
+        "hint": "本地文件或 base64 图片会安全校验后内联发送，范围 65536–1400000；公共 HTTPS 图片优先发送地址。",
+        "default": 1048576
+      },
+      "game_image_max_items": {
+        "description": "单条机器人回复最多图片数",
+        "type": "int",
+        "hint": "范围 1–8，超出的图片会被丢弃，避免阻塞游戏聊天。",
+        "default": 4
       },
       "relay_commands": {
         "description": "把斜杠指令也转发进游戏聊天",
@@ -661,6 +680,9 @@
   "relay_prefix": {"type": "string", "default": "", "invisible": true},
   "relay_wake_messages": {"type": "bool", "default": false, "invisible": true},
   "relay_bot_conversations_to_game": {"type": "bool", "default": true, "invisible": true},
+  "relay_images_to_game": {"type": "bool", "default": true, "invisible": true},
+  "game_image_inline_max_bytes": {"type": "int", "default": 1048576, "invisible": true},
+  "game_image_max_items": {"type": "int", "default": 4, "invisible": true},
   "relay_commands": {"type": "bool", "default": false, "invisible": true},
   "chat_to_game_template": {"type": "string", "default": "{message}", "invisible": true},
   "game_to_chat_template": {"type": "string", "default": "[MC/{server}] {player}: {message}", "invisible": true},

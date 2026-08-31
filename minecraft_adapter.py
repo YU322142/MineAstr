@@ -4,6 +4,7 @@ import inspect
 import json
 import re
 import time
+import urllib.parse
 import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -206,6 +207,45 @@ def _plain_text_from_chain(message: MessageChain) -> str:
     return "".join(parts).strip()
 
 
+def _image_media_from_chain(message: MessageChain) -> list[dict[str, str]]:
+    media: list[dict[str, str]] = []
+    chain = getattr(message, "chain", message)
+    try:
+        items = list(chain)
+    except TypeError:
+        return media
+    for item in items:
+        if type(item).__name__ != "Image":
+            continue
+        reference = str(
+            getattr(item, "url", None)
+            or getattr(item, "file", None)
+            or getattr(item, "path", None)
+            or ""
+        ).strip()
+        if reference:
+            media.append(
+                {
+                    "type": "image",
+                    "url": reference,
+                    "name": str(getattr(item, "filename", None) or "image").strip()
+                    or "image",
+                }
+            )
+    return media[:8]
+
+
+def _safe_public_url(value: Any) -> str:
+    candidate = str(value or "").strip()
+    try:
+        parsed = urllib.parse.urlparse(candidate)
+    except ValueError:
+        return ""
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        return ""
+    return candidate
+
+
 def _query_error_message(exc: BaseException) -> str:
     if isinstance(exc, asyncio.TimeoutError):
         return "等待 Minecraft 服务器查询结果超时"
@@ -318,15 +358,27 @@ class MinecraftConnectionManager:
         if localized:
             payload["translations"] = localized
             payload["show_original"] = bool(show_original)
-        normalized_media = [
-            {
+        normalized_media: list[dict[str, Any]] = []
+        for item in media or ():
+            if not isinstance(item, dict) or len(normalized_media) >= 8:
+                continue
+            url = _safe_public_url(item.get("url"))
+            data_base64 = str(item.get("data_base64") or "").strip()
+            if not url and not data_base64:
+                continue
+            normalized: dict[str, Any] = {
                 "type": str(item.get("type") or "image"),
-                "url": str(item.get("url") or "").strip(),
                 "name": str(item.get("name") or "image").strip() or "image",
             }
-            for item in (media or ())
-            if isinstance(item, dict) and str(item.get("url") or "").strip()
-        ][:8]
+            if url:
+                normalized["url"] = url
+            if data_base64:
+                normalized["data_base64"] = data_base64
+                for key in ("mime_type", "size", "sha256"):
+                    value = item.get(key)
+                    if value not in ("", None):
+                        normalized[key] = value
+            normalized_media.append(normalized)
         if normalized_media:
             payload["media"] = normalized_media
         if server_id:
@@ -654,6 +706,10 @@ class MinecraftPlatformAdapter(Platform):
         self._image_translation_handler: Callable[
             [dict[str, Any]], Awaitable[dict[str, Any] | None] | dict[str, Any] | None
         ] | None = None
+        self._image_relay_handler: Callable[
+            [list[dict[str, str]]],
+            Awaitable[list[dict[str, Any]]] | list[dict[str, Any]],
+        ] | None = None
         self._native_chat_policy_handler: Callable[
             [], Awaitable[dict[str, Any]] | dict[str, Any]
         ] | None = None
@@ -689,6 +745,16 @@ class MinecraftPlatformAdapter(Platform):
         | None,
     ) -> None:
         self._image_translation_handler = handler
+
+    def set_image_relay_handler(
+        self,
+        handler: Callable[
+            [list[dict[str, str]]],
+            Awaitable[list[dict[str, Any]]] | list[dict[str, Any]],
+        ]
+        | None,
+    ) -> None:
+        self._image_relay_handler = handler
 
     def set_native_chat_policy_handler(
         self,
@@ -902,11 +968,24 @@ class MinecraftPlatformAdapter(Platform):
         self, session: MessageSesion, message_chain: MessageChain
     ):
         content = _plain_text_from_chain(message_chain)
-        if not content:
+        raw_media = _image_media_from_chain(message_chain)
+        media: list[dict[str, Any]] = []
+        if self._image_relay_handler is not None and raw_media:
+            try:
+                prepared = self._image_relay_handler(raw_media)
+                if inspect.isawaitable(prepared):
+                    prepared = await prepared
+                if isinstance(prepared, list):
+                    media = [item for item in prepared if isinstance(item, dict)]
+            except Exception as exc:
+                logger.warning("MineAstr 出站图片处理失败：%s", exc)
+        if not content and not media:
             return
+        if not content:
+            content = "[图片]"
         options = await self._chat_translation_options(content, str(session))
         await self.connection_manager.send_chat(
-            content, self.bot_display_name, **options
+            content, self.bot_display_name, media=media, **options
         )
 
     async def relay_chat(

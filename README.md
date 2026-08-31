@@ -41,7 +41,7 @@ AstrBot 对该会话的文本回复会回传给所有已连接的 Minecraft 服�
 
 ## 安装包兼容性
 
-在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.29.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
+在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.6.30.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
 
 插件元数据中的安装/更新源固定为 Fork 分支 `https://github.com/YU322142/MineAstr/tree/astrbot-plugin`，不会再让 AstrBot 回到原项目或下载仅用于项目导航的 `main` 分支。
 
@@ -196,7 +196,10 @@ pip install -r requirements.txt
 | `translation_glossary_path` | 空 | AstrBot 机器上的外置 JSON 术语库路径；支持配对词典 `entries[]` 或原始 `languages.en_us` / `languages.zh_cn` 目录格式。留空关闭，不需要更新客户端或服务端 Mod。 |
 | `translation_glossary_max_chars` | `12000` | 普通文本、聊天和告示牌按当前原文召回术语的字符上限；不会把完整 JSON 放进提示词。 |
 | `image_translation_glossary_max_chars` | `12000` | 图片 OCR 识别结果命中词典后，用于精确校正译文的术语字符上限；未命中时不会增加第二次模型调用。 |
-| `relay_bot_conversations_to_game` | `true` | 把桥接会话中玩家 @机器人的消息及 AstrBot 最终纯文本回复同步到 MC。 |
+| `relay_bot_conversations_to_game` | `true` | 把桥接会话中玩家 @机器人的消息及 AstrBot 最终文字/图片回复同步到 MC。 |
+| `relay_images_to_game` | `true` | 允许在 ChatImage 客户端上显示机器人图片；关闭后只发送文字。 |
+| `game_image_inline_max_bytes` | `1048576` | 本地或 base64 图片的总内联上限；公共 HTTPS 图片保留为 URL。 |
+| `game_image_max_items` | `4` | 单条机器人回复最多同步的图片数量，范围 1–8。 |
 | `game_translation_timeout_seconds` | `20` | 翻译超时；原生聊天会额外保留最多 5 秒回传余量，超时直接按发送顺序发送原文。 |
 | `translation_context_messages` | `0` | 提供给 AstrBot 翻译模型的最近上下文条数，范围 0-20；只翻译当前消息正文。 |
 | `binding_enabled` | `true` | 启用跨平台账号绑定。 |
@@ -247,6 +250,10 @@ python scripts/build_translation_glossary.py language-catalog.json --output-dir 
 ```
 
 推荐运行 `language-glossary-important-names.json`。生成器会保留实际物品、方块、实体、效果等显示名称，并排除多数 tooltip、description、condition、behaviour 和说明句；完整词典适合审计或确实需要翻译界面长文本的场景。
+
+### Bot 图片同步
+
+`relay_images_to_game` 默认开启，但只有客户端安装 ChatImage 并在 MineAstr F8 设置中开启“接收 Bot 图片”时才会真正显示。AstrBot 的 URL 图片保留为公共 HTTPS 地址；本地文件和 base64 图片会在 `main.py` 中完成真实格式、大小和 SHA-256 校验后内联发送。图片-only 回复使用无路径的 `[图片]` 标记，失败或不兼容时不会把本地路径泄露到游戏聊天。`game_image_inline_max_bytes` 和 `game_image_max_items` 可限制单条消息的资源消耗。
 
 ## 机器人可调用工具
 
