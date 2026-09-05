@@ -7,3 +7,6 @@ pluginManagement {
 plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
 }
+
+// Stable project name for IntelliJ IDEA and Gradle Tool Window imports.
+rootProject.name = 'MineAstr-NeoForge-1.21.1'

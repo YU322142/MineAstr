@@ -133,6 +133,8 @@ serverId = "minecraft"
 
 ## 构建
 
+IDEA 导入和首次构建请先阅读 [IDEA_IMPORT.md](IDEA_IMPORT.md)。NeoForge 工程位于 `minecraft-neoforge-1.21.1` 分支根目录；`main` 只是索引分支，不是可编译的 NeoForge 工程。不要打开 `src/` 或提交本机 `.idea/`，应通过 `settings.gradle` / `build.gradle` 链接 Gradle 项目，并使用 64 位 JDK 21。
+
 ```powershell
 .\gradlew.bat clean test build --no-daemon
 ```

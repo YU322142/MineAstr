@@ -133,6 +133,8 @@ When troubleshooting, first confirm that `mods/` contains only one JAR for each 
 
 ## Build
 
+For IntelliJ IDEA import and first-build troubleshooting, read [IDEA_IMPORT.md](IDEA_IMPORT.md). The NeoForge project is the repository root on the `minecraft-neoforge-1.21.1` branch; `main` is only the index branch and is not a buildable NeoForge project. Open the directory containing `settings.gradle` and `build.gradle`, do not open `src/` or commit machine-specific `.idea/`, and use a 64-bit JDK 21.
+
 ```powershell
 .\gradlew.bat clean test build --no-daemon
 ```
