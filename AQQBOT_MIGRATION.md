@@ -1,5 +1,7 @@
 # AQQBot → MineAstr 功能迁移说明
 
+当前统一发布：**0.7.21**。安装包与自 0.6.29 以来的变化见 [发布说明](RELEASE_NOTES.md)。
+
 参考上游：[alazeprt/AQQBot](https://github.com/alazeprt/AQQBot)，审阅基准为 `refactor` 分支提交 `ab7f5693206b8e7ba778c2f9f2b39ab0718c5f1c`。
 
 MineAstr 的实现边界与 AQQBot 不同：AQQBot 是直接运行在 Bukkit/Fabric/Velocity 等 Minecraft 服务端里的 OneBot 客户端；MineAstr 把平台登录、权限和消息发送交给 AstrBot，Minecraft 端通过受认证 WebSocket 提供事件、查询与受控副作用。本发行包配套的 Fabric 1.21.11 Mod 已实现表中标为“已实现”的端到端能力。

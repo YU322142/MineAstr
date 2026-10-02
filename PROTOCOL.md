@@ -2,7 +2,9 @@
 
 v0.6.30 扩展可选的聊天媒体字段：`chat` 消息可带 `media` 数组。旧版 Mod 会忽略该字段；新版 Mod 只向已声明 ChatImage 能力且允许接收的客户端发送图片，不会把本地路径回显到聊天。
 
-本文描述 AstrBot 插件 `v0.6.30` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。外置翻译术语库仅在 AstrBot 端读取，不增加协议字段。
+本文描述 AstrBot 插件 `v0.7.21` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。外置翻译术语库仅在 AstrBot 端读取，不增加协议字段。
+
+0.7.21 将正文和引用各自的目标语言译文组合后放入现有 `translations` 字段，不新增协议字段。混合源语言的引用消息不使用单一正文源语言过滤整条消息；旧 Mod 仍可显示原文。完整累计变化见 [发布说明](RELEASE_NOTES.md)。
 
 ## 连接与认证
 
@@ -21,7 +23,7 @@ Authorization: Bearer <token>
   "protocol": 1,
   "server_id": "survival",
   "server_name": "Survival Server",
-  "mod_version": "0.6.30",
+  "mod_version": "0.7.21",
   "chat_capabilities": ["native_chat_translation"]
 }
 ```

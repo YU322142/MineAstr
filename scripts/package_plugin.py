@@ -32,6 +32,7 @@ PACKAGE_FILES = (
     "THIRD_PARTY_NOTICES.md",
     "CHANGELOG.md",
     "DEVELOPMENT.md",
+    "RELEASE_NOTES.md",
     "LICENSE",
 )
 ZIP_TIMESTAMP = (2026, 1, 1, 0, 0, 0)

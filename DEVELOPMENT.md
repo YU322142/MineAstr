@@ -1,12 +1,12 @@
 # MineAstr AstrBot 插件开发交接 / Developer Handoff
 
-本文按文件说明 0.6.30 插件的职责和后续 TODO，避免接手者依赖目录猜测。
+本文按文件说明 0.7.21 插件的职责和后续 TODO，避免接手者依赖目录猜测。
 
 ## 文件职责
 
 | 文件 | 作用 |
 | --- | --- |
-| `main.py` | 插件入口、配置迁移、QQ/Discord/Minecraft 双向桥接、翻译、术语库和 Bot 回复图片准备。 |
+| `main.py` | 插件入口、配置迁移、QQ/Discord/Minecraft 双向桥接、正文/引用分别翻译、跨平台 Bot 回复与媒体准备。 |
 | `minecraft_adapter.py` | AstrBot Minecraft 平台适配器、WebSocket 生命周期、协议 JSON 和出站图片链路。 |
 | `mineastr_glossary.py` | JSON 术语库加载、命中召回及翻译提示词拼接。 |
 | `aqqbot_compat.py` | 旧 AQQBot 配置、过滤器、绑定数据和命令兼容层。 |
@@ -15,7 +15,7 @@
 | `scripts/package_plugin.py` | 生成首项为顶层目录的 AstrBot ZIP 安装包。 |
 | `scripts/build_translation_glossary.py` | 从语言文件生成可导入的中英术语 JSON。 |
 | `tests/test_minecraft_protocol.py` | WebSocket、出站 JSON、认证和媒体字段测试。 |
-| `tests/test_z_discord_automation.py` | 主插件配置、Discord/QQ 转发和媒体安全测试。 |
+| `tests/test_z_discord_automation.py` | 主插件配置、Bot 跨平台/不回环、正文与引用混合语言、Discord/QQ 转发和媒体回归测试。 |
 | `tests/test_glossary.py` / `test_glossary_builder.py` | 术语库加载、召回和生成测试。 |
 | `README.md` / `PROTOCOL.md` | 安装、配置与 MineAstr 协议说明。 |
 | `CHANGELOG.md` | 双语版本变更记录。 |
@@ -28,6 +28,8 @@
 公共 HTTPS 地址保留为地址；本地文件或 base64 只在大小、真实文件签名和 SHA-256 校验通过后转换为内联字段。任何本地路径都不会写入游戏聊天。客户端没有 ChatImage、服务端关闭总开关或玩家关闭 F8 接收时，图片被安全忽略，文字链路仍可用。
 
 ## TODO
+
+本版 146 项单元测试通过；真实客户端 GUI 与 ChatImage 视觉显示仍需实机验证。[累计发布说明](RELEASE_NOTES.md) 记录两侧统一版本和全部变化。
 
 - [ ] 通过 AstrBot 真实 `MessageEventResult` 发送本地图片、URL 图片和图片-only 回复。
 - [ ] 增加图片转发统计（跳过原因、字节数、数量），但日志不得包含本地路径。
