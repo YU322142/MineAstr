@@ -6,6 +6,14 @@ localWorldServerEnabled = false
 gameTranslationsEnabled = true
 showOriginalTranslatedMessages = true
 
+# 图片偏好独立保存；实际显示图片仍需要客户端安装 ChatImage。
+# 兼容旧开关：两个值同时开启才接收图片，F8 保存时会同步更新它们。
+receiveImageMessages = true
+acceptBotImages = true
+
+# 是否允许使用 F8 打开设置界面。
+openConfigKeyEnabled = true
+
 # 告示牌和外部画框显示接口的浮选开关、距离与缩放。
 signTranslationsEnabled = true
 signTranslationMaxDistance = 8

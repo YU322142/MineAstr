@@ -1,6 +1,6 @@
 # MineAstr 开发交接 / Developer Handoff
 
-本文按文件记录当前 0.6.30 代码的职责、协议边界和后续 TODO。源码行为以 NeoForge 1.21.1 分支为准。
+本文按文件记录当前 0.7.21 代码的职责、协议边界和后续 TODO。源码行为以 NeoForge 1.21.1 分支为准。
 
 ## 文件职责
 
@@ -13,14 +13,14 @@
 | `src/main/java/com/mineastr/MineAstrClient.java` | 客户端事件、F8 配置入口、语言能力上报和 ChatImage 能力握手。 |
 | `src/main/java/com/mineastr/MineAstrClientConfig.java` | 客户端翻译、浮选、截图隐私和 Bot 图片接收偏好。 |
 | `src/main/java/com/mineastr/MineAstrConfig.java` | 服务端 WebSocket、绑定、翻译和 Bot 图片总开关。 |
-| `src/main/java/com/mineastr/MineAstrConfigScreen.java` | F8 设置界面；ChatImage 不存在时图片开关保持不可用。 |
+| `src/main/java/com/mineastr/MineAstrConfigScreen.java` | 可滚动 F8 设置、撤销/恢复默认、独立图片偏好和可替换语言键。 |
 | `src/main/java/com/mineastr/MineAstrBotImageClient.java` | Bot 图片分片重组、SHA-256 校验、缓存清理和 ChatImage CICode 显示。 |
 | `src/main/resources/assets/mineastr/lang/zh_cn.json` | 中文界面和提示文本。 |
 | `src/main/resources/assets/mineastr/lang/en_us.json` | English 等价界面和提示文本。 |
 | `src/main/templates/META-INF/neoforge.mods.toml` | Mod 元数据及 ChatImage 的可选客户端依赖声明。 |
-| `src/test/java/com/mineastr/MineAstrBridgeTest.java` | 桥接协议、图片输入校验和安全边界测试。 |
+| `src/test/java/com/mineastr/MineAstrConnectionTest.java` | 真实回环 WebSocket 握手超时/后续连接、失败日志脱敏和占位清理回归测试。 |
 | `build.gradle` | NeoForge 构建、测试和发布产物配置。 |
-| `gradle.properties` | Minecraft、NeoForge 和 MineAstr 版本；本次为 `0.6.30`。 |
+| `gradle.properties` | Minecraft、NeoForge 和 MineAstr 版本；本次为 `0.7.21`。 |
 | `README.md` / `README.en.md` | 面向使用者的中文/英文安装与配置说明。 |
 | `docs/CONFIGURATION.zh-CN.md` / `docs/CONFIGURATION.en.md` | 配置项级参考。 |
 | `CHANGELOG.zh-CN.md` / `CHANGELOG.md` | 双语版本变更记录。 |
@@ -34,6 +34,8 @@
 - 客户端没有 ChatImage 时，消息仍可显示文字或无路径的 `[图片]` 标记，不会显示原始路径。
 
 ## TODO
+
+0.7.21 完整 `test build` 与 18 项测试通过。`connectWebSocket` 为 Upgrade 添加 10 秒超时并对同步/异步失败使用同一安全日志消息；不应把网络等待搬到主线程。ZIP 中的发送队列、截图后台编码和聊天按序派发等 12 个方法内容保持一致，已有运行日志保留。完整累计变化见 [发布说明](RELEASE_NOTES.md)。
 
 - [ ] 在真实 NeoForge 客户端安装 ChatImage，验证 PNG/JPEG/WEBP 分片显示和缓存过期。
 - [ ] 增加协议版本协商，允许未来图片传输字段平滑扩展。

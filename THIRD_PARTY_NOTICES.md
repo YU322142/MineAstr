@@ -33,7 +33,7 @@ SOFTWARE.
 
 ## ChatImage
 
-MineAstr 0.6.30 optionally emits ChatImageCode (`CICode`) text after a verified
+MineAstr 0.6.30 and later optionally emit ChatImageCode (`CICode`) text after a verified
 Bot image has been cached on the client. No ChatImage source code, binaries, or
 assets are bundled into MineAstr. ChatImage remains an independently installed
 optional client mod.

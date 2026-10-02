@@ -4,7 +4,7 @@
 
 NeoForge 项目模板就是 `minecraft-neoforge-1.21.1` 分支的仓库根目录，不是 `src/`，也不是一个需要提交的 `.idea/` 文件夹。完整 Gradle 入口由这些文件组成：
 
-- `settings.gradle`：声明项目名、Gradle 插件仓库和工具链解析器。
+- `settings.gradle`：声明 Gradle 插件仓库和工具链解析器；项目名沿用检出目录名。
 - `build.gradle`：NeoForge ModDevGradle、Java 21 工具链、客户端/服务端运行配置、测试和资源处理。
 - `gradle.properties`：Minecraft 1.21.1、NeoForge 21.1.219、Parchment 和 MineAstr 版本。
 - `gradlew` / `gradlew.bat`：固定使用仓库指定的 Gradle Wrapper。

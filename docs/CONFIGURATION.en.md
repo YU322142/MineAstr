@@ -1,4 +1,4 @@
-# MineAstr 0.6.30 Configuration Reference
+# MineAstr 0.7.21 Configuration Reference
 
 This document describes the current configuration only. See [`CHANGELOG.md`](../CHANGELOG.md) for historical field changes.
 
@@ -61,7 +61,7 @@ Whitelist synchronization and login checks are independent features. Define acco
 | `signTranslationMaxDistance` | `8` | Maximum overlay distance |
 | `signTranslationScale` | `1.0` | Overlay scale |
 
-`showOriginalTranslatedMessages` controls ordinary chat only. In 0.6.30, the target HUD displays translated text only by default.
+`showOriginalTranslatedMessages` controls ordinary chat only. In 0.7.21, the target HUD displays translated text only by default.
 
 The Bot side also provides the `bridge_settings.relay_images_to_game` master switch, the `game_image_inline_max_bytes` total limit for Bot-local images, and the `game_image_max_items` per-message count limit. Disabling either side stops only image delivery and does not affect text bridging. Image paths and URLs are never printed as ordinary chat text.
 
