@@ -5,42 +5,53 @@
 > [!IMPORTANT]
 > **AI 制作声明：MineAstr 采用生成式 AI 参与架构设计、编码、UI、文档与测试。** AI 生成或修改的内容由项目维护者审阅、验证并承担最终维护责任。
 
-MineAstr 将 Minecraft Fabric 1.21.11 与 NeoForge 1.21.1 服务器接入 AstrBot、QQ/OneBot 与 Discord，提供 AQQBot 兼容的账号绑定、跨平台聊天、退群解绑、群名片/昵称同步、通知、状态查询、受控命令、LLM 工具和按客户端语言显示的可选游戏内翻译。
+MineAstr 将 Minecraft NeoForge 1.21.1 服务器接入 AstrBot、QQ/OneBot 与 Discord，提供 AQQBot 兼容的账号绑定、跨平台聊天、退群解绑、群名片/昵称同步、通知、状态查询、受控命令、LLM 工具和按客户端语言显示的可选游戏内翻译。
 
 ## 项目分支
 
 - [`astrbot-plugin`](https://github.com/YU322142/MineAstr/tree/astrbot-plugin)：AstrBot 插件端；分支根目录可直接作为插件项目。
-- [`minecraft-mod`](https://github.com/YU322142/MineAstr/tree/minecraft-mod)：Minecraft Fabric Mod；目标为 Minecraft `1.21.11`、Fabric API `0.141.4+1.21.11`、Java `21`。
-- [`minecraft-neoforge-1.21.1`](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)：Minecraft NeoForge Mod；目标为 Minecraft `1.21.1`、NeoForge `21.1.219`、Java `21`，包含与 Fabric 0.6.28 对齐的完整源码、文档和测试。
+- [`minecraft-mod`](https://github.com/YU322142/MineAstr/tree/minecraft-mod)：旧 Minecraft Fabric Mod；**已停止支持**，仅保留 0.6.28 / Minecraft 1.21.11 历史源码，不再更新、修复或保证兼容性。
+- [`minecraft-neoforge-1.21.1`](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)：Minecraft NeoForge Mod；目标为 Minecraft `1.21.1`、NeoForge `21.1.219`、Java `21`，当前为统一发布 0.7.21，包含最新 ZIP 源码、连接和 UI 修复、文档及测试。
 
-`main` 是项目索引；三个可构建工程分别保留在以上分支，以兼容 AstrBot 从仓库分支安装插件的目录要求。
+`main` 是项目索引；两个维护中的工程分别位于 AstrBot 和 NeoForge 分支，Fabric 分支仅作历史归档，以兼容 AstrBot 从仓库分支安装插件的目录要求。
 
 ## 当前版本
 
-- AstrBot 插件：`0.6.28`
-- MineAstr Fabric Mod：`0.6.28`
-- MineAstr NeoForge Mod：`0.6.28`（Minecraft `1.21.1`）
-- Minecraft：`1.21.11`
-- Fabric API：`0.141.4+1.21.11`
+- AstrBot 插件：`0.7.21`
+- 旧 Fabric 分支：**停止支持**（历史版本 `0.6.28`）
+- MineAstr NeoForge Mod：`0.7.21`（Minecraft `1.21.1`）
+- 当前支持的 Minecraft：`1.21.1` / NeoForge
 - NeoForge：`21.1.219`（Minecraft `1.21.1`）
 
-成品请从 [GitHub Releases](https://github.com/YU322142/MineAstr/releases) 下载：
+插件与 NeoForge 模组统一从 [0.7.21 Release](https://github.com/YU322142/MineAstr/releases/tag/v0.7.21) 下载：
 
-- `astrbot_plugin_mineastr-v0.6.28.zip`
-- `mineastr-fabric-0.6.28.jar`
-- `mineastr-neoforge-1.21.1-0.6.28.jar`
-- `mineastr-neoforge-1.21.1-0.6.28-sources.jar`
+- `astrbot_plugin_mineastr-v0.7.21.zip`
+- `mineastr-neoforge-1.21.1-0.7.21.jar`
+- `mineastr-neoforge-1.21.1-0.7.21-sources.jar`
+- `MineAstr-minecraft-neoforge-1.21.1-v0.7.21-source.zip`
+- `SHA256SUMS.txt`
+
+Fabric 分支已停止支持；本次及后续维护仅针对 NeoForge 与 AstrBot，保留旧源码与历史记录，不提供 Fabric 的新发布、修复或兼容性保证。NeoForge JAR 不能安装到 Fabric。
 
 NeoForge 1.21.1 的完整源码、测试和构建说明已公开在
 [`minecraft-neoforge-1.21.1`](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)；该分支可直接使用 `./gradlew build`（Windows 使用 `gradlew.bat build`）生成 Mod 和源码 JAR。
 
-v0.6.28 在保留 Minecraft 原生玩家聊天翻译的基础上，修复 QQ/Discord 回复 MineAstr 同步消息时误触发 LLM 的问题：回复会继续正常跨平台转发，但不会再进入机器人回复链。原生聊天仍会重写为无签名消息，因此不保留 Secure Chat 签名/举报能力，也不替代原版服务器文本过滤、最终广播阶段的过滤与反刷屏语义；需要完整原版审核链路时关闭 `game_translation_enabled`。未启用策略或未安装新 Mod 的连接继续使用原版聊天路径。
+历史 v0.6.28 在保留 Minecraft 原生玩家聊天翻译的基础上，修复 QQ/Discord 回复 MineAstr 同步消息时误触发 LLM 的问题：回复会继续正常跨平台转发，但不会再进入机器人回复链。原生聊天仍会重写为无签名消息，因此不保留 Secure Chat 签名/举报能力，也不替代原版服务器文本过滤、最终广播阶段的过滤与反刷屏语义；需要完整原版审核链路时关闭 `game_translation_enabled`。未启用策略或未安装新 Mod 的连接继续使用原版聊天路径。
 
 服主可将准星对准告示牌后使用 `/mineastr sign-translation status` 查看缓存，使用 `set <locale> <translation>` 保存不会被自动翻译覆盖的人工译文，使用 `clear [locale]` 清理当前牌面，并以管理员权限使用 `clear-all` 清理当前世界。管理操作会同步重置在线客户端缓存，并使已经在途的旧 AI 响应失效。
 
 AstrBot 端的统一文本翻译提示词和图片翻译专用提示词上限均由 4000 字提高到 40000 字；Fabric 外部 Mod 单次随请求传入的临时图片提示仍维持 4096 字符的网络载荷上限。
 
-当前翻译更新还包含两项行为：QQ/Discord 会先比较规范化后的原文与译文，AI 返回同文时只发送原文，不添加语言或 `[原文/Original]` 标签；Fabric 客户端只在准星指向告示牌时显示译文提示，不会进入服务器时批量刷聊天，翻译缓存继续保存在世界存档中。
+既有翻译行为还包含两项：QQ/Discord 会先比较规范化后的原文与译文，AI 返回同文时只发送原文，不添加语言或 `[原文/Original]` 标签；Fabric 客户端只在准星指向告示牌时显示译文提示，不会进入服务器时批量刷聊天，翻译缓存继续保存在世界存档中。
+
+## 0.7.21 累计更新与文档
+
+自 0.6.29 以来的全部变化见 [累计发布说明](RELEASE_NOTES.md)，包括可选 ChatImage 图片联动、最新 ZIP 的滚动 F8 设置与玩家图片命令、保留的异步算法/日志、WebSocket 握手超时、Bot 跨平台回复及引用翻译、F8 多语言和旧偏好兼容。插件与 NeoForge 模组统一为 0.7.21，协议仍为 1。
+
+- [NeoForge 中英文安装说明](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)
+- [NeoForge 配置与多语言适配](https://github.com/YU322142/MineAstr/blob/minecraft-neoforge-1.21.1/docs/CONFIGURATION.zh-CN.md)
+- [AstrBot 配置和引用翻译](https://github.com/YU322142/MineAstr/blob/astrbot-plugin/README.md)
+- [AstrBot 协议](https://github.com/YU322142/MineAstr/blob/astrbot-plugin/PROTOCOL.md)
 
 ## 连接方式
 
@@ -69,18 +80,18 @@ AstrBot 插件元数据的安装/更新源为本 Fork 的 [`astrbot-plugin`](htt
 需要“检查玩家已绑定、同步原版白名单、AstrBot 断线或超时仍放行”时：
 
 - AstrBot 插件：`binding_enabled=true`、`need_bind_to_login=true`、`sync_binding_to_server=true`、`binding_sync_required=true`
-- Fabric Mod：`enableBindingSync=true`、`bindingSyncWhitelist=true`、`loginBindingCheckEnabled=true`、`loginCheckFailOpen=true`
+- 旧 Fabric Mod：`enableBindingSync=true`、`bindingSyncWhitelist=true`、`loginBindingCheckEnabled=true`、`loginCheckFailOpen=true`
 
-完整安装和权限说明请查看三个工程分支的 README。
+当前安装和权限说明请查看 NeoForge 与 AstrBot 分支的 README；Fabric 文档仅供历史参考。
 
 需要使用服务器命令时开启 Mod `enableCommandTool=true`。`allowedCommandRules` 是所有人可立即执行的公开命令白名单，不应加入 `op *` 等管理命令；白名单外命令只生成待审批 ID。插件 `sync_command_admins_to_server=true` 与 Mod `syncTrustedCommandUsers=true` 会在审批前实时同步管理员。管理员发送 `/mc approve` 查看列表后可按序号审批，也可明确要求机器人调用审批函数工具；两种方式都只执行 Mod 保存的原始命令。
 
 ## 构建验证
 
-- AstrBot 插件：111 个自动化测试通过，覆盖 fail-closed/常数时间鉴权、配置迁移、AstrBot Schema 类型兼容、QQ/Discord 自动化、消息编辑与撤回去重、跨群来源隔离、缓存/截图清理、游戏与平台共用单次翻译后分发、原生聊天精确连接路由、旧 Mod 能力协商、周期与热更新策略同步、提及消息原文保留、源语言去重、中英同义文本缓存、40000 字提示词上限、自定义术语表、命令审批列表与函数工具、管理员身份过滤及实时同步、并发冷却和游戏内翻译协议。
-- Fabric Mod：15 个 JUnit 测试及 Gradle `clean build` 通过，覆盖缓存持久化、策略迁移、人工译文优先级、管理清理、过期异步响应失效、原生聊天 locale/同文选择及 256 字符包边界。
-- NeoForge Mod：15 个 JUnit 测试及 Gradle `clean test build` 通过，覆盖缓存持久化、策略迁移、人工译文优先级、管理清理、过期异步响应失效、原生聊天 locale/同文选择及 256 字符包边界。
-- 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证 Mixin 加载、离线后端收到正版客户端 UUID 时改用服务端真实离线 UUID、`whitelist_verified=true`，并实际通过原版白名单登录校验；既有解绑、管理员同步、可信命令和正常关服流程保持有效。
+- AstrBot 插件 0.7.21：146 个自动化测试通过，覆盖 fail-closed/常数时间鉴权、配置迁移、AstrBot Schema 类型兼容、QQ/Discord 自动化、消息编辑与撤回去重、跨群来源隔离、缓存/截图清理、游戏与平台共用单次翻译后分发、原生聊天精确连接路由、旧 Mod 能力协商、周期与热更新策略同步、提及消息原文保留、源语言去重、中英同义文本缓存、40000 字提示词上限、自定义术语表、命令审批列表与函数工具、管理员身份过滤及实时同步、并发冷却和游戏内翻译协议。
+- 已停止支持的 Fabric Mod 0.6.28 历史验证：15 个 JUnit 测试及 Gradle `clean build` 通过；本次仅更新该分支文档，未重跑旧版构建，覆盖缓存持久化、策略迁移、人工译文优先级、管理清理、过期异步响应失效、原生聊天 locale/同文选择及 256 字符包边界。
+- NeoForge Mod 0.7.21：18 个 JUnit 测试及 Gradle `test build` 通过，覆盖缓存持久化、策略迁移、人工译文优先级、管理清理、过期异步响应失效、原生聊天 locale/同文选择及 256 字符包边界。
+- 历史 Fabric 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证 Mixin 加载、离线后端收到正版客户端 UUID 时改用服务端真实离线 UUID、`whitelist_verified=true`，并实际通过原版白名单登录校验；既有解绑、管理员同步、可信命令和正常关服流程保持有效。
 
 ## 许可与来源
 
