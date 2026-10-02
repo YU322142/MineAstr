@@ -1,4 +1,6 @@
-# MineAstr 0.7.21
+# MineAstr 0.7.22
+
+0.7.22 fixes the client loading-screen crash. Protocol version 1 is unchanged: clients can connect to existing 0.7.21 servers/plugins. Replacing the client JAR does not require restarting production services.
 
 [中文](README.md) · [Configuration reference](docs/CONFIGURATION.en.md) · [Changelog](CHANGELOG.md) · [中文更新日志](CHANGELOG.zh-CN.md) · [External translation API](EXTERNAL_TRANSLATION_API.md)
 
@@ -10,11 +12,11 @@ MineAstr is an AstrBot bridge mod for Minecraft 1.21.1 on NeoForge. It forwards 
 - Original upstream: [Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr).
 - Immersive Paintings integration fork: [YU322142/ImmersivePaintings](https://github.com/YU322142/ImmersivePaintings), on branch `1.21.1-neoforge`.
 
-The integration between MineAstr 0.7.21 and Immersive Paintings 0.7.15 is jointly maintained by these two community forks. It is not an official integration supplied by either upstream project. Report related issues to the corresponding fork.
+The integration between MineAstr 0.7.22 and Immersive Paintings 0.7.15 is jointly maintained by these two community forks. It is not an official integration supplied by either upstream project. Report related issues to the corresponding fork.
 
 | Component | Requirement |
 | --- | --- |
-| MineAstr | `0.7.21` |
+| MineAstr | `0.7.22` |
 | Minecraft | `1.21.1` |
 | NeoForge | `21.1.219` or newer |
 | Java | `21` |
@@ -48,7 +50,7 @@ The client is not a hard requirement for ordinary chat bridging. It is required 
 
 ## Installation
 
-1. Put `mineastr-neoforge-1.21.1-0.7.21.jar` in the server's `mods/` directory.
+1. Put `mineastr-neoforge-1.21.1-0.7.22.jar` in the server's `mods/` directory.
 2. Put the same JAR in the `mods/` directory of every client that participates in translation features.
 3. After the first startup, edit the server's `config/mineastr-common.toml`.
 4. Configure the same WebSocket path and token in AstrBot's Minecraft adapter.
@@ -67,7 +69,7 @@ Real endpoints and tokens must remain in the runtime environment and must not be
 
 ## Translation Display Behavior
 
-Version 0.7.21 gives signs, entities, and Immersive Paintings one unified “current crosshair target” lifecycle:
+Version 0.7.22 gives signs, entities, and Immersive Paintings one unified “current crosshair target” lifecycle:
 
 - A translation is displayed only while its target remains valid.
 - Looking away, opening a screen, hiding the HUD, changing worlds, or invalidating the target clears it immediately.
@@ -78,7 +80,7 @@ The setting that controls whether ordinary chat also displays source text is ind
 
 ## Bot Images and ChatImage Integration
 
-- MineAstr `0.7.21` is required on both server and client; clients that want image rendering must also install ChatImage.
+- MineAstr `0.7.22` is recommended on both server and client (0.7.21 servers also support this client fix); clients that want image rendering must also install ChatImage.
 - `bridge_settings.relay_images_to_game` in the AstrBot plugin is the Bot-side master switch.
 - Each client can disable “Receive image messages” under F8. The preference is stored independently of ChatImage; actual delivery still requires ChatImage capability. Existing `acceptBotImages=false` settings are honoured.
 - Temporary Bot-local images are safely inlined within a configured limit; public HTTP(S) images are fetched by ChatImage. Bot-local paths and image URLs are never printed as ordinary chat text.
@@ -90,7 +92,7 @@ When native chat translation is enabled, MineAstr republishes the translation as
 
 Image translation requires:
 
-- MineAstr `0.7.21` on both client and server.
+- MineAstr `0.7.22` on both client and server.
 - Immersive Paintings `0.7.15+1.21.1` on both client and server.
 - A connected AstrBot bridge with image-translation support.
 - Game translations and floating translations enabled on the client.
@@ -99,7 +101,7 @@ Immersive Paintings obtains the complete image from its own cache, compresses it
 
 ## Common Commands
 
-The 0.7.21 F8 screen supports scrolling, undo, reset, independent image preferences and a shortcut toggle; footer buttons fit smaller windows. UI text and units use translation keys. Add or override `assets/mineastr/lang/<locale>.json` as described in the [configuration reference](docs/CONFIGURATION.en.md). `/mineastr-images on|off` updates the current player's server-side image preference.
+The 0.7.22 F8 screen supports scrolling, undo, reset, independent image preferences and a shortcut toggle; footer buttons fit smaller windows. UI text and units use translation keys. Add or override `assets/mineastr/lang/<locale>.json` as described in the [configuration reference](docs/CONFIGURATION.en.md). `/mineastr-images on|off` updates the current player's server-side image preference.
 
 | Command | Purpose |
 | --- | --- |
@@ -124,7 +126,7 @@ The 0.7.21 F8 screen supports scrolling, undo, reset, independent image preferen
 | --- | --- |
 | The log says MineAstr is disabled by configuration | `enabled` in the active `mineastr-common.toml` |
 | It never connects | `websocketUrl`, the AstrBot listener address, firewall, and token |
-| Signs work but paintings do not translate | Immersive Paintings 0.7.15 and whether MineAstr 0.7.21 is also installed on the client |
+| Signs work but paintings do not translate | Immersive Paintings 0.7.15 and whether MineAstr 0.7.22 is also installed on the client |
 | Bot images only appear as `[图片]` | Whether ChatImage is installed, F8 image receiving is enabled, and Bot-side image relay is enabled |
 | The overlay remains after looking away | Whether the client contains an old MineAstr or old painting JAR alongside the current one |
 | Image requests produce no result | AstrBot image capability and the client's complete-image cache |

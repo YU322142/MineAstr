@@ -4,6 +4,13 @@
 
 Community fork: [YU322142/MineAstr](https://github.com/YU322142/MineAstr) · Upstream: [Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr) · Integration fork: [YU322142/ImmersivePaintings](https://github.com/YU322142/ImmersivePaintings)
 
+## 0.7.22 - NeoForge 1.21.1 - 2026-10-03
+
+- Fix a loading-screen crash caused by reading CLIENT config values before NeoForge loads the config.
+- Guard F8, HUD, external overlay APIs and preference sending until config is ready; use saved preferences after loading.
+- Add startup/load/unload regression coverage; preserve ZIP asynchronous algorithms and logging.
+- Protocol remains version 1; 0.7.22 clients work with 0.7.21 servers/plugins without restarting production services.
+
 ## 0.7.21 - NeoForge 1.21.1 - 2026-10-03
 
 - Preserve the latest ZIP settings UI, image preferences and player commands; align artifact and runtime versions.

@@ -60,8 +60,12 @@ public final class MineAstrClientConfig {
     private MineAstrClientConfig() {
     }
 
+    public static boolean isLoaded() {
+        return SPEC.isLoaded();
+    }
+
     public static boolean receivesBotImages() {
         // Honour the legacy opt-out until the new UI explicitly updates both values.
-        return RECEIVE_IMAGE_MESSAGES.getAsBoolean() && ACCEPT_BOT_IMAGES.getAsBoolean();
+        return isLoaded() && RECEIVE_IMAGE_MESSAGES.getAsBoolean() && ACCEPT_BOT_IMAGES.getAsBoolean();
     }
 }

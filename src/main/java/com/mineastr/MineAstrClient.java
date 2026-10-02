@@ -94,7 +94,7 @@ public final class MineAstrClient {
     public static void init(ModContainer modContainer, IEventBus modEventBus) {
         modContainer.registerExtensionPoint(
                 IConfigScreenFactory.class,
-                (container, parent) -> new MineAstrConfigScreen(parent));
+                (container, parent) -> MineAstrClientConfig.isLoaded() ? new MineAstrConfigScreen(parent) : parent);
         modEventBus.addListener(MineAstrClient::registerKeyMappings);
         modEventBus.addListener(MineAstrClient::registerGuiLayers);
         NeoForge.EVENT_BUS.register(MineAstrClient.class);
@@ -133,6 +133,13 @@ public final class MineAstrClient {
 
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
+        // Ticks can run during the loading screen, before CLIENT configs exist.
+        if (!MineAstrClientConfig.isLoaded()) {
+            while (OPEN_CONFIG_KEY.consumeClick()) {
+                // Do not replay loading-screen clicks once the config is ready.
+            }
+            return;
+        }
         Minecraft client = Minecraft.getInstance();
         while (OPEN_CONFIG_KEY.consumeClick()) {
             if (MineAstrClientConfig.OPEN_CONFIG_KEY_ENABLED.getAsBoolean()
@@ -205,19 +212,25 @@ public final class MineAstrClient {
     }
 
     public static boolean shouldShowOriginalTranslatedMessages() {
-        return MineAstrClientConfig.SHOW_ORIGINAL_TRANSLATED_MESSAGES.getAsBoolean();
+        return !MineAstrClientConfig.isLoaded()
+                || MineAstrClientConfig.SHOW_ORIGINAL_TRANSLATED_MESSAGES.getAsBoolean();
     }
 
     public static boolean areFloatingTranslationOverlaysEnabled() {
-        return MineAstrClientConfig.SIGN_TRANSLATIONS_ENABLED.getAsBoolean();
+        return MineAstrClientConfig.isLoaded()
+                && MineAstrClientConfig.SIGN_TRANSLATIONS_ENABLED.getAsBoolean();
     }
 
     public static double floatingTranslationMaxDistance() {
-        return MineAstrClientConfig.SIGN_TRANSLATION_MAX_DISTANCE.getAsInt();
+        return MineAstrClientConfig.isLoaded()
+                ? MineAstrClientConfig.SIGN_TRANSLATION_MAX_DISTANCE.getAsInt()
+                : MineAstrClientConfig.SIGN_TRANSLATION_MAX_DISTANCE.getDefault();
     }
 
     public static float floatingTranslationScale() {
-        return (float) MineAstrClientConfig.SIGN_TRANSLATION_SCALE.getAsDouble();
+        return (float) (MineAstrClientConfig.isLoaded()
+                ? MineAstrClientConfig.SIGN_TRANSLATION_SCALE.getAsDouble()
+                : MineAstrClientConfig.SIGN_TRANSLATION_SCALE.getDefault());
     }
 
     private static void applyImageTranslationResult(MineAstrPayloads.ImageTranslationResult result) {
@@ -487,7 +500,8 @@ public final class MineAstrClient {
             DeltaTracker tickCounter) {
         TargetedSign targeted = TARGETED_SIGN;
         Minecraft minecraft = Minecraft.getInstance();
-        if (targeted == null
+        if (!MineAstrClientConfig.isLoaded()
+                || targeted == null
                 || minecraft.level == null
                 || minecraft.player == null
                 || minecraft.screen != null
@@ -900,6 +914,9 @@ public final class MineAstrClient {
     }
 
     public static void sendTranslationPreferences() {
+        if (!MineAstrClientConfig.isLoaded()) {
+            return;
+        }
         sendPayloadToServer(new MineAstrPayloads.TranslationPreferences(
                 MineAstrClientConfig.GAME_TRANSLATIONS_ENABLED.getAsBoolean(),
                 MineAstrClientConfig.SHOW_ORIGINAL_TRANSLATED_MESSAGES.getAsBoolean()));
@@ -914,6 +931,9 @@ public final class MineAstrClient {
     }
 
     public static void sendBotImagePreferences() {
+        if (!MineAstrClientConfig.isLoaded()) {
+            return;
+        }
         boolean chatImageAvailable = isChatImageAvailable();
         sendPayloadToServer(new MineAstrPayloads.BotImagePreferences(
                 MineAstrClientConfig.receivesBotImages(),
