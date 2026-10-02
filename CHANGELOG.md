@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.22 - 2026-10-03
+
+- 与客户端启动崩溃修复的 NeoForge 模组统一版本；插件业务逻辑与协议不变。
+- Align the plugin version with the NeoForge client startup fix; plugin behavior and protocol are unchanged.
+
 ## 0.7.21 - 2026-10-03
 
 - Bot 回复按现有路由同步至 QQ/Discord 等目标会话，与 Minecraft 共享翻译请求；游戏内 Bot 回复也同步到外部平台，不回环到游戏。

@@ -1,14 +1,16 @@
 # MineAstr AstrBot 插件
 
+0.7.22 修复客户端加载画面崩溃。协议保持版本 1，可连接现有 0.7.21 服务端与插件；此修复只需替换客户端 JAR，无需重启生产服务。
+
 [![AI Assisted](https://img.shields.io/badge/AI-OpenAI%20Codex%20Assisted-10A37F?style=for-the-badge&logo=openai&logoColor=white)](#ai-制作声明)
 [![Plugin tests](https://github.com/YU322142/MineAstr/actions/workflows/test.yml/badge.svg?branch=astrbot-plugin)](https://github.com/YU322142/MineAstr/actions/workflows/test.yml)
 
 > [!IMPORTANT]
 > **AI 制作声明：本插件采用生成式 AI 参与协议设计、编码、文档编写与测试。** AI 生成或修改的内容由项目维护者审阅、验证并承担最终维护责任。
 
-MineAstr 0.7.21 为 AstrBot 提供一个 `minecraft` 平台适配器，当前支持 NeoForge 1.21.1 模组的主动 WebSocket 连接。统一发布包为 AstrBot 插件与 NeoForge 模组 0.7.21。旧 Fabric 分支已停止支持，仅保留 0.6.28 历史源码，不再提供更新、修复或兼容性保证。
+MineAstr 0.7.22 为 AstrBot 提供一个 `minecraft` 平台适配器，当前支持 NeoForge 1.21.1 模组的主动 WebSocket 连接。统一发布包为 AstrBot 插件与 NeoForge 模组 0.7.22。旧 Fabric 分支已停止支持，仅保留 0.6.28 历史源码，不再提供更新、修复或兼容性保证。
 
-[下载统一 0.7.21 Release](https://github.com/YU322142/MineAstr/releases/tag/v0.7.21) · [自 0.6.29 以来的完整累计变化](RELEASE_NOTES.md)
+[下载统一 0.7.22 Release](https://github.com/YU322142/MineAstr/releases/tag/v0.7.22) · [自 0.6.29 以来的完整累计变化](RELEASE_NOTES.md)
 
 Minecraft 玩家聊天会被转换为 AstrBot 中的同一个群聊会话：
 
@@ -43,7 +45,7 @@ AstrBot 对该会话的文本回复会回传给所有已连接的 Minecraft 服�
 
 ## 安装包兼容性
 
-在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.7.21.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
+在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.7.22.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
 
 插件元数据中的安装/更新源固定为 Fork 分支 `https://github.com/YU322142/MineAstr/tree/astrbot-plugin`，不会再让 AstrBot 回到原项目或下载仅用于项目导航的 `main` 分支。
 
@@ -84,7 +86,7 @@ Discord 不需要本插件自行登录 Discord；它复用 AstrBot 官方 Discor
 
 普通桥接消息会进入 Minecraft，但不会额外触发 LLM。v0.6.9 起默认开启 `relay_bot_conversations_to_game`：QQ/Discord 玩家 `@机器人` 的原消息会进入游戏并继续触发 AstrBot，最终纯文本回复也会进入游戏；工具调用前只有 Reply/At 的空中间消息不会转发。斜杠指令仍由 `relay_commands` 单独控制。
 
-0.7.21 会将 Bot 的最终文字/图片回复继续同步至现有路由中的其他 QQ/Discord 会话，正文统一翻译后按目标语言分发。Minecraft 来源的回复同步到外部平台且不回环到游戏；没有 Minecraft 适配器时，其他平台仍可收到回复。引用文字单独翻译，正文已是目标语言时也会翻译引用；只有消息 ID 的 Reply 会尝试关联触发消息。沿用已有路由、唤醒规则、原文显示偏好和防回环检查。
+0.7.22 会将 Bot 的最终文字/图片回复继续同步至现有路由中的其他 QQ/Discord 会话，正文统一翻译后按目标语言分发。Minecraft 来源的回复同步到外部平台且不回环到游戏；没有 Minecraft 适配器时，其他平台仍可收到回复。引用文字单独翻译，正文已是目标语言时也会翻译引用；只有消息 ID 的 Reply 会尝试关联触发消息。沿用已有路由、唤醒规则、原文显示偏好和防回环检查。
 
 Discord 编辑消息会由 AstrBot 的 Pycord 客户端直接监听。编辑后的正文会按照原桥接会话重新执行过滤、统一翻译并发送到 Minecraft 和其他目标会话，正文前带 `[Edited]` 标记；Minecraft 聊天协议无法修改已经显示的旧消息，因此不会尝试覆盖历史聊天行。机器人自己发送的编辑消息是否同步仍由 `relay_bot_conversations_to_game` 控制。
 

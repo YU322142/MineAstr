@@ -1,4 +1,22 @@
-# MineAstr 0.7.21 - 自 0.6.29 以来的累计变化
+# MineAstr 0.7.22 - 客户端启动修复及自 0.6.29 以来的累计变化
+
+## 0.7.22 修复
+
+- 修复加载画面期间客户端 Tick 在 CLIENT 配置加载前读取翻译开关而崩溃的问题。
+- F8、HUD、外部浮动译文接口与偏好发送统一检查配置就绪状态；配置加载后使用实际设置，卸载后恢复安全行为。
+- 新增启动前、配置加载后及卸载后的回归测试；保留原 ZIP 的异步算法和日志。
+- 协议仍为版本 1：0.7.22 客户端兼容现有 0.7.21 服务端/插件，修复客户端无需重启生产服务。
+
+AstrBot 插件同步版本为 0.7.22，业务逻辑不变。新增 3 项生命周期回归测试；本次 NeoForge 共 21 项测试，插件共 146 项测试。
+
+客户端报告中的根因是 `Cannot get config value before config is loaded`，栈指向 `MineAstrClient.updateTargetedSign`；CLIENT 配置加载前，加载画面已经开始运行客户端 Tick。
+
+安装时替换旧客户端 JAR，避免同时加载多个 MineAstr 版本。服务端和 AstrBot 的新包可按后续维护计划部署。Fabric 分支继续停止支持。
+
+[模组源码](https://github.com/YU322142/MineAstr/tree/v0.7.22) · [插件源码](https://github.com/YU322142/MineAstr/tree/astrbot-v0.7.22)
+
+## 0.7.21 累计发布记录（以下为当次发布记录）
+
 
 本次发布统一 Minecraft NeoForge 1.21.1 模组与 AstrBot 插件版本，两个安装包在同一个 Release 中提供。以下按 `v0.6.29` / `astrbot-v0.6.29` 标签汇总此后的累计变化。
 
