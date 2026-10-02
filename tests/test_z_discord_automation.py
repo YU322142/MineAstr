@@ -2605,5 +2605,121 @@ class RelayScopeAndContextTests(unittest.IsolatedAsyncioTestCase):
         )
 
 
+class BotRelayRegressionTests(unittest.IsolatedAsyncioTestCase):
+    def make_plugin(self, game_language="ja_jp"):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        discord = MAIN.DISCORD_NOTIFICATION_DEFAULTS.copy()
+        discord.update(chat_translation_enabled=True,
+                       chat_translation_languages="en_us",
+                       chat_translation_show_original=False)
+        qq = MAIN.QQ_NOTIFICATION_DEFAULTS.copy()
+        qq.update(chat_translation_enabled=True,
+                  chat_translation_languages="zh_cn",
+                  chat_translation_show_original=False)
+        plugin.config = {
+            "bridge_settings": {
+                "bridge_enabled": True,
+                "relay_bot_conversations_to_game": True,
+                "game_translation_enabled": True,
+                "game_translation_languages": game_language,
+                "game_translation_show_original": False,
+                "chat_to_game_template": "{message}",
+                "max_relay_length": 500,
+            },
+            "discord_settings": {"discord_notification_settings": discord},
+            "qq_settings": {"qq_notification_settings": qq},
+        }
+        plugin._relay_sessions = {"default:GroupMessage:10001", "discord:GroupMessage:20002"}
+        plugin._send_to_relay_session = AsyncMock()
+        plugin._notify_mentioned_players = AsyncMock()
+        adapter = types.SimpleNamespace(relay_chat=AsyncMock(), bot_display_name="AstrBot")
+        plugin._minecraft_adapter = lambda: adapter
+        def translate(content, languages, *args, **kwargs):
+            source = "en_us" if content == "English quote" else "zh_cn"
+            values = ({"zh_cn": "中文引用", "ja_jp": "日本語の引用"}
+                      if source == "en_us" else {"en_us": "English answer", "ja_jp": "日本語の返答"})
+            return {"source_language": source,
+                    "translations": {k: v for k, v in values.items() if k in languages}}
+        plugin._translate_text = AsyncMock(side_effect=translate)
+        return plugin, adapter
+
+    def event(self, platform="default", reply=None, text="中文回复"):
+        origin = ("minecraft:GroupMessage:minecraft" if platform == "minecraft"
+                  else "default:GroupMessage:10001")
+        result = types.SimpleNamespace(get_plain_text=lambda: text,
+                                       chain=[reply] if reply else [])
+        return types.SimpleNamespace(
+            unified_msg_origin=origin, message_str="你好", is_at_or_wake_command=True,
+            get_platform_id=lambda: platform, get_sender_id=lambda: "42",
+            get_sender_name=lambda: "Alice", get_result=lambda: result,
+            message_obj=types.SimpleNamespace(message=[], message_id="trigger-1"),
+            stop_event=lambda: None,
+        )
+
+    async def test_bot_reply_shares_translation_across_game_and_discord(self):
+        plugin, adapter = self.make_plugin()
+        await plugin.mineastr_relay_bot_reply_to_game(self.event())
+        plugin._translate_text.assert_awaited_once()
+        self.assertEqual(plugin._translate_text.await_args.args[1], ("en_us", "ja_jp"))
+        plugin._send_to_relay_session.assert_awaited_once_with(
+            "discord:GroupMessage:20002", "[AstrBot] English answer")
+        adapter.relay_chat.assert_awaited_once_with(
+            "中文回复", "AstrBot", origin="default:GroupMessage:10001",
+            translation_options={"translations": {"ja_jp": "日本語の返答"},
+                                 "show_original": False}, media=[])
+
+    async def test_minecraft_bot_reply_is_synced_to_platforms_without_game_echo(self):
+        plugin, adapter = self.make_plugin()
+        await plugin.mineastr_relay_bot_reply_to_game(self.event("minecraft"))
+        adapter.relay_chat.assert_not_awaited()
+        plugin._send_to_relay_session.assert_has_awaits([
+            call("default:GroupMessage:10001", "[AstrBot] 中文回复"),
+            call("discord:GroupMessage:20002", "[AstrBot] English answer"),
+        ], any_order=True)
+        self.assertEqual(plugin._translate_text.await_args.args[1], ("zh_cn", "en_us"))
+
+    async def test_platform_bot_relay_works_when_game_adapter_is_missing(self):
+        plugin, _ = self.make_plugin()
+        plugin._minecraft_adapter = lambda: None
+        await plugin.mineastr_relay_bot_reply_to_game(self.event())
+        plugin._send_to_relay_session.assert_awaited_once_with(
+            "discord:GroupMessage:20002", "[AstrBot] English answer")
+
+    async def test_game_quote_is_translated_even_when_answer_already_matches_game_locale(self):
+        plugin, adapter = self.make_plugin(game_language="zh_cn")
+        reply = MAIN.Reply()
+        reply.text, reply.sender_name = "English quote", "Bob"
+        event = self.event(reply=reply)
+        # Exercise both a player reply and a Bot reply, including the real routing pipeline.
+        event.message_str = "中文回复"
+        event.message_obj.message = [reply]
+        event.is_at_or_wake_command = False
+        await plugin.mineastr_relay_message(event)
+        opts = adapter.relay_chat.await_args.kwargs["translation_options"]
+        self.assertEqual(opts["translations"]["zh_cn"], "↪ Bob: 中文引用\n中文回复")
+        self.assertNotIn("English quote", opts["translations"]["zh_cn"])
+        adapter.relay_chat.reset_mock()
+        event.is_at_or_wake_command = True
+        await plugin.mineastr_relay_bot_reply_to_game(event)
+        opts = adapter.relay_chat.await_args.kwargs["translation_options"]
+        self.assertEqual(opts["translations"]["zh_cn"], "↪ Bob: 中文引用\n中文回复")
+
+    async def test_id_only_bot_reply_quotes_triggering_message(self):
+        plugin, adapter = self.make_plugin()
+        reply = MAIN.Reply()
+        reply.id = "trigger-1"
+        event = self.event(reply=reply)
+        event.message_str = "English quote"
+        await plugin.mineastr_relay_bot_reply_to_game(event)
+        opts = adapter.relay_chat.await_args.kwargs["translation_options"]
+        self.assertEqual(opts["translations"]["ja_jp"], "↪ Alice: 日本語の引用\n日本語の返答")
+        self.assertEqual(plugin._translate_text.await_count, 2)
+
+    def test_reply_chain_extracts_plain_text_without_leaking_image_paths(self):
+        reply = MAIN.Reply()
+        reply.chain = [MAIN.Plain("English quote"), MAIN.Image()]
+        self.assertEqual(MAIN.MineAstrPlugin._chain_reply_context([reply])["text"], "English quote")
+
+
 if __name__ == "__main__":
     unittest.main()

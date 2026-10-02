@@ -447,7 +447,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.6.30",
+    "0.6.31",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -2467,12 +2467,21 @@ class MineAstrPlugin(Star):
 
     @classmethod
     def _event_reply_context(cls, event: AstrMessageEvent) -> dict[str, str]:
-        for component in cls._event_chain(event):
+        return cls._chain_reply_context(cls._event_chain(event))
+
+    @classmethod
+    def _chain_reply_context(cls, chain: Any) -> dict[str, str]:
+        for component in getattr(chain, "chain", chain) or ():
             if not isinstance(component, Reply):
                 continue
             quoted_text = str(
                 getattr(component, "message_str", None)
                 or getattr(component, "text", None)
+                or "".join(
+                    str(getattr(item, "text", "") or "")
+                    for item in getattr(component, "chain", None) or ()
+                    if isinstance(item, Plain)
+                )
                 or ""
             ).strip()
             sender = str(
@@ -2488,6 +2497,45 @@ class MineAstrPlugin(Star):
                     "text": trim_message(quoted_text, 240),
                 }
         return {}
+
+    @staticmethod
+    def _reply_prefix(reply_context: dict[str, str] | None, text: str | None = None) -> str:
+        if not reply_context:
+            return ""
+        sender = str(reply_context.get("sender") or "").strip()
+        quoted = str(reply_context.get("text") or "").strip() if text is None else text
+        if not sender and not quoted:
+            return ""
+        quote = "↪ " + sender
+        if quoted:
+            quote += (": " if sender else "") + quoted
+        return quote + "\n"
+
+    def _game_reply_translation_result(
+        self,
+        content: str,
+        result: dict[str, Any],
+        reply_context: dict[str, str] | None,
+        reply_result: dict[str, Any],
+        transform: Callable[[str], str],
+    ) -> dict[str, Any]:
+        source_language, translations = self._translation_result_parts(result)
+        _, quote_translations = self._translation_result_parts(reply_result)
+        languages = set(translations) | set(quote_translations)
+        quoted_text = str((reply_context or {}).get("text") or "").strip()
+        return {
+            # A quote and its answer can have different source languages.
+            "source_language": "" if quoted_text else source_language,
+            "translations": {
+                language: transform(
+                    self._reply_prefix(
+                        reply_context, quote_translations.get(language, quoted_text)
+                    )
+                    + translations.get(language, content)
+                )
+                for language in sorted(languages)
+            },
+        }
 
     async def _translate_text(
         self,
@@ -3254,6 +3302,7 @@ class MineAstrPlugin(Star):
         translation_result: dict[str, Any] | None = None,
         media: list[dict[str, str]] | None = None,
         reply_context: dict[str, str] | None = None,
+        reply_translation_result: dict[str, Any] | None = None,
     ) -> None:
         target_sessions = sessions
         if target_sessions is None:
@@ -3269,9 +3318,9 @@ class MineAstrPlugin(Star):
                 translation_origin,
             )
 
-        reply_result: dict[str, Any] = {}
+        reply_result = reply_translation_result or {}
         quoted_text = str((reply_context or {}).get("text") or "").strip()
-        if quoted_text and target_sessions:
+        if quoted_text and target_sessions and reply_translation_result is None:
             reply_result = await self._translate_relay_message(
                 quoted_text,
                 target_sessions,
@@ -3350,6 +3399,10 @@ class MineAstrPlugin(Star):
             if not sent:
                 logger.warning("MineAstr 找不到桥接会话：%s", session)
             else:
+                logger.debug(
+                    "MineAstr 桥接消息已发送：platform=%s quote=%s media=%s",
+                    self._session_platform_id(session), bool(reply_context), len(media or ()),
+                )
                 for outbound_text in outbound_texts:
                     self._store_outbound_relay_message(
                         session, outbound_text
@@ -4187,6 +4240,18 @@ class MineAstrPlugin(Star):
             event.unified_msg_origin,
             include_game=has_game_target,
         )
+        quoted_text = str((reply_context or {}).get("text") or "").strip()
+        reply_result = (
+            await self._translate_relay_message(
+                quoted_text,
+                target_sessions,
+                event.unified_msg_origin,
+                include_game=has_game_target,
+                cache_scope=f"relay-quote:{event.unified_msg_origin}",
+            )
+            if quoted_text
+            else {}
+        )
         await self._send_to_relay_sessions(
             platform_prefix + filtered,
             sessions=target_sessions,
@@ -4196,27 +4261,21 @@ class MineAstrPlugin(Star):
             ),
             media=media,
             reply_context=reply_context,
+            reply_translation_result=reply_result,
         )
         if not has_game_target:
             logger.warning("MineAstr minecraft 平台适配器未启用，无法转发聊天。")
             return
-        reply_prefix = ""
-        if reply_context:
-            quoted_sender = str(reply_context.get("sender") or "").strip()
-            quoted_text = str(reply_context.get("text") or "").strip()
-            if quoted_sender or quoted_text:
-                reply_prefix = "↪ "
-                if quoted_sender:
-                    reply_prefix += quoted_sender
-                if quoted_text:
-                    reply_prefix += f": {quoted_text}" if quoted_sender else quoted_text
-                reply_prefix += "\n"
+        reply_prefix = self._reply_prefix(reply_context)
         game_media = await self._game_media_payloads(media)
         media_marker = "\n[图片]" if game_media and filtered else ("[图片]" if game_media else "")
         content = game_content(reply_prefix + filtered + media_marker)
-        game_translation_result = self._transform_translation_result(
+        game_translation_result = self._game_reply_translation_result(
+            filtered,
             translation_result,
-            lambda translated: game_content(reply_prefix + translated + media_marker),
+            reply_context,
+            reply_result,
+            lambda translated: game_content(translated + media_marker),
         )
         try:
             relay_kwargs = {
@@ -4243,15 +4302,16 @@ class MineAstrPlugin(Star):
     async def mineastr_relay_bot_reply_to_game(
         self, event: AstrMessageEvent
     ) -> None:
-        if self._is_reply_to_synced_message(
-            event, self._event_reply_context(event)
-        ):
+        if self._is_reply_to_synced_message(event, self._event_reply_context(event)):
             return
+        source_platform = str(event.get_platform_id() or "")
         if (
             not self._cfg_bool("bridge_enabled")
             or not self._cfg_bool("relay_bot_conversations_to_game")
-            or event.unified_msg_origin not in self._relay_sessions
-            or str(event.get_platform_id() or "") == "minecraft"
+            or (
+                source_platform != "minecraft"
+                and event.unified_msg_origin not in self._relay_sessions
+            )
             or not event.is_at_or_wake_command
             or self._is_mineastr_command(str(event.message_str or ""))
         ):
@@ -4263,27 +4323,82 @@ class MineAstrPlugin(Star):
             str(result.get_plain_text() or "").strip(),
             self._cfg_int("max_relay_length"),
         )
-        result_media = await self._game_media_payloads(self._chain_media(result))
-        if not text and not result_media:
+        media = self._chain_media(result)
+        if not text and not media:
             return
         adapter = self._minecraft_adapter()
-        if adapter is None or not hasattr(adapter, "relay_chat"):
-            logger.warning("MineAstr minecraft 平台适配器未启用，无法转发机器人回复。")
+        has_game_target = (
+            source_platform != "minecraft"
+            and adapter is not None
+            and hasattr(adapter, "relay_chat")
+        )
+        targets = self._relay_target_sessions(
+            event.unified_msg_origin, source_platform="minecraft"
+        )
+        bot_name = str(getattr(adapter, "bot_display_name", "AstrBot") or "AstrBot")
+        reply_context = self._chain_reply_context(getattr(result, "chain", ()))
+        if reply_context and not reply_context.get("text"):
+            # Native Reply components often carry only the triggering message ID.
+            trigger_id = str(
+                getattr(getattr(event, "message_obj", None), "message_id", "") or ""
+            )
+            if trigger_id and reply_context.get("message_id") == trigger_id:
+                reply_context["text"] = trim_message(event.message_str, 240)
+                reply_context["sender"] = str(event.get_sender_name() or "")
+        translation_result = await self._translate_relay_message(
+            text, targets, event.unified_msg_origin, include_game=has_game_target
+        )
+        quoted_text = str(reply_context.get("text") or "").strip()
+        reply_result = (
+            await self._translate_relay_message(
+                quoted_text,
+                targets,
+                event.unified_msg_origin,
+                include_game=has_game_target,
+                cache_scope=f"relay-quote:{event.unified_msg_origin}",
+            )
+            if quoted_text
+            else {}
+        )
+        logger.info(
+            "MineAstr Bot 回复同步：source=%s targets=%s game=%s "
+            "body_languages=%s quote_languages=%s",
+            source_platform, len(targets), has_game_target,
+            sorted(self._translation_result_parts(translation_result)[1]),
+            sorted(self._translation_result_parts(reply_result)[1]),
+        )
+        try:
+            await self._send_to_relay_sessions(
+                f"[{bot_name}] " + text if text else f"[{bot_name}]",
+                exclude=event.unified_msg_origin,
+                sessions=targets,
+                translation_result=self._transform_translation_result(
+                    translation_result, lambda translated: f"[{bot_name}] " + translated
+                ),
+                media=media,
+                reply_context=reply_context,
+                reply_translation_result=reply_result,
+            )
+        except Exception as exc:
+            logger.warning("MineAstr 转发机器人回复到其他平台失败：%s", exc)
+        if not has_game_target:
             return
         try:
-            translation_options = (
-                await self._translate_game_message(text, event.unified_msg_origin)
-                if text
-                else {}
+            game_media = await self._game_media_payloads(media)
+            game_text = text or ("[图片]" if game_media else "")
+            if not game_text and not game_media:
+                return
+            translated_result = self._game_reply_translation_result(
+                game_text, translation_result, reply_context, reply_result, lambda value: value
             )
-            if result_media and not text:
-                text = "[图片]"
             await adapter.relay_chat(
-                text,
-                str(getattr(adapter, "bot_display_name", "AstrBot") or "AstrBot"),
+                self._reply_prefix(reply_context) + game_text,
+                bot_name,
                 origin=event.unified_msg_origin,
-                translation_options=translation_options,
-                media=result_media,
+                translation_options=self._game_translation_options_from_result(
+                    translated_result
+                ),
+                media=game_media,
             )
         except Exception as exc:
             logger.warning("MineAstr 转发机器人回复到 Minecraft 失败：%s", exc)

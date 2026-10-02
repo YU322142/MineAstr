@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.31 - 2026-10-02
+
+- Bot 回复按现有路由同步至 QQ/Discord 等目标会话，与 Minecraft 共享翻译请求；游戏内 Bot 回复也同步到外部平台，不回环到游戏。
+- Minecraft 适配器不可用时，仍可同步 Bot 回复到其他平台。
+- 引用文本与回复正文分别翻译，再按目标语言组合；正文已是目标语言时，引用仍可翻译。
+- 原生 Reply 的消息 ID 可关联触发消息，引用链中的图片路径不会被当作文字引用。
+- 插件注册版本、安装包和元数据同步更新；运行日志记录同步目标数和正文/引用译文语言，不记录聊天正文。
+- Preserve configured routes, translation/original preferences and media when relaying Bot replies across platforms.
+
+
 ## 0.6.30 - 2026-08-31
 
 - 新增可选 ChatImage 联动：机器人回复中的 URL、base64 或本地图片可安全同步到 Minecraft。
