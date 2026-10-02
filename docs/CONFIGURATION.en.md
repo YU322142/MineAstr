@@ -54,7 +54,9 @@ Whitelist synchronization and login checks are independent features. Define acco
 | `localWorldServerEnabled` | `false` | Whether the single-player integrated server connects to AstrBot |
 | `gameTranslationsEnabled` | `true` | Master game-translation switch |
 | `showOriginalTranslatedMessages` | `true` | Whether ordinary chat also displays the source text |
-| `acceptBotImages` | `true` | Whether to accept Bot images; forced inactive and not advertised to the server when ChatImage is absent |
+| `receiveImageMessages` | `true` | Image reception preference; saving in F8 also updates the legacy switch |
+| `acceptBotImages` | `true` | Legacy image switch; both switches must be enabled to honour existing opt-outs |
+| `openConfigKeyEnabled` | `true` | Whether the registered F8 shortcut can open settings |
 | `signTranslationsEnabled` | `true` | Master crosshair-target overlay switch |
 | `signTranslationMaxDistance` | `8` | Maximum overlay distance |
 | `signTranslationScale` | `1.0` | Overlay scale |
@@ -62,6 +64,10 @@ Whitelist synchronization and login checks are independent features. Define acco
 `showOriginalTranslatedMessages` controls ordinary chat only. In 0.6.30, the target HUD displays translated text only by default.
 
 The Bot side also provides the `bridge_settings.relay_images_to_game` master switch, the `game_image_inline_max_bytes` total limit for Bot-local images, and the `game_image_max_items` per-message count limit. Disabling either side stops only image delivery and does not affect text bridging. Image paths and URLs are never printed as ordinary chat text.
+
+The image preference is stored independently of ChatImage availability; actual delivery still requires ChatImage on the client. `/mineastr-images on|off` changes the current player's server-side preference.
+
+F8 and its local-server subpage use `screen.mineastr.*` translation keys for labels, buttons, descriptions, options, numeric units and connection hints. Add `assets/mineastr/lang/<locale>.json`, or override the same keys in a resource pack. Use `en_us.json` and `zh_cn.json` as templates; retain `%s` arguments and escape a literal percentage sign as `%%`.
 
 ## Screenshots
 

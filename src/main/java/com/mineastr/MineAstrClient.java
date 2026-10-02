@@ -135,7 +135,10 @@ public final class MineAstrClient {
     public static void onClientTick(ClientTickEvent.Post event) {
         Minecraft client = Minecraft.getInstance();
         while (OPEN_CONFIG_KEY.consumeClick()) {
-            client.setScreen(new MineAstrConfigScreen(client.screen));
+            if (MineAstrClientConfig.OPEN_CONFIG_KEY_ENABLED.getAsBoolean()
+                    && !(client.screen instanceof MineAstrConfigScreen)) {
+                client.setScreen(new MineAstrConfigScreen(client.screen));
+            }
         }
         updateTargetedSign(client);
     }
@@ -913,7 +916,7 @@ public final class MineAstrClient {
     public static void sendBotImagePreferences() {
         boolean chatImageAvailable = isChatImageAvailable();
         sendPayloadToServer(new MineAstrPayloads.BotImagePreferences(
-                chatImageAvailable && MineAstrClientConfig.ACCEPT_BOT_IMAGES.getAsBoolean(),
+                MineAstrClientConfig.receivesBotImages(),
                 chatImageAvailable));
     }
 

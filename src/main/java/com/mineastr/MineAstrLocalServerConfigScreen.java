@@ -64,7 +64,7 @@ public final class MineAstrLocalServerConfigScreen extends Screen {
         row += 28;
         websocketUrlField = editBox(controlLeft, row, controlWidth, 256, websocketUrl);
         websocketUrlField.setResponder(value -> websocketUrl = value);
-        websocketUrlField.setHint(Component.literal("ws://127.0.0.1:8765/ws"));
+        websocketUrlField.setHint(Component.translatable("screen.mineastr.local_server.websocket_url_hint"));
         addRenderableWidget(websocketUrlField);
 
         row += 28;

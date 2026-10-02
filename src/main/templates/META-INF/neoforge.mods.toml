@@ -7,19 +7,19 @@ modId="${mod_id}"
 version="${mod_version}"
 displayName="${mod_name}"
 logoFile="logo.png"
-authors="Hgit-1, YU322142"
+authors="Hgit-1,(editor：Guliac_Chenut, YU322142)"
 displayURL="https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1"
 displayTest="IGNORE_ALL_VERSION"
 description='''
-MineAstr 将 Minecraft 服务器聊天接入 AstrBot，并按玩家语言显示 AI 译文。
+MineAstr 将服务器聊天接入 AstrBot，实现按玩家语言 AI 翻译。
 
-基础功能只需要服务端安装：玩家聊天、加入、离开和死亡事件会转发到 AstrBot；机器人还可以查询服务器状态、玩家状态、背包、附近实体和已加载区域的建筑特征。
+仅服务端可实现转发玩家聊天、加入、离开和死亡事件的转发；智能体还可以读取服务器状态、玩家状态、背包、附近实体和已加载区域的建筑外观。
 
-账号绑定可同步到服务器，并可在登录前校验；服务器命令工具默认关闭，非公开命令必须由同步或静态管理员审批。
+服务器命令工具默认关闭，部分命令需管理员权限。
 
 如果玩家客户端也安装 MineAstr，可以按 F8 调整游戏翻译、告示牌/画框浮选和截图隐私；同时安装 ChatImage 后，还可自行开启或关闭 Bot 图片接收。告示牌译文会按原文指纹持久化到世界存档。
 
-本 Mod 支持 NeoForge 独立服务端无 GUI 运行；未安装客户端 Mod 的玩家仍可加入服务器，只是不提供截图、浮选和外部图片翻译等客户端能力。
+Mod 客户端可选。
 '''
 
 [[dependencies.${mod_id}]]

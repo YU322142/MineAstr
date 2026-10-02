@@ -4,6 +4,17 @@
 
 Community fork: [YU322142/MineAstr](https://github.com/YU322142/MineAstr) · Upstream: [Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr) · Integration fork: [YU322142/ImmersivePaintings](https://github.com/YU322142/ImmersivePaintings)
 
+## 0.7.21 - NeoForge 1.21.1 - 2026-10-03
+
+- Preserve the latest ZIP settings UI, image preferences and player commands; align artifact and runtime versions.
+- Preserve the ZIP's asynchronous send queue, background screenshot encoder, ordered chat dispatch algorithms and added log records.
+- Bound WebSocket Upgrade to 10 seconds and complete synchronous setup failures through the reconnect callback.
+- Restore the F8 key binding, drain disabled key presses and fit the settings panel to smaller windows.
+- Preserve reply/translation line breaks, sanitize image placeholders in translations, and provide capability-aware image delivery with a text fallback.
+- Honour the legacy acceptBotImages opt-out and hide clipped controls outside the scrolling viewport.
+- Localize percentage/size formats and connection hints, fill missing reset-button translations, and use locale-independent enum keys in the F8 settings screens.
+
+
 ## 0.6.30 - NeoForge 1.21.1
 
 - Added optional client integration with ChatImage so AstrBot images can render directly in Minecraft chat.

@@ -20,6 +20,9 @@ public final class MineAstrClientConfig {
     public static final ModConfigSpec.BooleanValue SHOW_ORIGINAL_TRANSLATED_MESSAGES = BUILDER
             .comment("显示译文时是否同时保留原文。")
             .define("showOriginalTranslatedMessages", true);
+    public static final ModConfigSpec.BooleanValue RECEIVE_IMAGE_MESSAGES = BUILDER
+            .comment("是否接收 AstrBot 图片消息。关闭后服务端将不再向该玩家发送图片，与是否安装 ChatImage 无关。")
+            .define("receiveImageMessages", true);
     public static final ModConfigSpec.BooleanValue ACCEPT_BOT_IMAGES = BUILDER
             .comment("是否接收 AstrBot 图片消息；仅在客户端安装 ChatImage 时生效。")
             .define("acceptBotImages", true);
@@ -32,6 +35,9 @@ public final class MineAstrClientConfig {
     public static final ModConfigSpec.DoubleValue SIGN_TRANSLATION_SCALE = BUILDER
             .comment("告示牌和外部显示接口的译文缩放比例。")
             .defineInRange("signTranslationScale", 1.0, 0.50, 2.0);
+    public static final ModConfigSpec.BooleanValue OPEN_CONFIG_KEY_ENABLED = BUILDER
+            .comment("是否允许使用 F8 键唤起客户端配置界面。")
+            .define("openConfigKeyEnabled", true);
 
     public static final ModConfigSpec.EnumValue<ScreenshotMode> SCREENSHOT_MODE = BUILDER
             .comment("截图请求策略：ASK、AUTO 或 DISABLED。")
@@ -52,5 +58,10 @@ public final class MineAstrClientConfig {
     static final ModConfigSpec SPEC = BUILDER.build();
 
     private MineAstrClientConfig() {
+    }
+
+    public static boolean receivesBotImages() {
+        // Honour the legacy opt-out until the new UI explicitly updates both values.
+        return RECEIVE_IMAGE_MESSAGES.getAsBoolean() && ACCEPT_BOT_IMAGES.getAsBoolean();
     }
 }

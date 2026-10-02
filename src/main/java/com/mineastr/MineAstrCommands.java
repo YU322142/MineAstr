@@ -43,6 +43,22 @@ public final class MineAstrCommands {
                         .then(Commands.literal("clear-all")
                                 .requires(source -> source.hasPermission(Commands.LEVEL_ADMINS))
                                 .executes(context -> signClearAll(context.getSource(), bridge)))));
+
+        // 玩家级命令：拒收/接收图片消息（网络丢包备选方案，任意玩家可执行）
+        dispatcher.register(Commands.literal("mineastr-images")
+                .then(Commands.literal("on")
+                        .executes(context -> setImageReception(context.getSource(), bridge, true)))
+                .then(Commands.literal("off")
+                        .executes(context -> setImageReception(context.getSource(), bridge, false))));
+    }
+
+    private static int setImageReception(CommandSourceStack source, MineAstrBridge bridge, boolean enabled)
+            throws CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        bridge.setPlayerImageReception(player, enabled);
+        source.sendSuccess(() -> Component.translatable(
+                enabled ? "commands.mineastr.images.on" : "commands.mineastr.images.off"), false);
+        return 1;
     }
 
     private static int status(CommandSourceStack source, MineAstrBridge bridge) {

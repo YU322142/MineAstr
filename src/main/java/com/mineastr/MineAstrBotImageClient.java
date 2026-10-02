@@ -30,7 +30,7 @@ final class MineAstrBotImageClient {
 
     static void handle(MineAstrPayloads.BotImageChunk chunk) {
         if (!MineAstrClient.isChatImageAvailable()
-                || !MineAstrClientConfig.ACCEPT_BOT_IMAGES.getAsBoolean()) {
+                || !MineAstrClientConfig.receivesBotImages()) {
             return;
         }
         cleanupAssemblies();
@@ -85,6 +85,8 @@ final class MineAstrBotImageClient {
         }
         try {
             Path cached = writeCache(image, actualSha, chunk.mimeType());
+            MineAstr.LOGGER.info("MineAstr 已保存 Bot 图片：sender={} name={} path={}",
+                    senderName, imageName, cached.toAbsolutePath());
             display(senderName, imageName, cached.toUri().toASCIIString());
         } catch (IOException exc) {
             MineAstr.LOGGER.warn("MineAstr 写入 Bot 图片缓存失败：{}", exc.getMessage());

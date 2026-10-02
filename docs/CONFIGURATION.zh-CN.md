@@ -54,7 +54,9 @@
 | `localWorldServerEnabled` | `false` | 单人集成服务器是否连接 AstrBot |
 | `gameTranslationsEnabled` | `true` | 游戏翻译总开关 |
 | `showOriginalTranslatedMessages` | `true` | 普通聊天是否同时显示原文 |
-| `acceptBotImages` | `true` | 是否接收 Bot 图片；未安装 ChatImage 时强制无效且不会向服务端声明能力 |
+| `receiveImageMessages` | `true` | 图片接收偏好；F8 保存时同步更新旧开关 |
+| `acceptBotImages` | `true` | 旧图片接收开关；为兼容原有关闭设置，两个开关都开启才接收图片 |
+| `openConfigKeyEnabled` | `true` | 是否允许通过注册的 F8 快捷键打开设置 |
 | `signTranslationsEnabled` | `true` | 准星目标浮选总开关 |
 | `signTranslationMaxDistance` | `8` | 浮选最大距离 |
 | `signTranslationScale` | `1.0` | 浮选缩放 |
@@ -62,6 +64,10 @@
 `showOriginalTranslatedMessages` 只控制普通聊天。0.6.30 的目标 HUD 默认只显示译文。
 
 Bot 端另有 `bridge_settings.relay_images_to_game` 总开关、`game_image_inline_max_bytes` 本地图片内联总上限和 `game_image_max_items` 单条消息图片数上限。关闭任意一端的开关都只停止图片，不影响文字桥接。图片路径和 URL 不会作为普通聊天文本显示。
+
+图片偏好独立于 ChatImage 安装状态保存；实际图片发送仍需要客户端安装 ChatImage。`/mineastr-images on|off` 可直接修改当前玩家的服务端偏好。
+
+F8 页面和本地服务端子页面的文字通过 `screen.mineastr.*` 翻译键显示，包括按钮、说明、选项、数值单位和连接提示。多语言适配可在 `assets/mineastr/lang/<语言代码>.json` 新增语言文件，或用资源包覆盖同名键；现有 `zh_cn.json`、`en_us.json` 可作为模板，`%s` 参数必须保留，百分号写作 `%%`。
 
 ## 截图
 

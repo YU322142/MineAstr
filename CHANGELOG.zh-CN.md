@@ -4,6 +4,18 @@
 
 社区 Fork：[YU322142/MineAstr](https://github.com/YU322142/MineAstr) · 原始上游：[Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr) · 联动 Fork：[YU322142/ImmersivePaintings](https://github.com/YU322142/ImmersivePaintings)
 
+## 0.7.21 - NeoForge 1.21.1 - 2026-10-03
+
+- 保留最新 ZIP 中的设置界面、图片接收开关和玩家命令修改，并统一模组元数据版本。
+- 完整保留 ZIP 中的异步发送队列、截图后台编码、聊天顺序派发算法以及新增日志记录。
+- 为 WebSocket Upgrade 增加 10 秒超时；同步建连异常也进入失败回调，避免永久停留在 connecting。
+- 恢复 F8 键绑定注册；禁用快捷键时清空历史按键，避免重新开启后误弹出设置页。
+- 设置面板随窗口高度缩放，避免小窗口中保存和取消按钮落到屏幕外。
+- Bot 正文和译文保留换行，并统一清理图片占位中的路径；仅向支持图片显示的客户端发送图片，纯图片消息提供文字回退。
+- 兼容旧 acceptBotImages 关闭设置；滚动面板隐藏越界控件，避免遮挡固定按钮区域。
+- F8 设置的百分比、文件大小单位和本地连接提示统一使用可替换翻译键；补齐恢复默认按钮的中英文翻译，枚举语言键使用固定 Locale。
+
+
 ## 0.6.30 - NeoForge 1.21.1
 
 - 新增与 ChatImage 的可选客户端联动，AstrBot 图片可直接显示在 Minecraft 聊天中。

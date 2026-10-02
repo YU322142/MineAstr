@@ -28,7 +28,9 @@ import java.util.Random;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -77,6 +79,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
     private static final int MAX_BROADCAST_SENDER_LENGTH = 64;
     private static final int SCREENSHOT_TIMEOUT_SECONDS = 30;
     private static final int SCREENSHOT_MAX_CHUNKS = 64;
+    static final Duration WEBSOCKET_CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final int MAX_EVENT_TEXT_LENGTH = 512;
     static final int MAX_NATIVE_CHAT_TARGET_LANGUAGES = 8;
     static final int MAX_NATIVE_CHAT_PACKET_LENGTH = 256;
@@ -564,12 +567,19 @@ public final class MineAstrBridge implements WebSocket.Listener {
             ServerPlayer player, boolean enabled, boolean chatImageAvailable) {
         botImagePreferences.put(
                 player.getUUID(),
-                new BotImagePreference(enabled && chatImageAvailable, chatImageAvailable));
+                new BotImagePreference(enabled, chatImageAvailable));
         MineAstr.LOGGER.debug(
                 "MineAstr 已记录玩家 {} 的 Bot 图片偏好：enabled={} chatimage={}",
                 player.getGameProfile().getName(),
-                enabled && chatImageAvailable,
+                enabled,
                 chatImageAvailable);
+    }
+
+    /** 由玩家命令直接设置图片接收偏好（丢包备选方案），保留已记录的 chatImageAvailable 状态。 */
+    public void setPlayerImageReception(ServerPlayer player, boolean enabled) {
+        BotImagePreference existing = botImagePreferences.get(player.getUUID());
+        boolean chatImageAvailable = existing != null && existing.chatImageAvailable();
+        botImagePreferences.put(player.getUUID(), new BotImagePreference(enabled, chatImageAvailable));
     }
 
     /** Returns cache details for the sign side currently under the player's crosshair. */
@@ -1044,10 +1054,9 @@ public final class MineAstrBridge implements WebSocket.Listener {
         }
 
         long generation = connectionGeneration.get();
-        httpClient
-                .newWebSocketBuilder()
-                .header("Authorization", "Bearer " + MineAstrConfig.TOKEN.get())
-                .buildAsync(uri, this)
+        MineAstr.LOGGER.debug("MineAstr 开始异步连接：generation={} handshakeTimeout={}s",
+                generation, WEBSOCKET_CONNECT_TIMEOUT.toSeconds());
+        connectWebSocket(httpClient, uri, MineAstrConfig.TOKEN.get(), this, WEBSOCKET_CONNECT_TIMEOUT)
                 .whenComplete((socket, throwable) -> {
                     if (stopping || generation != connectionGeneration.get()) {
                         if (socket != null) {
@@ -1057,7 +1066,8 @@ public final class MineAstrBridge implements WebSocket.Listener {
                     }
                     connecting.set(false);
                     if (throwable != null) {
-                        MineAstr.LOGGER.warn("MineAstr 连接 AstrBot 失败：{}", throwable.getMessage());
+                        MineAstr.LOGGER.warn("MineAstr 连接 AstrBot 失败：{}（握手超时上限={}s，稍后重试）",
+                                throwable.getMessage(), WEBSOCKET_CONNECT_TIMEOUT.toSeconds());
                         scheduleReconnect();
                     } else if (socket.isInputClosed() || socket.isOutputClosed()) {
                         socket.abort();
@@ -1075,6 +1085,36 @@ public final class MineAstrBridge implements WebSocket.Listener {
                         MineAstr.LOGGER.info("MineAstr 已连接到 AstrBot：{}", uri);
                     }
                 });
+    }
+
+    static CompletableFuture<WebSocket> connectWebSocket(
+            HttpClient client, URI uri, String token, WebSocket.Listener listener, Duration timeout) {
+        try {
+            // HttpClient's TCP timeout does not bound the HTTP Upgrade handshake.
+            return client.newWebSocketBuilder()
+                    .connectTimeout(timeout)
+                    .header("Authorization", "Bearer " + token)
+                    .buildAsync(uri, listener)
+                    .handle((socket, error) -> {
+                        if (error != null) {
+                            throw new CompletionException(safeConnectionFailure(error));
+                        }
+                        return socket;
+                    });
+        } catch (RuntimeException error) {
+            // Complete through the same callback so connecting is always cleared.
+            // Do not put a rejected Authorization header's value in the log message.
+            return CompletableFuture.failedFuture(safeConnectionFailure(error));
+        }
+    }
+
+    private static IllegalStateException safeConnectionFailure(Throwable error) {
+        while (error instanceof CompletionException && error.getCause() != null) {
+            error = error.getCause();
+        }
+        // JDK may reject a header either synchronously or through the returned future.
+        return new IllegalStateException(
+                "WebSocket connection failed: " + error.getClass().getSimpleName(), error);
     }
 
     private void sendHello(WebSocket socket) {
@@ -1400,7 +1440,8 @@ public final class MineAstrBridge implements WebSocket.Listener {
 
     private void handleChat(JsonObject payload) {
         String senderName = trimFlatContent(getString(payload, "sender_name", MineAstrConfig.BOT_DISPLAY_NAME.get()), MAX_BROADCAST_SENDER_LENGTH);
-        String content = trimFlatContent(getString(payload, "content", ""), MAX_BROADCAST_CONTENT_LENGTH);
+        String content = sanitizeBotContent(
+                trimContent(getString(payload, "content", ""), MAX_BROADCAST_CONTENT_LENGTH));
         if (senderName.isEmpty()) {
             senderName = trimFlatContent(MineAstrConfig.BOT_DISPLAY_NAME.get(), MAX_BROADCAST_SENDER_LENGTH);
         }
@@ -1420,7 +1461,8 @@ public final class MineAstrBridge implements WebSocket.Listener {
                         || !entry.getValue().getAsJsonPrimitive().isString()) {
                     continue;
                 }
-                String translated = trimFlatContent(entry.getValue().getAsString(), MAX_BROADCAST_CONTENT_LENGTH);
+                String translated = sanitizeBotContent(
+                        trimContent(entry.getValue().getAsString(), MAX_BROADCAST_CONTENT_LENGTH));
                 if (!translated.isBlank()) {
                     translations.addProperty(language, translated);
                 }
@@ -1437,8 +1479,8 @@ public final class MineAstrBridge implements WebSocket.Listener {
                     images.isEmpty() ? "" : " [图片×" + images.size() + "]");
             for (ServerPlayer player : currentServer.getPlayerList().getPlayers()) {
                 boolean receivesImages = canReceiveBotImages(player);
-                boolean imageOnlyPlaceholder = "[图片]".equals(finalContent.strip());
-                if (!finalContent.isBlank() && !(receivesImages && imageOnlyPlaceholder && !images.isEmpty())) {
+                boolean imageOnlyPlaceholder = finalContent.isBlank() && !images.isEmpty();
+                if (!finalContent.isBlank() && !(receivesImages && imageOnlyPlaceholder)) {
                     player.sendSystemMessage(renderTranslatedChat(
                             player,
                             finalSenderName,
@@ -1448,9 +1490,28 @@ public final class MineAstrBridge implements WebSocket.Listener {
                 }
                 if (receivesImages) {
                     images.forEach(image -> sendBotImage(player, finalSenderName, image));
+                } else if (imageOnlyPlaceholder) {
+                    player.sendSystemMessage(Component.literal("[" + finalSenderName + "] [图片]"));
                 }
             }
         });
+    }
+
+    /**
+     * 剥离 AstrBot 聊天 content 中的图片占位符及服务器端文件路径。
+     * 匹配 "[图片]" 标记及其后紧跟的绝对路径（Linux / Windows）、HTTP URL 或 file URL，
+     * 防止 AstrBot 服务器端临时路径（如 /opt/AstrBot/data/temp/...）泄露到游戏聊天栏。
+     * 剥离后压缩多余空白。若 content 原本仅为图片占位符，则返回空字符串。
+     */
+    private static final Pattern IMAGE_PLACEHOLDER_PATTERN = Pattern.compile(
+            "\\[图片\\]\\s*(?:/\\S+|[A-Za-z]:[\\\\/]\\S+|https?://\\S+|file://\\S+)?");
+
+    static String sanitizeBotContent(String content) {
+        if (content == null || content.isBlank()) {
+            return content;
+        }
+        String cleaned = IMAGE_PLACEHOLDER_PATTERN.matcher(content).replaceAll("");
+        return cleaned.replaceAll("[ \\t]{2,}", " ").strip();
     }
 
     private List<BotImage> parseBotImages(JsonObject payload) {
