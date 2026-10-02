@@ -1,6 +1,6 @@
 # MineAstr 外部图片翻译与显示接口
 
-当前统一发布是 [AstrBot 插件与 NeoForge 模组 0.7.21](https://github.com/YU322142/MineAstr/releases/tag/v0.7.21)，累计变化见 [发布说明](RELEASE_NOTES.md)。**本 Fabric 分支已停止支持**，不再提供更新、修复或兼容性保证。代码与历史构建版本保留为 **0.6.28 / Minecraft 1.21.11**，下文仅供历史参考；0.7.21 的 NeoForge 图片/UI/连接修复不表示已移植到 Fabric，NeoForge JAR 不能安装到 Fabric。
+当前统一发布是 [AstrBot 插件与 NeoForge 模组 0.7.22](https://github.com/YU322142/MineAstr/releases/tag/v0.7.22)，累计变化见 [发布说明](RELEASE_NOTES.md)。**本 Fabric 分支已停止支持**，不再提供更新、修复或兼容性保证。代码与历史构建版本保留为 **0.6.28 / Minecraft 1.21.11**，下文仅供历史参考；0.7.22 的 NeoForge 图片/UI/连接修复不表示已移植到 Fabric，NeoForge JAR 不能安装到 Fabric。
 
 `0.6.24` 开始，外部客户端 Mod 不需要自己连接 AstrBot，也不需要自己绘制译文。
 
