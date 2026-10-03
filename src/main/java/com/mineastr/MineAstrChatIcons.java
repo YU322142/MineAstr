@@ -14,9 +14,7 @@ public final class MineAstrChatIcons {
     public static void render(GuiGraphics graphics, String platform, int y, float alpha) {
         ResourceLocation texture = ResourceLocation.fromNamespaceAndPath("mineastr", "textures/gui/platform/" + platform + ".png");
         if (FILTERED.add(texture)) MineAstrChatTextures.smooth(Minecraft.getInstance().getTextureManager().getTexture(texture), 256, 256);
-        graphics.setColor(1, 1, 1, alpha);
-        try { graphics.blit(texture, 0, y, 10, 10, 0, 0, 256, 256, 256, 256); }
-        finally { graphics.setColor(1, 1, 1, 1); }
+        MineAstrChatTextures.draw(graphics, texture, 0, y, 10, 10, 256, 256, alpha);
     }
 
     public static void reload() { FILTERED.clear(); }

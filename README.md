@@ -1,6 +1,6 @@
 # MineAstr 0.7.27
 
-0.7.27 降低 MC 聊天可见延迟：立即显示原文，后台译文就绪后原位更新。图片新增鼠标旁悬停预览与游戏内缩放、拖拽查看，并随聊天一起滚动和淡入淡出；保留有界异步算法、日志与 ModernUI/Showcase Item 兼容。
+0.7.28 新增现有模型选择与翻译回退、独立目标并行发送、正确的聊天图片透明混合及有界 GIF 播放。
 
 [English](README.en.md) · [配置参考](docs/CONFIGURATION.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md) · [Changelog](CHANGELOG.md) · [外部翻译 API](EXTERNAL_TRANSLATION_API.md)
 

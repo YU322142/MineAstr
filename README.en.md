@@ -1,6 +1,6 @@
 # MineAstr 0.7.27
 
-0.7.27 displays native MC chat immediately and replaces it in place when background translation completes. Chat images support cursor-side hover previews, click-to-open zoom/pan, and scrolling/fading with chat. Bounded async work, logging, ModernUI and Showcase Item compatibility are retained.
+0.7.28 adds existing-model selectors and ordered translation fallback, concurrent platform delivery, correct chat texture fading and bounded GIF playback.
 
 [中文](README.md) · [Configuration reference](docs/CONFIGURATION.en.md) · [Changelog](CHANGELOG.md) · [中文更新日志](CHANGELOG.zh-CN.md) · [External translation API](EXTERNAL_TRANSLATION_API.md)
 

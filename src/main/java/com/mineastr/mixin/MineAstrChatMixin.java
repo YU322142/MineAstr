@@ -291,7 +291,7 @@ public abstract class MineAstrChatMixin implements com.mineastr.MineAstrChatAcce
         graphics.pose().pushPose();
         graphics.pose().scale(scale, scale, 1);
         graphics.pose().translate(4, 0, 60);
-        try {
+        try (var blend = com.mineastr.MineAstrChatTextures.blend(graphics)) {
             for (int index = 0; index <= getLinesPerPage() + (int) Math.ceil(mineastr$insertRows) && index + mineastr$base < trimmedMessages.size(); index++) {
                 var line = trimmedMessages.get(index + mineastr$base);
                 int age = tick - line.addedTime();

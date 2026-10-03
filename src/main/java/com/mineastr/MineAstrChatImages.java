@@ -85,22 +85,28 @@ public final class MineAstrChatImages {
                         data = response.body();
                     }
                     if (data.length > MineAstrPayloads.MAX_BOT_IMAGE_BYTES) throw new IOException("image byte limit");
-                    BufferedImage image = decodeThumbnail(data);
+                    MineAstrGif.Animation animation = MineAstrGif.matches(data) ? MineAstrGif.decode(data) : null;
+                    BufferedImage image = animation == null ? decodeThumbnail(data) : animation.frames().getFirst();
                     cacheWrite.run();
                     if (!UPLOAD_SLOTS.tryAcquire(5, TimeUnit.SECONDS)) throw new IOException("upload queue saturated");
-                    NativeImage pixels;
+                    NativeImage pixels = null;
+                    NativeImage[] frames = null;
                     try {
-                        pixels = new NativeImage(image.getWidth(), image.getHeight(), false);
-                        try {
-                            for (int y = 0; y < image.getHeight(); y++) for (int x = 0; x < image.getWidth(); x++) {
-                                int argb = image.getRGB(x, y);
-                                pixels.setPixelRGBA(x, y, (argb & 0xFF00FF00) | ((argb >>> 16) & 0xFF) | ((argb & 0xFF) << 16));
-                            }
-                        } catch (RuntimeException error) { pixels.close(); throw error; }
-                    } catch (RuntimeException error) { UPLOAD_SLOTS.release(); throw error; }
-                    try {
-                        Minecraft.getInstance().execute(() -> upload(id, entry, generation, pixels, image.getWidth(), image.getHeight()));
-                    } catch (RuntimeException error) { pixels.close(); UPLOAD_SLOTS.release(); throw error; }
+                        if (animation != null && animation.frames().size() > 1) {
+                            frames = new NativeImage[animation.frames().size()];
+                            for (int index = 0; index < frames.length; index++) frames[index] = nativePixels(animation.frames().get(index));
+                        }
+                        pixels = nativePixels(image);
+                        NativeImage uploadPixels = pixels;
+                        NativeImage[] uploadFrames = frames;
+                        Minecraft.getInstance().execute(() -> upload(id, entry, generation, uploadPixels,
+                                image.getWidth(), image.getHeight(), animation, uploadFrames));
+                    } catch (RuntimeException error) {
+                        if (pixels != null) pixels.close();
+                        closeFrames(frames);
+                        UPLOAD_SLOTS.release();
+                        throw error;
+                    }
                 } catch (Exception exc) {
                     Minecraft.getInstance().execute(() -> {
                         if (generation != GENERATION.get() || IMAGES.get(id) != entry) return;
@@ -115,18 +121,24 @@ public final class MineAstrChatImages {
         }
     }
 
-    private static void upload(String id, Entry entry, long generation, NativeImage pixels, int width, int height) {
+    private static void upload(String id, Entry entry, long generation, NativeImage pixels, int width, int height,
+            MineAstrGif.Animation animation, NativeImage[] frames) {
         DynamicTexture texture = null;
         boolean registered = false;
         try {
-            if (generation != GENERATION.get() || IMAGES.get(id) != entry) { pixels.close(); return; }
+            if (generation != GENERATION.get() || IMAGES.get(id) != entry) { pixels.close(); closeFrames(frames); return; }
             texture = new DynamicTexture(pixels);
             MineAstrChatTextures.smooth(texture, width, height);
             entry.texture = ResourceLocation.fromNamespaceAndPath("mineastr", "chat/" + id);
             Minecraft.getInstance().getTextureManager().register(entry.texture, texture);
             entry.width = width; entry.height = height;
             entry.readyAt = MineAstrChatEasing.now();
-            texturePixels += (long) width * height;
+            entry.dynamicTexture = texture;
+            entry.animation = frames == null ? null : animation;
+            entry.frames = frames;
+            // Account for retained GIF pixels, buffered frames and the active GPU/CPU texture.
+            entry.pixelCost = (long) width * height * (frames == null ? 1 : 2L * frames.length + 1);
+            texturePixels += entry.pixelCost;
             registered = true;
             var iterator = IMAGES.entrySet().iterator();
             while (texturePixels > MAX_TEXTURE_PIXELS && iterator.hasNext()) {
@@ -136,11 +148,38 @@ public final class MineAstrChatImages {
             MineAstr.LOGGER.debug("MineAstr 聊天缩略图就绪：name={} width={} height={}", entry.name, width, height);
         } catch (RuntimeException error) {
             if (registered) release(entry);
-            else if (texture != null) texture.close();
-            else pixels.close();
+            else {
+                if (texture != null) texture.close(); else pixels.close();
+                closeFrames(frames);
+            }
             entry.texture = null; entry.failed = true;
             MineAstr.LOGGER.warn("MineAstr 聊天缩略图上传失败：{}", error.getMessage());
         } finally { UPLOAD_SLOTS.release(); }
+    }
+
+    private static NativeImage nativePixels(BufferedImage image) {
+        NativeImage pixels = new NativeImage(image.getWidth(), image.getHeight(), false);
+        try {
+            for (int y = 0; y < image.getHeight(); y++) for (int x = 0; x < image.getWidth(); x++) {
+                int argb = image.getRGB(x, y);
+                pixels.setPixelRGBA(x, y, (argb & 0xFF00FF00) | ((argb >>> 16) & 0xFF) | ((argb & 0xFF) << 16));
+            }
+            return pixels;
+        } catch (RuntimeException error) { pixels.close(); throw error; }
+    }
+
+    private static void closeFrames(NativeImage[] frames) {
+        if (frames != null) for (NativeImage frame : frames) if (frame != null) frame.close();
+    }
+
+    private static void animate(Entry entry) {
+        if (entry.animation == null || entry.frames == null || entry.dynamicTexture == null) return;
+        int index = entry.animation.frameAt((long) (MineAstrChatEasing.now() - entry.readyAt));
+        if (index == entry.frameIndex) return;
+        entry.dynamicTexture.getPixels().copyFrom(entry.frames[index]);
+        entry.dynamicTexture.upload();
+        MineAstrChatTextures.smooth(entry.dynamicTexture, entry.width, entry.height);
+        entry.frameIndex = index;
     }
 
     static BufferedImage decodeThumbnail(byte[] data) throws IOException {
@@ -193,6 +232,7 @@ public final class MineAstrChatImages {
             }
             return;
         }
+        animate(entry);
         if(MineAstrClientConfig.chatAnimationsEnabled()) {
             int duration=MineAstrClientConfig.isLoaded()?MineAstrClientConfig.CHAT_ARRIVAL_DURATION.getAsInt():200;
             alpha *= (float)MineAstrChatEasing.gentle((MineAstrChatEasing.now()-entry.readyAt)/duration);
@@ -209,13 +249,9 @@ public final class MineAstrChatImages {
                 (int) Math.ceil((row.column() + size.width() + 4) * scale),
                 (int) Math.ceil((lineBottom + offsetY) * scale));
         try {
-            graphics.setColor(1, 1, 1, alpha);
-            graphics.blit(entry.texture, row.column(), top, size.width(), size.height(),
-                    0.0F, 0.0F, entry.width, entry.height, entry.width, entry.height);
-        } finally {
-            graphics.setColor(1, 1, 1, 1);
-            graphics.disableScissor();
-        }
+            MineAstrChatTextures.draw(graphics, entry.texture, row.column(), top,
+                    size.width(), size.height(), entry.width, entry.height, alpha);
+        } finally { graphics.disableScissor(); }
     }
 
     public static void beginFrame() { HITS.clear(); frameTime = System.nanoTime(); }
@@ -229,12 +265,11 @@ public final class MineAstrChatImages {
     }
     public static ImageView view(String id) {
         Entry entry=IMAGES.get(id);
+        if (entry != null && entry.texture != null) animate(entry);
         return entry==null || entry.texture==null ? null : new ImageView(entry.texture,entry.width,entry.height,entry.name);
     }
     public static void draw(GuiGraphics graphics, ImageView image, int x, int y, int width, int height, float alpha) {
-        graphics.setColor(1,1,1,alpha);
-        try { graphics.blit(image.texture,x,y,width,height,0F,0F,image.width,image.height,image.width,image.height); }
-        finally { graphics.setColor(1,1,1,1); }
+        MineAstrChatTextures.draw(graphics, image.texture, x, y, width, height, image.width, image.height, alpha);
     }
     public record ImageView(ResourceLocation texture,int width,int height,String name) {}
     private record ImageHit(String id,float left,float top,float right,float bottom) {}
@@ -250,9 +285,11 @@ public final class MineAstrChatImages {
     private static void release(Entry entry) {
         if (entry.texture != null) {
             Minecraft.getInstance().getTextureManager().release(entry.texture);
-            texturePixels = Math.max(0, texturePixels - (long) entry.width * entry.height);
+            texturePixels = Math.max(0, texturePixels - entry.pixelCost);
             entry.texture = null;
         }
+        closeFrames(entry.frames);
+        entry.frames = null; entry.animation = null; entry.dynamicTexture = null;
     }
 
     private static final class Entry {
@@ -260,6 +297,11 @@ public final class MineAstrChatImages {
         boolean loading, failed;
         int width, height;
         double readyAt;
+        long pixelCost;
+        int frameIndex;
+        NativeImage[] frames;
+        MineAstrGif.Animation animation;
+        DynamicTexture dynamicTexture;
         ResourceLocation texture;
         Entry(String name) { this.name = name; }
     }
