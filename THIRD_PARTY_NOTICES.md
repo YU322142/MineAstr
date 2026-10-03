@@ -17,4 +17,4 @@ See [AQQBOT_MIGRATION.md](AQQBOT_MIGRATION.md) for the compatibility boundary an
 
 ## ChatImage
 
-The optional Minecraft image display integration follows the public CICode message format documented by [kitUIN/ChatImage](https://github.com/kitUIN/ChatImage). MineAstr does not bundle, redistribute, or modify ChatImage; version 0.7.26 clients provide built-in inline thumbnails. ChatImage remains an independent optional mod. Legacy clients without rendering capability retain the text bridge and suppress raw local paths.
+The optional Minecraft image display integration follows the public CICode message format documented by [kitUIN/ChatImage](https://github.com/kitUIN/ChatImage). MineAstr does not bundle, redistribute, or modify ChatImage; version 0.7.27 clients provide built-in inline thumbnails. ChatImage remains an independent optional mod. Legacy clients without rendering capability retain the text bridge and suppress raw local paths.

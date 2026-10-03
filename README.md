@@ -1,6 +1,6 @@
 # MineAstr AstrBot 插件
 
-0.7.26 修复 MineAstr 与 Showcase Item 的聊天绘制冲突及客户端启动崩溃，保留 ModernUI 动画、主题色、高清图标与图片。原 ZIP 异步优化与日志保留；插件与模组统一版本，Fabric 继续停止支持。
+0.7.27 降低 MC 聊天可见延迟：立即显示原文，后台译文就绪后原位更新。图片新增鼠标旁悬停预览与游戏内缩放、拖拽查看，并随聊天一起滚动和淡入淡出；保留有界异步算法、日志与 ModernUI/Showcase Item 兼容。
 
 [![AI Assisted](https://img.shields.io/badge/AI-OpenAI%20Codex%20Assisted-10A37F?style=for-the-badge&logo=openai&logoColor=white)](#ai-制作声明)
 [![Plugin tests](https://github.com/YU322142/MineAstr/actions/workflows/test.yml/badge.svg?branch=astrbot-plugin)](https://github.com/YU322142/MineAstr/actions/workflows/test.yml)
@@ -8,9 +8,9 @@
 > [!IMPORTANT]
 > **AI 制作声明：本插件采用生成式 AI 参与协议设计、编码、文档编写与测试。** AI 生成或修改的内容由项目维护者审阅、验证并承担最终维护责任。
 
-MineAstr 0.7.26 为 AstrBot 提供一个 `minecraft` 平台适配器，当前支持 NeoForge 1.21.1 模组的主动 WebSocket 连接。统一发布包为 AstrBot 插件与 NeoForge 模组 0.7.26。旧 Fabric 分支已停止支持，仅保留 0.6.28 历史源码，不再提供更新、修复或兼容性保证。
+MineAstr 0.7.27 为 AstrBot 提供一个 `minecraft` 平台适配器，当前支持 NeoForge 1.21.1 模组的主动 WebSocket 连接。统一发布包为 AstrBot 插件与 NeoForge 模组 0.7.27。旧 Fabric 分支已停止支持，仅保留 0.6.28 历史源码，不再提供更新、修复或兼容性保证。
 
-[下载统一 0.7.26 Release](https://github.com/YU322142/MineAstr/releases/tag/v0.7.26) · [本次相对 0.7.24 的变化](RELEASE_NOTES.md)
+[下载统一 0.7.27 Release](https://github.com/YU322142/MineAstr/releases/tag/v0.7.27) · [本次相对 0.7.24 的变化](RELEASE_NOTES.md)
 
 Minecraft 玩家聊天会被转换为 AstrBot 中的同一个群聊会话：
 
@@ -45,7 +45,7 @@ AstrBot 对该会话的文本回复会回传给所有已连接的 Minecraft 服�
 
 ## 安装包兼容性
 
-在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.7.26.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
+在 AstrBot WebUI 上传发布页提供的 `astrbot_plugin_mineastr-v0.7.27.zip` 即可安装。ZIP 的首条必须是顶层目录 `astrbot_plugin_mineastr/`；AstrBot 4.23.6 的旧版上传解压器依赖这个顺序。v0.6.8 起已修复旧版 AstrBot 无法解析隐藏 `dict` 配置类型而导致重载失败的问题。
 
 插件元数据中的安装/更新源固定为 Fork 分支 `https://github.com/YU322142/MineAstr/tree/astrbot-plugin`，不会再让 AstrBot 回到原项目或下载仅用于项目导航的 `main` 分支。
 
@@ -86,7 +86,7 @@ Discord 不需要本插件自行登录 Discord；它复用 AstrBot 官方 Discor
 
 普通桥接消息会进入 Minecraft，但不会额外触发 LLM。v0.6.9 起默认开启 `relay_bot_conversations_to_game`：QQ/Discord 玩家 `@机器人` 的原消息会进入游戏并继续触发 AstrBot，最终纯文本回复也会进入游戏；工具调用前只有 Reply/At 的空中间消息不会转发。斜杠指令仍由 `relay_commands` 单独控制。
 
-0.7.26 会将 Bot 的最终文字/图片回复继续同步至现有路由中的其他 QQ/Discord 会话，正文统一翻译后按目标语言分发。Minecraft 来源的回复同步到外部平台且不回环到游戏；没有 Minecraft 适配器时，其他平台仍可收到回复。引用文字单独翻译，正文已是目标语言时也会翻译引用；只有消息 ID 的 Reply 会尝试关联触发消息。沿用已有路由、唤醒规则、原文显示偏好和防回环检查。
+0.7.27 会将 Bot 的最终文字/图片回复继续同步至现有路由中的其他 QQ/Discord 会话，正文统一翻译后按目标语言分发。Minecraft 来源的回复同步到外部平台且不回环到游戏；没有 Minecraft 适配器时，其他平台仍可收到回复。引用文字单独翻译，正文已是目标语言时也会翻译引用；只有消息 ID 的 Reply 会尝试关联触发消息。沿用已有路由、唤醒规则、原文显示偏好和防回环检查。
 
 Discord 编辑消息会由 AstrBot 的 Pycord 客户端直接监听。编辑后的正文会按照原桥接会话重新执行过滤、统一翻译并发送到 Minecraft 和其他目标会话，正文前带 `[Edited]` 标记；Minecraft 聊天协议无法修改已经显示的旧消息，因此不会尝试覆盖历史聊天行。机器人自己发送的编辑消息是否同步仍由 `relay_bot_conversations_to_game` 控制。
 
@@ -351,20 +351,22 @@ AI 输出不代表天然正确或安全。提交到仓库的内容仍需由维�
 
 插件级 `_conf_schema.json` 仅用于展示和发现配置。实际生效的 WebSocket 参数以 AstrBot WebUI 中 `minecraft` 平台适配器的配置为准。
 
-### 0.7.26 翻译与强制绑定排查
+### 0.7.27 翻译与强制绑定排查
 
 翻译总开关、接收平台语言设置及当前 AstrBot 模型均须有效。OpenAI 兼容网关如果根路径返回网页，按网关文档配置正确的 API 路径（常见为 `/v1`）；模型调用失败会保留原文。空的跨语言结果不再缓存，语言族简写可匹配目标 locale，MC 区域语言使用配置中允许的语言族回退。
 
-强制绑定需配合 NeoForge 0.7.26 服务端，并设置 `loginBindingCheckEnabled=true`、`loginCheckFailOpen=false`；适配器没有有效绑定决定时拒绝登录，插件明确关闭检查时仍可放行。已有绑定与 QQ/Discord 账号数据保留。
+强制绑定需配合 NeoForge 0.7.27 服务端，并设置 `loginBindingCheckEnabled=true`、`loginCheckFailOpen=false`；适配器没有有效绑定决定时拒绝登录，插件明确关闭检查时仍可放行。已有绑定与 QQ/Discord 账号数据保留。
 
-## 游戏聊天展示（0.7.26）
+## 游戏聊天展示（0.7.27）
 
 同时更新 NeoForge 服务端与客户端后，聊天按平台图标、昵称和正文分列。机器人回复沿用提问者的 MC / Discord / QQ 平台；自定义平台 ID 从通知配置与适配器元信息识别。图片异步填入正文下方预留的小区域。旧客户端继续使用原先的文字与图片分片流程。
 
 - MC 内的用户名称统一优先使用已绑定的 Minecraft 游戏名，没有绑定时使用 QQ / Discord 用户名；平台图标仍表示消息来源。普通消息、模板、引用、编辑、撤回、@ 玩家提醒与广播同步此规则；多账号时使用最早绑定的游戏名，解绑后自动切换。昵称缓存最多 512 项、30 秒到期，绑定/解绑/迁移立即失效，登录鉴权仍读取实时绑定。
 
-0.7.26 保留整个聊天队列的连续缓动、ModernUI 滚动插值、高分辨率平台纹理和图片；F8 可以调整图片比例、聊天最大高度、动画开关、滚动/入场时长及轻移距离。详见 [本次发布说明](RELEASE_NOTES.md)。
+0.7.27 保留整个聊天队列的连续缓动、ModernUI 滚动插值、高分辨率平台纹理和图片；F8 可以调整图片比例、聊天最大高度、动画开关、滚动/入场时长及轻移距离。详见 [本次发布说明](RELEASE_NOTES.md)。
 
 玩家主题色支持单色、双色与三色慢速渐变（4–20 秒），仅用于昵称和消息正文，平台图标及图片保留原色。F8 提供 RGB 滑块、十六进制输入和实时预览；启用颜色须相对 #303030 达到 4.5:1 对比度，过暗颜色不可保存且不会自动提亮。服务器按 UUID 验证修改者并随世界存档保存主题，离线玩家主题也会同步。渐变色表预计算，不改动 ModernUI 字体、Unicode 排版或原有点击/悬停事件。
 
 同一人的 QQ / Discord 消息转发到 MC 后，通过已绑定的 MC 游戏名使用同一个主题和渐变，来源图标仍为 QQ / Discord；未绑定或未设置主题时沿用默认显示。
+
+MC 原生聊天在新版两端立即显示原文，后台译文就绪后原位更新。聊天图片支持悬停预览与左键点击查看，滚轮缩放、左键拖动、双击重置和 Esc 返回；图片与聊天共同滚动、淡入淡出。需要客户端和 MC 服务端均更新至 0.7.27。
