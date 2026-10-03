@@ -13,6 +13,34 @@ from test_z_discord_automation import MAIN
 
 
 class SignedImageMediaTests(unittest.IsolatedAsyncioTestCase):
+    async def test_signed_preview_is_independent_of_full_preparation_and_stays_authorized(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            image = Path(temporary) / "preview.gif"
+            image.write_bytes(b"GIF89a" + b"p" * 32)
+            release = asyncio.Event()
+            async def prepare(reference):
+                await release.wait()
+                return image, "image/gif"
+            optimizer = SimpleNamespace(prepare=prepare, prepare_preview=AsyncMock(return_value=(image, "image/gif")))
+            adapter = MinecraftPlatformAdapter({"token": "unit-test-only-token"}, {}, None)
+            app = web.Application()
+            app.router.add_get("/mineastr/media/{filename}", adapter._handle_image_media)
+            async with TestClient(TestServer(app)) as client:
+                signed = adapter.image_source_url("https://example.invalid/large.gif", str(client.make_url("")), optimizer)
+                parsed = urlparse(signed)
+                path = parsed.path + "?" + parsed.query
+                full = asyncio.create_task(client.get(path))
+                try:
+                    async with await asyncio.wait_for(client.get(path + "&preview=1"), 1) as response:
+                        self.assertEqual(response.status, 200)
+                        self.assertEqual(await response.read(), image.read_bytes())
+                    self.assertFalse(full.done())
+                    async with client.get((path + "&preview=1").replace("signature=", "signature=0")) as response:
+                        self.assertEqual(response.status, 403)
+                finally:
+                    release.set()
+                    (await full).release()
+
     async def test_platform_text_is_sent_while_media_preparation_is_blocked(self):
         plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
         plugin.config = {}

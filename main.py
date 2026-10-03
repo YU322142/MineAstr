@@ -475,7 +475,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.7.31",
+    "0.7.32",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -2513,6 +2513,10 @@ class MineAstrPlugin(Star):
                 continue
             if public_url:
                 prepared.append({"type": "image", "url": public_url, "name": name})
+                continue
+            if optimizer is not None and base_url and adapter is not None and hasattr(adapter, "image_source_url"):
+                # Local/base64 GIFs also use HTTP; never place large animations in the WS inline budget.
+                prepared.append({"type": "image", "url": adapter.image_source_url(reference, base_url, optimizer), "name": name})
                 continue
             if optimizer is not None:
                 try:

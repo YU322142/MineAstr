@@ -463,3 +463,7 @@ NeoForge 可选客户端通道 `mineastr:chat_presentation` 按序编码 platfor
 `loginUseLocalBindings=true` 时已登记玩家在本地校验；未登记玩家仍发送 `player_login_check`。缓存不包含 Token 明文。断线期间名单保持，撤销在下一次成功快照同步后生效。
 
 `game_image_public_base_url` 指向适配器 HTTP(S) 根地址，图片引用使用 `/mineastr/media/{sha256}.source?expires=...&signature=...`。签名校验后后台准备图片；小图重定向原 URL，大图输出压缩缓存并通过 FileResponse 提供带版本标识的单段 Range / If-Range 响应。签名不包含 Token，24 小时有效。文本与图片占位先发送，GIF 在客户端显示第一帧后继续下载与解码。
+
+## 0.7.32 独立首帧
+
+同一已签名 `/mineastr/media/{sha256}.source` 地址增加 `&preview=1` 获取单帧 GIF，不改变资源身份或降低签名校验要求。非 GIF 返回 HTTP 204；GIF 首帧不等待完整转换。原地址返回完整图片缓存，继续支持 Range / If-Range。客户端首帧由原图片任务并发启动，额外连接至多 2 条，不额外占用图片下载队列；完整图片失败不移除成功首帧。不改变 Minecraft 载荷结构或协议号，服务端 0.7.31 兼容。

@@ -7,10 +7,93 @@ from PIL import Image
 from aiohttp import web
 from aiohttp.test_utils import TestServer
 
-from mineastr_image_optimizer import ImageOptimizer, compress
+from mineastr_image_optimizer import ImageOptimizer, compress, first_gif_frame, MAX_OUTPUT_BYTES
 
 
 class ImageOptimizerTests(unittest.IsolatedAsyncioTestCase):
+    def animation(self, count=2, size=(32, 24)):
+        frames = [Image.new("RGB", size, (index % 256, index // 256, 100)) for index in range(count)]
+        output = io.BytesIO()
+        frames[0].save(output, "GIF", save_all=True, append_images=frames[1:], duration=[30 if i % 2 == 0 else 70 for i in range(count)], loop=0, optimize=False)
+        return output.getvalue()
+
+    def test_byte_large_gif_is_compressed_even_below_1080p(self):
+        data, mime = compress(self.animation() + b"\0" * (MAX_OUTPUT_BYTES + 1))
+        self.assertLess(len(data), MAX_OUTPUT_BYTES)
+        self.assertEqual(mime, "image/gif")
+        with Image.open(io.BytesIO(data)) as image:
+            self.assertEqual(image.n_frames, 2)
+            self.assertEqual(image.info["loop"], 0)
+
+    def test_long_gif_samples_frames_and_preserves_total_duration(self):
+        data, mime = compress(self.animation(512))
+        with Image.open(io.BytesIO(data)) as image:
+            self.assertEqual(image.n_frames, 256)
+            self.assertEqual(image.info["loop"], 0)
+            duration = 0
+            for index in range(image.n_frames):
+                image.seek(index)
+                duration += image.info["duration"]
+            self.assertEqual(duration, 25600)
+
+    def test_preview_requires_complete_first_image_and_ignores_later_frames(self):
+        data = self.animation()
+        frame = first_gif_frame(data)
+        self.assertIsNotNone(frame)
+        self.assertLess(len(frame), len(data))
+        for length in range(len(frame) - 1):
+            self.assertIsNone(first_gif_frame(data[:length]))
+        with Image.open(io.BytesIO(frame)) as image:
+            self.assertEqual(image.n_frames, 1)
+            image.load()
+
+    async def test_local_gif_above_old_32mb_limit_has_preview_and_complete_animation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "large.png"
+            source.write_bytes(self.animation() + b"\0" * (33 * 1024 * 1024))
+            optimizer = ImageOptimizer(Path(temporary) / "cache")
+            preview, full = await asyncio.gather(optimizer.prepare_preview(str(source)), optimizer.prepare(str(source)))
+            with Image.open(preview[0]) as image:
+                self.assertEqual(image.n_frames, 1)
+            with Image.open(full[0]) as image:
+                self.assertEqual(image.n_frames, 2)
+            await optimizer.close()
+
+    async def test_remote_preview_arrives_while_full_download_is_blocked(self):
+        data = self.animation()
+        first = first_gif_frame(data)
+        release = asyncio.Event()
+        full_started = asyncio.Event()
+        async def serve(request):
+            response = web.StreamResponse(headers={"Content-Length": str(len(data))})
+            await response.prepare(request)
+            await response.write(data[:len(first) - 1])
+            if not request.headers.get("Range"):
+                full_started.set()
+            await release.wait()
+            try:
+                await response.write(data[len(first) - 1:])
+                await response.write_eof()
+            except (ConnectionResetError, RuntimeError):
+                pass
+            return response
+        app = web.Application()
+        app.router.add_get("/large.png", serve)
+        with tempfile.TemporaryDirectory() as temporary:
+            async with TestServer(app) as server:
+                optimizer = ImageOptimizer(Path(temporary) / "cache")
+                reference = str(server.make_url("/large.png"))
+                full = asyncio.create_task(optimizer.prepare(reference))
+                try:
+                    await asyncio.wait_for(full_started.wait(), 2)
+                    preview = await asyncio.wait_for(optimizer.prepare_preview(reference), 2)
+                    self.assertTrue(preview[0].is_file())
+                    self.assertFalse(full.done())
+                finally:
+                    release.set()
+                    await asyncio.wait_for(full, 2)
+                    await optimizer.close()
+
     def image(self, size, color="red"):
         output = io.BytesIO()
         Image.new("RGBA", size, color).save(output, "PNG")

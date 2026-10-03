@@ -1405,11 +1405,14 @@ class MinecraftPlatformAdapter(Platform):
             return web.Response(status=404)
         reference, optimizer, _ = source
         try:
-            converted = await optimizer.prepare(reference)
+            preview = request.query.get("preview") == "1"
+            converted = await optimizer.prepare_preview(reference) if preview else await optimizer.prepare(reference)
         except Exception as exc:
-            logger.warning("MineAstr image optimization failed: %s", type(exc).__name__)
+            logger.warning("MineAstr image optimization failed: %s reason=%s", type(exc).__name__, str(exc) if isinstance(exc, ValueError) else type(exc).__name__)
             return web.Response(status=502, text="Image preparation failed")
         if converted is None:
+            if preview:
+                return web.Response(status=204)
             if reference.startswith(("https://", "http://")):
                 raise web.HTTPFound(reference)
             from .mineastr_image_optimizer import MEDIA_DIRECTORY
