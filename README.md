@@ -1,6 +1,6 @@
 # MineAstr
 
-0.7.26 修复 MineAstr 与 Showcase Item 的聊天绘制冲突及客户端启动崩溃，保留 ModernUI 动画、主题色、高清图标与图片。原 ZIP 异步优化与日志保留；插件与模组统一版本，Fabric 继续停止支持。
+0.7.27 降低 MC 聊天可见延迟：立即显示原文，后台译文就绪后原位更新。图片新增鼠标旁悬停预览与游戏内缩放、拖拽查看，并随聊天一起滚动和淡入淡出；保留有界异步算法、日志与 ModernUI/Showcase Item 兼容。
 
 [![AI Assisted](https://img.shields.io/badge/AI-OpenAI%20Codex%20Assisted-10A37F?style=for-the-badge&logo=openai&logoColor=white)](#ai-制作声明)
 
@@ -13,24 +13,24 @@ MineAstr 将 Minecraft NeoForge 1.21.1 服务器接入 AstrBot、QQ/OneBot 与 D
 
 - [`astrbot-plugin`](https://github.com/YU322142/MineAstr/tree/astrbot-plugin)：AstrBot 插件端；分支根目录可直接作为插件项目。
 - [`minecraft-mod`](https://github.com/YU322142/MineAstr/tree/minecraft-mod)：旧 Minecraft Fabric Mod；**已停止支持**，仅保留 0.6.28 / Minecraft 1.21.11 历史源码，不再更新、修复或保证兼容性。
-- [`minecraft-neoforge-1.21.1`](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)：Minecraft NeoForge Mod；目标为 Minecraft `1.21.1`、NeoForge `21.1.219`、Java `21`，当前为统一发布 0.7.26，包含最新 ZIP 源码、连接和 UI 修复、文档及测试。
+- [`minecraft-neoforge-1.21.1`](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)：Minecraft NeoForge Mod；目标为 Minecraft `1.21.1`、NeoForge `21.1.219`、Java `21`，当前为统一发布 0.7.27，包含最新 ZIP 源码、连接和 UI 修复、文档及测试。
 
 `main` 是项目索引；两个维护中的工程分别位于 AstrBot 和 NeoForge 分支，Fabric 分支仅作历史归档，以兼容 AstrBot 从仓库分支安装插件的目录要求。
 
 ## 当前版本
 
-- AstrBot 插件：`0.7.26`
+- AstrBot 插件：`0.7.27`
 - 旧 Fabric 分支：**停止支持**（历史版本 `0.6.28`）
-- MineAstr NeoForge Mod：`0.7.26`（Minecraft `1.21.1`）
+- MineAstr NeoForge Mod：`0.7.27`（Minecraft `1.21.1`）
 - 当前支持的 Minecraft：`1.21.1` / NeoForge
 - NeoForge：`21.1.219`（Minecraft `1.21.1`）
 
-插件与 NeoForge 模组统一从 [0.7.26 Release](https://github.com/YU322142/MineAstr/releases/tag/v0.7.26) 下载：
+插件与 NeoForge 模组统一从 [0.7.27 Release](https://github.com/YU322142/MineAstr/releases/tag/v0.7.27) 下载：
 
-- `astrbot_plugin_mineastr-v0.7.26.zip`
-- `mineastr-neoforge-1.21.1-0.7.26.jar`
-- `mineastr-neoforge-1.21.1-0.7.26-sources.jar`
-- `MineAstr-minecraft-neoforge-1.21.1-0.7.26-source.zip`
+- `astrbot_plugin_mineastr-v0.7.27.zip`
+- `mineastr-neoforge-1.21.1-0.7.27.jar`
+- `mineastr-neoforge-1.21.1-0.7.27-sources.jar`
+- `MineAstr-minecraft-neoforge-1.21.1-0.7.27-source.zip`
 - `SHA256SUMS.txt`
 
 Fabric 分支已停止支持；本次及后续维护仅针对 NeoForge 与 AstrBot，保留旧源码与历史记录，不提供 Fabric 的新发布、修复或兼容性保证。NeoForge JAR 不能安装到 Fabric。
@@ -46,9 +46,9 @@ AstrBot 端的统一文本翻译提示词和图片翻译专用提示词上限均
 
 既有翻译行为还包含两项：QQ/Discord 会先比较规范化后的原文与译文，AI 返回同文时只发送原文，不添加语言或 `[原文/Original]` 标签；Fabric 客户端只在准星指向告示牌时显示译文提示，不会进入服务器时批量刷聊天，翻译缓存继续保存在世界存档中。
 
-## 0.7.26 更新与文档
+## 0.7.27 更新与文档
 
-相对上一正式发布版本 0.7.24 的变化见 [本次发布说明](RELEASE_NOTES.md)：整个聊天队列连续上移、ModernUI 平滑滚动、独立高清平台图标与图片，以及 F8 图片比例、最大聊天高度和动画选项。插件与 NeoForge 模组统一为 0.7.26，协议仍为 1。
+相对上一正式发布版本 0.7.24 的变化见 [本次发布说明](RELEASE_NOTES.md)：整个聊天队列连续上移、ModernUI 平滑滚动、独立高清平台图标与图片，以及 F8 图片比例、最大聊天高度和动画选项。插件与 NeoForge 模组统一为 0.7.27，协议仍为 1。
 
 - [NeoForge 中英文安装说明](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)
 - [NeoForge 配置与多语言适配](https://github.com/YU322142/MineAstr/blob/minecraft-neoforge-1.21.1/docs/CONFIGURATION.zh-CN.md)
@@ -84,7 +84,7 @@ AstrBot 插件元数据的安装/更新源为本 Fork 的 [`astrbot-plugin`](htt
 - AstrBot 插件：`binding_enabled=true`、`need_bind_to_login=true`、`sync_binding_to_server=true`、`binding_sync_required=true`
 - NeoForge Mod：`enableBindingSync=true`、`bindingSyncWhitelist=true`、`loginBindingCheckEnabled=true`、`loginCheckFailOpen=false`
 
-NeoForge 0.7.26 使用配置阶段异步任务校验绑定，放行后才允许进入世界；原版白名单与 MineAstr 登录校验分别生效。旧配置中的 `loginCheckFailOpen=true` 不会自动覆盖，强制绑定服务器需要手动改为 `false`。
+NeoForge 0.7.27 使用配置阶段异步任务校验绑定，放行后才允许进入世界；原版白名单与 MineAstr 登录校验分别生效。旧配置中的 `loginCheckFailOpen=true` 不会自动覆盖，强制绑定服务器需要手动改为 `false`。
 
 当前安装和权限说明请查看 NeoForge 与 AstrBot 分支的 README；Fabric 文档仅供历史参考。
 
@@ -92,9 +92,9 @@ NeoForge 0.7.26 使用配置阶段异步任务校验绑定，放行后才允许�
 
 ## 构建验证
 
-- AstrBot 插件 0.7.26：166 个自动化测试通过，覆盖 fail-closed/常数时间鉴权、配置迁移、AstrBot Schema 类型兼容、QQ/Discord 自动化、消息编辑与撤回去重、跨群来源隔离、缓存/截图清理、游戏与平台共用单次翻译后分发、原生聊天精确连接路由、旧 Mod 能力协商、周期与热更新策略同步、提及消息原文保留、源语言去重、中英同义文本缓存、40000 字提示词上限、自定义术语表、命令审批列表与函数工具、管理员身份过滤及实时同步、并发冷却和游戏内翻译协议。
+- AstrBot 插件 0.7.27：166 个自动化测试通过，覆盖 fail-closed/常数时间鉴权、配置迁移、AstrBot Schema 类型兼容、QQ/Discord 自动化、消息编辑与撤回去重、跨群来源隔离、缓存/截图清理、游戏与平台共用单次翻译后分发、原生聊天精确连接路由、旧 Mod 能力协商、周期与热更新策略同步、提及消息原文保留、源语言去重、中英同义文本缓存、40000 字提示词上限、自定义术语表、命令审批列表与函数工具、管理员身份过滤及实时同步、并发冷却和游戏内翻译协议。
 - 已停止支持的 Fabric Mod 0.6.28 历史验证：15 个 JUnit 测试及 Gradle `clean build` 通过；本次仅更新该分支文档，未重跑旧版构建，覆盖缓存持久化、策略迁移、人工译文优先级、管理清理、过期异步响应失效、原生聊天 locale/同文选择及 256 字符包边界。
-- NeoForge Mod 0.7.26：45 个 JUnit 测试及 Gradle `test build` 通过，覆盖缓存持久化、策略迁移、人工译文优先级、管理清理、过期异步响应失效、原生聊天 locale/同文选择及 256 字符包边界。
+- NeoForge Mod 0.7.27：45 个 JUnit 测试及 Gradle `test build` 通过，覆盖缓存持久化、策略迁移、人工译文优先级、管理清理、过期异步响应失效、原生聊天 locale/同文选择及 256 字符包边界。
 - 历史 Fabric 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证 Mixin 加载、离线后端收到正版客户端 UUID 时改用服务端真实离线 UUID、`whitelist_verified=true`，并实际通过原版白名单登录校验；既有解绑、管理员同步、可信命令和正常关服流程保持有效。
 
 ## 许可与来源
@@ -109,8 +109,10 @@ NeoForge 0.7.26 使用配置阶段异步任务校验绑定，放行后才允许�
 
 - MC 内的用户名称统一优先使用已绑定的 Minecraft 游戏名，没有绑定时使用 QQ / Discord 用户名；平台图标仍表示消息来源。普通消息、模板、引用、编辑、撤回、@ 玩家提醒与广播同步此规则；多账号时使用最早绑定的游戏名，解绑后自动切换。昵称缓存最多 512 项、30 秒到期，绑定/解绑/迁移立即失效，登录鉴权仍读取实时绑定。
 
-0.7.26 保留整个聊天队列的连续缓动、ModernUI 滚动插值、高分辨率平台纹理和图片；F8 可以调整图片比例、聊天最大高度、动画开关、滚动/入场时长及轻移距离。详见 [本次发布说明](RELEASE_NOTES.md)。
+0.7.27 保留整个聊天队列的连续缓动、ModernUI 滚动插值、高分辨率平台纹理和图片；F8 可以调整图片比例、聊天最大高度、动画开关、滚动/入场时长及轻移距离。详见 [本次发布说明](RELEASE_NOTES.md)。
 
 玩家主题色支持单色、双色与三色慢速渐变（4–20 秒），仅用于昵称和消息正文，平台图标及图片保留原色。F8 提供 RGB 滑块、十六进制输入和实时预览；启用颜色须相对 #303030 达到 4.5:1 对比度，过暗颜色不可保存且不会自动提亮。服务器按 UUID 验证修改者并随世界存档保存主题，离线玩家主题也会同步。渐变色表预计算，不改动 ModernUI 字体、Unicode 排版或原有点击/悬停事件。
 
 同一人的 QQ / Discord 消息转发到 MC 后，通过已绑定的 MC 游戏名使用同一个主题和渐变，来源图标仍为 QQ / Discord；未绑定或未设置主题时沿用默认显示。
+
+MC 原生聊天在新版两端立即显示原文，后台译文就绪后原位更新。聊天图片支持悬停预览与左键点击查看，滚轮缩放、左键拖动、双击重置和 Esc 返回；图片与聊天共同滚动、淡入淡出。需要客户端和 MC 服务端均更新至 0.7.27。
