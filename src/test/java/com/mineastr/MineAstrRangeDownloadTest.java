@@ -13,6 +13,60 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class MineAstrRangeDownloadTest {
+    @Test void animationFailureStillAllowsIndependentPreviewToFinish() throws Exception {
+        byte[] bytes = image();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        var executor = Executors.newCachedThreadPool(); server.setExecutor(executor);
+        String path = "/mineastr/media/" + "b".repeat(64) + ".source";
+        var previews = new AtomicInteger();
+        server.createContext(path, exchange -> {
+            if (exchange.getRequestURI().getQuery().contains("preview=1")) {
+                try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                byte[] first = MineAstrGifPreview.firstFrame(bytes, bytes.length);
+                exchange.sendResponseHeaders(200, first.length); exchange.getResponseBody().write(first);
+            } else { exchange.sendResponseHeaders(502, 0); }
+            exchange.close();
+        }); server.start();
+        try {
+            String url = "http://127.0.0.1:" + server.getAddress().getPort() + path + "?expires=2000000000&signature=test";
+            assertThrows(Exception.class, () -> MineAstrRangeDownload.loadProgressive(HttpClient.newHttpClient(), url,
+                    data -> previews.incrementAndGet(), MineAstrChatImages.LimitedBody::new));
+            assertEquals(1, previews.get());
+        } finally { server.stop(0); executor.shutdownNow(); }
+    }
+    @Test void signedProxyPreviewLoadsWhileFullAnimationIsBlocked() throws Exception {
+        byte[] bytes = image();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        var executor = Executors.newCachedThreadPool(); server.setExecutor(executor);
+        var fullStarted = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var previewReady = new CountDownLatch(1);
+        String path = "/mineastr/media/" + "a".repeat(64) + ".source";
+        server.createContext(path, exchange -> {
+            boolean preview = exchange.getRequestURI().getQuery().contains("preview=1");
+            if (!preview) {
+                fullStarted.countDown();
+                try { assertTrue(release.await(5, TimeUnit.SECONDS)); }
+                catch (InterruptedException error) { Thread.currentThread().interrupt(); }
+            }
+            byte[] content = preview ? MineAstrGifPreview.firstFrame(bytes, bytes.length) : bytes;
+            exchange.sendResponseHeaders(200, content.length);
+            exchange.getResponseBody().write(content); exchange.close();
+        }); server.start();
+        var jobs = Executors.newVirtualThreadPerTaskExecutor();
+        try {
+            String url = "http://127.0.0.1:" + server.getAddress().getPort() + path + "?expires=2000000000&signature=test";
+            var full = jobs.submit(() -> MineAstrRangeDownload.loadProgressive(HttpClient.newHttpClient(), url, data -> previewReady.countDown(), MineAstrChatImages.LimitedBody::new));
+            assertTrue(fullStarted.await(2, TimeUnit.SECONDS));
+            assertTrue(previewReady.await(2, TimeUnit.SECONDS));
+            byte[] preview = MineAstrRangeDownload.loadPreview(HttpClient.newHttpClient(), url, MineAstrChatImages.LimitedBody::new);
+            assertArrayEquals(MineAstrGifPreview.firstFrame(bytes, bytes.length), preview);
+            assertFalse(full.isDone());
+            release.countDown();
+            assertArrayEquals(bytes, full.get(3, TimeUnit.SECONDS));
+            assertNull(MineAstrRangeDownload.previewUrl("https://example.com/original.gif?signature=x"));
+        } finally { release.countDown(); jobs.shutdownNow(); server.stop(0); executor.shutdownNow(); }
+    }
     private byte[] image() {
         byte[] first = Base64.getDecoder().decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7");
         return Arrays.copyOf(first, 800_000);

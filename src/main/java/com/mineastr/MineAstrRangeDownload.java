@@ -19,7 +19,54 @@ import java.util.regex.Pattern;
 final class MineAstrRangeDownload {
     private static final int FIRST_BYTES = 262144;
     private static final Semaphore CONNECTIONS = new Semaphore(8, true);
+    private static final Semaphore PREVIEWS = new Semaphore(2, true);
     private static final Pattern CONTENT_RANGE = Pattern.compile("bytes (\\d+)-(\\d+)/(\\d+)");
+
+    static String previewUrl(String url) {
+        try {
+            URI uri = URI.create(url);
+            if (!uri.getPath().matches("/mineastr/media/[a-f0-9]{64}\\.source")
+                    || uri.getRawQuery() == null || !uri.getRawQuery().contains("signature=")) return null;
+            return url + "&preview=1";
+        } catch (RuntimeException error) { return null; }
+    }
+
+    static byte[] loadPreview(HttpClient client, String url,
+            BiFunction<Integer, Consumer<byte[]>, HttpResponse.BodySubscriber<byte[]>> bodies) throws Exception {
+        String preview = previewUrl(url);
+        if (preview == null) return new byte[0];
+        var response = request(client, preview, "", "", MineAstrPayloads.MAX_BOT_IMAGE_BYTES, data -> {}, bodies);
+        if (response.statusCode() == 204) return new byte[0];
+        if (response.statusCode() != 200) throw new IOException("preview HTTP " + response.statusCode());
+        return response.body();
+    }
+
+    static byte[] loadProgressive(HttpClient client, String url, Consumer<byte[]> preview,
+            BiFunction<Integer, Consumer<byte[]>, HttpResponse.BodySubscriber<byte[]>> bodies) throws Exception {
+        if (previewUrl(url) == null) return load(client, url, preview, bodies);
+        var executor = Executors.newVirtualThreadPerTaskExecutor();
+        var first = executor.submit(() -> {
+            PREVIEWS.acquire();
+            try {
+                byte[] data = loadPreview(client, url, bodies);
+                if (data.length > 0) preview.accept(data);
+                return data;
+            } finally { PREVIEWS.release(); }
+        });
+        try {
+            return load(client, url, preview, bodies);
+        } catch (InterruptedException error) { throw error; }
+        catch (Exception error) {
+            // The animation may fail early while an independently useful first frame is still loading.
+            try { first.get(35, TimeUnit.SECONDS); }
+            catch (InterruptedException interrupted) { throw interrupted; }
+            catch (Exception ignored) { /* Preserve the original animation failure. */ }
+            throw error;
+        } finally {
+            if (!first.isDone()) first.cancel(true);
+            executor.shutdownNow();
+        }
+    }
 
     static byte[] load(HttpClient client, String url, Consumer<byte[]> preview,
             BiFunction<Integer, Consumer<byte[]>, HttpResponse.BodySubscriber<byte[]>> bodies) throws Exception {
@@ -93,13 +140,14 @@ final class MineAstrRangeDownload {
     private static HttpResponse<byte[]> request(HttpClient client, String url, String range, String validator,
             int limit, Consumer<byte[]> preview,
             BiFunction<Integer, Consumer<byte[]>, HttpResponse.BodySubscriber<byte[]>> bodies) throws Exception {
-        var builder = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(15))
+        int seconds = previewUrl(url) == null ? 15 : (url.contains("preview=1") ? 35 : 120);
+        var builder = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(seconds))
                 .header("Accept-Encoding", "identity").GET();
         if (!range.isBlank()) builder.header("Range", range);
         if (!validator.isBlank()) builder.header("If-Range", validator);
         var future = client.sendAsync(builder.build(), response -> bodies.apply(limit,
                 response.statusCode() == 200 || response.statusCode() == 206 ? preview : data -> {}));
-        try { return future.get(15, TimeUnit.SECONDS); }
+        try { return future.get(seconds, TimeUnit.SECONDS); }
         finally { if (!future.isDone()) future.cancel(true); }
     }
 }

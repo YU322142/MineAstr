@@ -1,6 +1,6 @@
-# MineAstr 0.7.31
+# MineAstr 0.7.32
 
-0.7.31 增加本地登录名单、GIF 首帧优先显示与并行下载，配合 AstrBot 在传输前缩小大图。
+0.7.32 修复大 GIF 传输：首帧独立请求，后台按字节、帧数和像素预算压缩完整动画。
 
 [English](README.en.md) · [配置参考](docs/CONFIGURATION.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md) · [Changelog](CHANGELOG.md) · [外部翻译 API](EXTERNAL_TRANSLATION_API.md)
 

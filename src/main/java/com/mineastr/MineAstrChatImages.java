@@ -141,7 +141,7 @@ public final class MineAstrChatImages {
     }
 
     private static byte[] download(String url, java.util.function.Consumer<byte[]> preview) throws Exception {
-        return MineAstrRangeDownload.load(HTTP, url, preview, LimitedBody::new);
+        return MineAstrRangeDownload.loadProgressive(HTTP, url, preview, LimitedBody::new);
     }
 
     private static void upload(String id, Entry entry, long generation, NativeImage pixels, int width, int height,
