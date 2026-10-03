@@ -1,6 +1,6 @@
 # MineAstr Fabric Mod
 
-当前统一发布是 [AstrBot 插件与 NeoForge 模组 0.7.26](https://github.com/YU322142/MineAstr/releases/tag/v0.7.26)，本次变化见 [发布说明](RELEASE_NOTES.md)。**本 Fabric 分支已停止支持**，不再提供更新、修复或兼容性保证。代码与历史构建版本保留为 **0.6.28 / Minecraft 1.21.11**，下文仅供历史参考；0.7.26 的 NeoForge 图片/UI/连接修复不表示已移植到 Fabric，NeoForge JAR 不能安装到 Fabric。
+当前统一发布是 [AstrBot 插件与 NeoForge 模组 0.7.27](https://github.com/YU322142/MineAstr/releases/tag/v0.7.27)，本次变化见 [发布说明](RELEASE_NOTES.md)。**本 Fabric 分支已停止支持**，不再提供更新、修复或兼容性保证。代码与历史构建版本保留为 **0.6.28 / Minecraft 1.21.11**，下文仅供历史参考；0.7.27 的 NeoForge 图片/UI/连接修复不表示已移植到 Fabric，NeoForge JAR 不能安装到 Fabric。
 
 MineAstr 是同一仓库中 AstrBot MineAstr 插件的 Minecraft 端，已适配并锁定以下环境：
 
@@ -190,4 +190,4 @@ Mod 每次连接或重连后，AstrBot 会先重置服务端绑定缓存，再�
 
 - MC 内的用户名称统一优先使用已绑定的 Minecraft 游戏名，没有绑定时使用 QQ / Discord 用户名；平台图标仍表示消息来源。普通消息、模板、引用、编辑、撤回、@ 玩家提醒与广播同步此规则；多账号时使用最早绑定的游戏名，解绑后自动切换。昵称缓存最多 512 项、30 秒到期，绑定/解绑/迁移立即失效，登录鉴权仍读取实时绑定。
 
-0.7.26 新增整个聊天队列的连续缓动、ModernUI 滚动插值、高分辨率平台纹理和图片；F8 可以调整图片比例、聊天最大高度、动画开关、滚动/入场时长及轻移距离。详见 [本次发布说明](RELEASE_NOTES.md)。
+0.7.27 新增整个聊天队列的连续缓动、ModernUI 滚动插值、高分辨率平台纹理和图片；F8 可以调整图片比例、聊天最大高度、动画开关、滚动/入场时长及轻移距离。详见 [本次发布说明](RELEASE_NOTES.md)。
