@@ -41,3 +41,7 @@ dns:
 ## 验证
 
 `python -m unittest discover -s . -p test_guardian.py` 验证 RA 来源、有效前缀、限定 nftables 表和 DNS 记录身份。运行配置、状态、Token 不随源码发布。
+
+## 本机代理直连模式
+
+使用 Clash/Mihomo 时保持规则模式（mode: rule），为 MC 域名设置 DIRECT；全局模式会忽略这些直连规则。需要保留其他流量的原全局出口时，以 MATCH,GLOBAL 作为末尾规则。动态 IPv6 前缀优先使用域名直连，不将过期地址永久写成规则。
