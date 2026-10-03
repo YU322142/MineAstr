@@ -455,3 +455,11 @@ NeoForge 可选客户端通道 `mineastr:chat_presentation` 按序编码 platfor
 `mineastr:theme_preferences` 为客户端到服务端的可选 play payload：`update:boolean`、`color/second/third:int RGB24`、`count:varint (1–3)`、`period:varint (4000–20000 ms)`。只取已登录连接的 UUID 和名称，客户端不能指定被修改者。`update=false` 请求首次快照并保留已有主题；`true` 修改本人主题。每个启用颜色须相对 #303030 达到 4.5:1 对比度，非法颜色拒绝，更新限流 500 ms。
 
 `mineastr:theme_palette` 为服务端到客户端的可选 payload：`reset:boolean`、`count:varint (0–128)`，后跟至多 128 条 `{uuid:UUID, name:utf(64), color:int, second:int, third:int, count:varint, period:varint}`。首次连接按 128 条分批快照，首包 reset；之后发送差异。主题保存到主世界 `data/mineastr_player_themes.dat`，退出清理客户端色表。双色/三色使用线性光空间插值与 1024 阶预计算表，仅绘制昵称和正文，图标不着色。不改变既有 payload 字段或协议号 1；旧客户端不接收新通道。AstrBot 不存储主题或参与这个 Minecraft 客户端通道，已绑定平台消息通过 MC 名命中同一主题。
+
+## 0.7.31 完整绑定快照与图片服务
+
+`query: binding, action: replace, bindings: [{player_name, owner_key, owner_display}]` 一次提交最多 4096 条完整名单；空数组撤销全部由 MineAstr 管理的绑定。重复或无效身份拒绝整批名单，保留之前的本地放行结果。与旧版 `reset` / `bind` / `unbind` 查询兼容；新适配器需配套 0.7.31 服务端。
+
+`loginUseLocalBindings=true` 时已登记玩家在本地校验；未登记玩家仍发送 `player_login_check`。缓存不包含 Token 明文。断线期间名单保持，撤销在下一次成功快照同步后生效。
+
+`game_image_public_base_url` 指向适配器 HTTP(S) 根地址，图片引用使用 `/mineastr/media/{sha256}.source?expires=...&signature=...`。签名校验后后台准备图片；小图重定向原 URL，大图输出压缩缓存并通过 FileResponse 提供带版本标识的单段 Range / If-Range 响应。签名不包含 Token，24 小时有效。文本与图片占位先发送，GIF 在客户端显示第一帧后继续下载与解码。

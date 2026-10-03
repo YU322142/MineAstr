@@ -1,5 +1,6 @@
 import asyncio
 import hmac
+import hashlib
 import inspect
 import json
 import logging
@@ -703,6 +704,7 @@ class MinecraftPlatformAdapter(Platform):
         self.connection_manager = MinecraftConnectionManager(
             self.bot_display_name, self.outbound_max_message_length
         )
+        self._image_sources: dict[str, tuple[str, Any, int]] = {}
         self._runner: web.AppRunner | None = None
         self._bridge_event_listeners: list[
             Callable[
@@ -964,6 +966,7 @@ class MinecraftPlatformAdapter(Platform):
             )
         app = web.Application()
         app.router.add_get(self.path, self._handle_websocket)
+        app.router.add_get("/mineastr/media/{filename}", self._handle_image_media)
         self._runner = web.AppRunner(app)
         await self._runner.setup()
         site = web.TCPSite(self._runner, self.host, self.port)
@@ -1316,33 +1319,20 @@ class MinecraftPlatformAdapter(Platform):
     async def replace_bindings(
         self, server_id: str, records: list[Any]
     ) -> dict[str, Any]:
-        """Replace one connected server's binding cache after (re)connect."""
-
-        reset = await self.connection_manager.query(
-            "binding", server_id, params={"action": "reset"}
+        """Publish one complete snapshot; never reset a live login whitelist first."""
+        if len(records) > 4096:
+            return {"ok": False, "error": "binding_snapshot_limit"}
+        result = await self.connection_manager.query(
+            "binding", server_id, params={
+                "action": "replace",
+                "bindings": [{"player_name": str(record.player_name),
+                              "owner_key": str(record.owner_key),
+                              "owner_display": str(record.owner_display)} for record in records],
+            },
         )
-        if not reset.get("ok"):
-            return reset
-        applied = 0
-        for record in records:
-            result = await self.connection_manager.query(
-                "binding",
-                server_id,
-                params={
-                    "action": "bind",
-                    "player_name": str(record.player_name),
-                    "owner_key": str(record.owner_key),
-                    "owner_display": str(record.owner_display),
-                },
-            )
-            if not result.get("ok"):
-                return {
-                    "ok": False,
-                    "error": result.get("error") or "binding_reconcile_failed",
-                    "applied": applied,
-                }
-            applied += 1
-        return {"ok": True, "applied": applied, "server_id": server_id}
+        if not result.get("ok"):
+            return result
+        return {"ok": True, "applied": len(records), "server_id": server_id}
 
     async def replace_trusted_command_users(
         self, server_id: str, users: list[str], revision: int = 0
@@ -1380,6 +1370,55 @@ class MinecraftPlatformAdapter(Platform):
             "connected_count": self.connection_manager.connected_count,
             "servers": await self.connection_manager.snapshot(),
         }
+
+    def image_source_url(self, reference: str, base_url: str, optimizer: Any) -> str:
+        if not self._token_is_configured():
+            raise ValueError("image media token unavailable")
+        parsed = urllib.parse.urlparse(base_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("image public base URL unavailable")
+        now = int(time.time())
+        self._image_sources = {key: value for key, value in self._image_sources.items() if value[2] > now}
+        filename = hashlib.sha256(reference.encode()).hexdigest() + ".source"
+        if filename not in self._image_sources and len(self._image_sources) >= 256:
+            self._image_sources.pop(next(iter(self._image_sources)))
+        expires = now + 86400
+        self._image_sources[filename] = (reference, optimizer, expires)
+        signature = hmac.new(self.token.encode(), f"{filename}:{expires}".encode(), "sha256").hexdigest()
+        return base_url.rstrip("/") + f"/mineastr/media/{filename}?expires={expires}&signature={signature}"
+
+    async def _handle_image_media(self, request: web.Request) -> web.StreamResponse:
+        filename = request.match_info.get("filename", "")
+        try:
+            expires = int(request.query.get("expires", "0"))
+        except ValueError:
+            return web.Response(status=403)
+        now = int(time.time())
+        expected = hmac.new(self.token.encode(), f"{filename}:{expires}".encode(), "sha256").hexdigest()
+        if (not self._token_is_configured()
+                or not re.fullmatch(r"[a-f0-9]{64}\.source", filename)
+                or not now < expires <= now + 86460
+                or not hmac.compare_digest(request.query.get("signature", ""), expected)):
+            return web.Response(status=403)
+        source = self._image_sources.get(filename)
+        if source is None:
+            return web.Response(status=404)
+        reference, optimizer, _ = source
+        try:
+            converted = await optimizer.prepare(reference)
+        except Exception as exc:
+            logger.warning("MineAstr image optimization failed: %s", type(exc).__name__)
+            return web.Response(status=502, text="Image preparation failed")
+        if converted is None:
+            if reference.startswith(("https://", "http://")):
+                raise web.HTTPFound(reference)
+            from .mineastr_image_optimizer import MEDIA_DIRECTORY
+            path = Path(reference).resolve()
+            if not path.is_relative_to(MEDIA_DIRECTORY.resolve()) or not path.is_file():
+                return web.Response(status=404)
+            return web.FileResponse(path, headers={"Cache-Control": "private, max-age=3600"})
+        path, mime = converted
+        return web.FileResponse(path, headers={"Content-Type": mime, "Cache-Control": "private, max-age=3600"})
 
     async def _handle_websocket(self, request: web.Request) -> web.StreamResponse:
         if not self._authorized(request):

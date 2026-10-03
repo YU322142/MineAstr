@@ -56,6 +56,12 @@
         "hint": "本地文件或 base64 图片会安全校验后内联发送，范围 65536–1400000；公共 HTTPS 图片优先发送地址。",
         "default": 1048576
       },
+      "game_image_public_base_url": {
+        "description": "优化图片 HTTP 服务公网地址",
+        "type": "string",
+        "default": "",
+        "hint": "填写 MC 客户端可达的 Minecraft 适配器 HTTP 地址，例如 https://bridge.example.com。签名地址按图片授权，后台缩放不阻塞聊天正文；不填写时使用原有 URL/内联发送。"
+      },
       "game_image_max_items": {
         "description": "单条机器人回复最多图片数",
         "type": "int",
@@ -244,7 +250,7 @@
   "binding_settings": {
     "description": "② 账号绑定、登录检查与白名单",
     "type": "object",
-    "hint": "常用组合：VERIFY_CODE；开启“同步绑定到服务器”和“未绑定禁止登录”。Mod 侧还需开启 enableBindingSync、bindingSyncWhitelist、loginBindingCheckEnabled，并建议保持 loginCheckFailOpen=true。",
+    "hint": "常用组合：VERIFY_CODE；开启“同步绑定到服务器”和“未绑定禁止登录”。Mod 侧还需开启 enableBindingSync、bindingSyncWhitelist、loginBindingCheckEnabled，并建议保持 loginCheckFailOpen=false。",
     "obvious_hint": true,
     "items": {
       "binding_enabled": {
@@ -313,6 +319,12 @@
         "type": "string",
         "hint": "开启上方开关后返回给游戏玩家。预设内容在安装同版客户端 Mod 时跟随客户端语言，未安装时使用默认通知语言；自定义内容保持原文。自定义内容可使用 {code} 插入本次验证码，使用后 Mod 不会重复追加默认验证码提示。登录时尚未绑定平台，因此不区分 QQ/Discord。",
         "default": "[MC] 该游戏账号尚未在聊天平台绑定，请先使用 /mc bind <游戏名>。"
+      },
+      "binding_sync_interval_seconds": {
+        "description": "绑定白名单定期同步间隔（秒）",
+        "type": "int",
+        "default": 60,
+        "hint": "30–3600 秒；绑定、解绑及重连时也同步。断线保留 MC 最近成功名单，撤销在链路恢复后生效。"
       },
       "binding_database": {
         "description": "绑定数据库路径（高级）",
@@ -690,6 +702,7 @@
   "relay_bot_conversations_to_game": {"type": "bool", "default": true, "invisible": true},
   "relay_images_to_game": {"type": "bool", "default": true, "invisible": true},
   "game_image_inline_max_bytes": {"type": "int", "default": 1048576, "invisible": true},
+  "game_image_public_base_url": {"type": "string", "default": "", "invisible": true},
   "game_image_max_items": {"type": "int", "default": 4, "invisible": true},
   "relay_commands": {"type": "bool", "default": false, "invisible": true},
   "chat_to_game_template": {"type": "string", "default": "{message}", "invisible": true},
@@ -719,6 +732,7 @@
   "screenshot_retention_hours": {"type": "int", "default": 168, "invisible": true},
   "screenshot_cache_max_mib": {"type": "int", "default": 256, "invisible": true},
   "binding_enabled": {"type": "bool", "default": true, "invisible": true},
+  "binding_sync_interval_seconds": {"type": "int", "default": 60, "invisible": true},
   "binding_database": {"type": "string", "default": "data/mineastr/bindings.sqlite3", "invisible": true},
   "verify_method": {"type": "string", "default": "GROUP_NAME", "invisible": true},
   "verify_code_expire_seconds": {"type": "int", "default": 300, "invisible": true},

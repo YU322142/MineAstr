@@ -325,6 +325,8 @@ AQQBOT_DEFAULT_CONFIG: dict[str, Any] = {
     "unbind_cooldown_seconds": 86400,
     "sync_binding_to_server": False,
     "binding_sync_required": False,
+    "binding_sync_interval_seconds": 60,
+    "game_image_public_base_url": "",
     "qq_auto_unbind_on_leave": True,
     "qq_auto_group_card": True,
     "qq_group_ids": "",
@@ -370,6 +372,7 @@ CONFIG_GROUP_KEYS: dict[str, tuple[str, ...]] = {
         "relay_images_to_game",
         "game_image_inline_max_bytes",
         "game_image_max_items",
+        "game_image_public_base_url",
         "relay_commands",
         "chat_to_game_template",
         "game_to_chat_template",
@@ -402,6 +405,7 @@ CONFIG_GROUP_KEYS: dict[str, tuple[str, ...]] = {
         "unbind_cooldown_seconds",
         "sync_binding_to_server",
         "binding_sync_required",
+        "binding_sync_interval_seconds",
         "login_reject_message",
     ),
     "qq_settings": (
@@ -471,7 +475,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.7.29",
+    "0.7.31",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -539,6 +543,8 @@ class MineAstrPlugin(Star):
         from .minecraft_adapter import MinecraftPlatformAdapter  # noqa: F401
 
     async def initialize(self):
+        from .mineastr_image_optimizer import ImageOptimizer
+        self._image_optimizer = ImageOptimizer()
         await self._binding_store.initialize()
         migrated, conflicts = await self._binding_store.migrate_player_names(
             sanitize_minecraft_login_name
@@ -553,6 +559,9 @@ class MineAstrPlugin(Star):
             )
         self._attach_adapter_listener()
         await self._schedule_connected_server_reconcile()
+        periodic = asyncio.create_task(self._periodic_binding_reconcile(), name="mineastr-periodic-binding-sync")
+        self._binding_reconcile_tasks.add(periodic)
+        periodic.add_done_callback(self._binding_reconcile_tasks.discard)
         self._attach_qq_listeners()
         self._schedule_discord_listener_attach()
         await self._run_cache_cleanup()
@@ -562,6 +571,9 @@ class MineAstrPlugin(Star):
         )
 
     async def terminate(self):
+        optimizer = getattr(self, "_image_optimizer", None)
+        if optimizer is not None:
+            await optimizer.close()
         cleanup_task = getattr(self, "_cache_cleanup_task", None)
         if cleanup_task is not None:
             cleanup_task.cancel()
@@ -2491,9 +2503,28 @@ class MineAstrPlugin(Star):
                 continue
             name = str(item.get("name") or "image").strip()[:96] or "image"
             public_url = self._safe_public_image_url(reference)
+            optimizer = getattr(self, "_image_optimizer", None)
+            base_url = str(self._cfg("game_image_public_base_url") or "").strip()
+            adapter = self._minecraft_adapter() if optimizer is not None else None
+            if public_url and optimizer is not None and base_url and adapter is not None and hasattr(adapter, "image_source_url"):
+                # Forward a signed reference immediately; expensive normalization runs on HTTP fetch,
+                # keeping the original chat row and text independent of download/encoding time.
+                prepared.append({"type": "image", "url": adapter.image_source_url(reference, base_url, optimizer), "name": name})
+                continue
             if public_url:
                 prepared.append({"type": "image", "url": public_url, "name": name})
                 continue
+            if optimizer is not None:
+                try:
+                    converted = await optimizer.prepare(reference)
+                    if converted is not None:
+                        reference = str(converted[0])
+                        if base_url and adapter is not None and hasattr(adapter, "image_source_url"):
+                            prepared.append({"type": "image", "url": adapter.image_source_url(reference, base_url, optimizer), "name": name})
+                            continue
+                except Exception as exc:
+                    logger.warning("MineAstr local image preparation failed: %s", type(exc).__name__)
+                    continue
             loaded = await asyncio.to_thread(self._read_local_image, reference)
             if not loaded:
                 logger.warning("MineAstr 跳过无法安全读取的图片，不会把本地路径发送到游戏：%s", name)
@@ -3582,6 +3613,21 @@ class MineAstrPlugin(Star):
             *(send_session(session) for session in dict.fromkeys(target_sessions))
         )
 
+    async def _optimized_platform_media(self, media: list[dict[str, str]]) -> list[dict[str, str]]:
+        optimizer = getattr(self, "_image_optimizer", None)
+        if optimizer is None:
+            return media
+        async def prepare(item):
+            reference = str(item.get("url") or "").strip()
+            try:
+                converted = await optimizer.prepare(reference)
+                return {**item, "url": str(converted[0])} if converted else item
+            except Exception as exc:
+                logger.warning("MineAstr oversized-media preparation failed: %s", type(exc).__name__)
+                return None
+        results = await asyncio.gather(*(prepare(item) for item in media[:8]))
+        return [item for item in results if item is not None]
+
     async def _send_to_relay_session(
         self,
         session: str,
@@ -3591,6 +3637,19 @@ class MineAstrPlugin(Star):
         reply_context: dict[str, str] | None = None,
     ) -> None:
         message = trim_message(content, self._cfg_int("max_relay_length"))
+        if media and getattr(self, "_image_optimizer", None) is not None:
+            # Start normalization concurrently, deliver text first, then attach the completed media.
+            task = asyncio.create_task(self._optimized_platform_media(media), name="mineastr-platform-media")
+            try:
+                if message or reply_context:
+                    await self._send_to_relay_session(session, content, reply_context=reply_context)
+                    message = ""
+                    reply_context = None
+                media = await task
+            finally:
+                if not task.done():
+                    task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
         chain: list[Any] = []
         outbound_texts: list[str] = []
         if reply_context:
@@ -3864,18 +3923,21 @@ class MineAstrPlugin(Star):
         if not self._cfg_bool("sync_binding_to_server"):
             return {"ok": True, "skipped": True}
         adapter = self._minecraft_adapter()
-        if adapter is None or not hasattr(adapter, "sync_binding"):
-            return {"ok": False, "error": "Minecraft 适配器不支持 binding 查询"}
+        manager = getattr(adapter, "connection_manager", None)
+        if adapter is None or not hasattr(adapter, "replace_bindings") or manager is None:
+            return {"ok": False, "error": "Minecraft 适配器不支持绑定快照"}
         try:
-            return await adapter.sync_binding(
-                None,
-                action,
-                record.player_name,
-                record.owner_key,
-                record.owner_display,
-            )
+            servers = await manager.snapshot()
+            results = [await self._reconcile_bindings_to_server(str(item["server_id"])) for item in servers]
+            return {"ok": bool(results) and all(result.get("ok") for result in results),
+                    "servers": results, "error": "" if results else "当前没有已连接的 Minecraft 服务器"}
         except Exception as exc:
             return {"ok": False, "error": str(exc) or exc.__class__.__name__}
+
+    async def _periodic_binding_reconcile(self) -> None:
+        while True:
+            await asyncio.sleep(max(30, min(3600, self._cfg_int("binding_sync_interval_seconds"))))
+            await self._schedule_connected_server_reconcile(include_command_admins=False)
 
     def _schedule_binding_reconcile(self, server_id: str) -> None:
         if not self._cfg_bool("sync_binding_to_server") or not server_id:
@@ -3883,12 +3945,19 @@ class MineAstrPlugin(Star):
         adapter = self._minecraft_adapter()
         if adapter is None or not hasattr(adapter, "replace_bindings"):
             return
+        active = getattr(self, "_binding_reconcile_by_server", None)
+        if active is None:
+            active = self._binding_reconcile_by_server = {}
+        if server_id in active and not active[server_id].done():
+            return
         task = asyncio.create_task(
             self._reconcile_bindings_to_server(server_id),
             name=f"mineastr-binding-reconcile-{server_id}",
         )
+        active[server_id] = task
         self._binding_reconcile_tasks.add(task)
         task.add_done_callback(self._binding_reconcile_tasks.discard)
+        task.add_done_callback(lambda completed: active.pop(server_id, None) if active.get(server_id) is completed else None)
 
     def _configured_command_admins(
         self, additional_admins: Any = ()
@@ -3949,7 +4018,7 @@ class MineAstrPlugin(Star):
         self._binding_reconcile_tasks.add(task)
         task.add_done_callback(self._binding_reconcile_tasks.discard)
 
-    async def _schedule_connected_server_reconcile(self) -> None:
+    async def _schedule_connected_server_reconcile(self, include_command_admins: bool = True) -> None:
         if not (
             self._cfg_bool("sync_binding_to_server")
             or self._cfg_bool("sync_command_admins_to_server")
@@ -3963,36 +4032,30 @@ class MineAstrPlugin(Star):
             for metadata in await manager.snapshot():
                 server_id = str(metadata.get("server_id") or "")
                 self._schedule_binding_reconcile(server_id)
-                self._schedule_command_admin_reconcile(server_id)
+                if include_command_admins:
+                    self._schedule_command_admin_reconcile(server_id)
         except Exception as exc:
             logger.warning("MineAstr 读取已连接服务器列表失败：%s", exc)
 
-    async def _reconcile_bindings_to_server(self, server_id: str) -> None:
-        # The hello handler must return before queries can be answered on that
-        # WebSocket, so reconciliation intentionally runs in a separate task.
-        await asyncio.sleep(0)
+    async def _reconcile_bindings_to_server(self, server_id: str) -> dict[str, Any]:
         adapter = self._minecraft_adapter()
         if adapter is None or not hasattr(adapter, "replace_bindings"):
-            return
-        try:
-            records = await self._binding_store.all()
-            result = await adapter.replace_bindings(server_id, records)
-            if result.get("ok"):
-                logger.info(
-                    "MineAstr 已向服务器 %s 对账 %d 条绑定。",
-                    server_id,
-                    int(result.get("applied", len(records))),
-                )
-            else:
-                logger.warning(
-                    "MineAstr 向服务器 %s 对账绑定失败：%s",
-                    server_id,
-                    result.get("error") or "未知错误",
-                )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            logger.warning("MineAstr 向服务器 %s 对账绑定失败：%s", server_id, exc)
+            return {"ok": False, "error": "minecraft_adapter_too_old"}
+        lock = getattr(self, "_binding_snapshot_lock", None)
+        if lock is None:
+            lock = self._binding_snapshot_lock = asyncio.Lock()
+        async with lock:
+            try:
+                records = await self._binding_store.all()
+                result = await adapter.replace_bindings(server_id, records)
+                if result.get("ok"):
+                    logger.info("MineAstr 已向服务器 %s 整批对账 %d 条绑定。", server_id, len(records))
+                else:
+                    logger.warning("MineAstr 绑定白名单同步失败，MC 保留上次成功名单：server=%s error=%s", server_id, result.get("error"))
+                return result
+            except Exception as exc:
+                logger.warning("MineAstr 绑定白名单对账失败：server=%s error=%s", server_id, exc)
+                return {"ok": False, "error": str(exc) or exc.__class__.__name__}
 
     async def _reconcile_command_admins_to_server(self, server_id: str) -> None:
         await asyncio.sleep(0)

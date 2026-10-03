@@ -620,31 +620,12 @@ class AdapterEventTests(unittest.IsolatedAsyncioTestCase):
 
         task = asyncio.create_task(adapter.replace_bindings("survival", [record]))
         await asyncio.sleep(0)
-        reset_request = websocket.sent[-1]
-        self.assertEqual(reset_request["action"], "reset")
-        await adapter.connection_manager.resolve_query(
-            websocket,
-            {
-                "type": "query_result",
-                "query": "binding",
-                "message_id": reset_request["message_id"],
-                "ok": True,
-            },
-        )
-
-        await asyncio.sleep(0)
-        bind_request = websocket.sent[-1]
-        self.assertEqual(bind_request["action"], "bind")
-        self.assertEqual(bind_request["player_name"], "Steve")
-        await adapter.connection_manager.resolve_query(
-            websocket,
-            {
-                "type": "query_result",
-                "query": "binding",
-                "message_id": bind_request["message_id"],
-                "ok": True,
-            },
-        )
+        request = websocket.sent[-1]
+        self.assertEqual(request["action"], "replace")
+        self.assertEqual(request["bindings"], [{"player_name": "Steve", "owner_key": "discord-main:42", "owner_display": "Alice"}])
+        await adapter.connection_manager.resolve_query(websocket, {
+            "type": "query_result", "query": "binding", "message_id": request["message_id"], "ok": True,
+        })
         result = await task
         self.assertTrue(result["ok"])
         self.assertEqual(result["applied"], 1)
