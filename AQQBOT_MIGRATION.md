@@ -1,14 +1,14 @@
 # AQQBot → MineAstr 功能迁移说明
 
-当前统一发布：**0.7.22**。安装包与自 0.6.29 以来的变化见 [发布说明](RELEASE_NOTES.md)。
+当前统一发布：**0.7.23**。安装包与自 0.6.29 以来的变化见 [发布说明](RELEASE_NOTES.md)。
 
 参考上游：[alazeprt/AQQBot](https://github.com/alazeprt/AQQBot)，审阅基准为 `refactor` 分支提交 `ab7f5693206b8e7ba778c2f9f2b39ab0718c5f1c`。
 
-MineAstr 的实现边界与 AQQBot 不同：AQQBot 是直接运行在 Bukkit/Fabric/Velocity 等 Minecraft 服务端里的 OneBot 客户端；MineAstr 把平台登录、权限和消息发送交给 AstrBot，Minecraft 端通过受认证 WebSocket 提供事件、查询与受控副作用。本发行包配套的 Fabric 1.21.11 Mod 已实现表中标为“已实现”的端到端能力。
+MineAstr 的实现边界与 AQQBot 不同：AQQBot 是直接运行在 Bukkit/Fabric/Velocity 等 Minecraft 服务端里的 OneBot 客户端；MineAstr 把平台登录、权限和消息发送交给 AstrBot，Minecraft 端通过受认证 WebSocket 提供事件、查询与受控副作用。当前配套 NeoForge 1.21.1 Mod；旧 Fabric 分支已停止支持。
 
 ## 功能对照
 
-| AQQBot 功能 | MineAstr v0.6.20 | 说明 |
+| AQQBot 功能 | MineAstr v0.7.23 | 说明 |
 | --- | --- | --- |
 | QQ 与游戏双向聊天 | 已实现并扩展 | `relay_sessions` 支持 QQ、Discord 及其他能主动发消息的 AstrBot 平台，可桥接多个会话。 |
 | 最大转发长度 | 已实现 | `max_relay_length`，同时受平台和 Minecraft 适配器自身上限约束。 |
@@ -16,10 +16,10 @@ MineAstr 的实现边界与 AQQBot 不同：AQQBot 是直接运行在 Bukkit/Fab
 | 本地文本/正则过滤 | 已实现 | 兼容 `$filter`、`$regex`、`$replaceTo`、`[[space]]` 和 `!CANCEL`。 |
 | `$url` 远程词库 | 有意不实现 | 消息处理阶段访问任意 URL 会引入 SSRF、远程配置投毒和可用性风险；请转成本地规则。 |
 | `GROUP_NAME` 绑定 | 已实现 | `/mc bind <玩家名>`；玩家名全局唯一，聊天账号由 `platform_id:user_id` 标识。 |
-| `VERIFY_CODE` 绑定 | 已实现 | Fabric Mod 在登录拒绝时生成并发送 `binding_code`。 |
+| `VERIFY_CODE` 绑定 | 已实现 | NeoForge Mod 在登录拒绝时生成并发送 `binding_code`。 |
 | 每账号最大绑定数 | 已实现 | `max_bind_count`。 |
 | 绑定/解绑冷却 | 已实现 | 默认沿用 AQQBot 的 60 秒 / 86400 秒。 |
-| 未绑定禁止登录 | 已实现 | Fabric 登录查询阶段发送 `player_login_check` 并等待 `event_result`；默认关闭且可配置超时/fail-open。 |
+| 未绑定禁止登录 | 已实现 | NeoForge 配置阶段异步任务发送 `player_login_check` 并等待 `event_result` 后才进入世界；默认检查关闭，新配置故障策略为 fail-closed。 |
 | 绑定后同步白名单 | 已实现 | 支持绑定缓存、可选原版白名单和重连全量对账；副作用由 Mod 配置和审计。 |
 | 用户自助解绑 | 已实现 | 多绑定时必须显式指定玩家名。 |
 | 管理员绑定/解绑 | 已实现 | `/mc admin_bind`、`/mc admin_unbind`；Discord 用户 mention 可作为目标。 |
@@ -27,10 +27,10 @@ MineAstr 的实现边界与 AQQBot 不同：AQQBot 是直接运行在 Bukkit/Fab
 | 按玩家查询绑定 | 已实现 | `/mc who`；返回平台和显示名，不返回数据库内部信息。 |
 | 在线玩家查询 | 已实现 | `/mc list`，使用既有 `players` 查询。 |
 | 服务器状态 | 已实现 | `/mc status`，使用既有 `status` 查询。 |
-| TPS/MSPT/CPU | 已实现 | `/mc performance` 使用 Fabric Mod 的 `performance` 查询。 |
+| TPS/MSPT/CPU | 已实现 | `/mc performance` 使用 NeoForge Mod 的 `performance` 查询。 |
 | 聊天平台 @游戏玩家 | 已实现 | 识别 `@PlayerName` 并定向通知在线玩家；声音/action bar/title 由 Mod 配置。 |
 | 服务器启停通知 | 已实现 | 由 WebSocket hello/断开生成，无需 Mod 新事件。 |
-| 玩家进入/离开/死亡通知 | 已实现 | Fabric Mod 上报 `player_join`、`player_leave`、`player_death`。 |
+| 玩家进入/离开/死亡通知 | 已实现 | NeoForge Mod 上报 `player_join`、`player_leave`、`player_death`。 |
 | 远程服务器命令 | 已实现 | `/mc command` 默认关闭；AstrBot 管理员检查后，Mod 仍执行可信用户、精确命令白名单与审计检查。 |
 | 文件存储 | 改为 SQLite | SQLite 是 Python 标准库能力，提供事务、唯一约束与并发安全；不再维护 YAML 数据文件。 |
 | MySQL 存储 | 未实现 | 当前绑定规模通常很小；如确需多 AstrBot 实例共享绑定，需要另行设计分布式锁、迁移和冲突策略，不能只换连接字符串。 |

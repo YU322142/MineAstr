@@ -2,9 +2,9 @@
 
 v0.6.30 扩展可选的聊天媒体字段：`chat` 消息可带 `media` 数组。旧版 Mod 会忽略该字段；新版 Mod 只向已声明 ChatImage 能力且允许接收的客户端发送图片，不会把本地路径回显到聊天。
 
-本文描述 AstrBot 插件 `v0.7.22` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。外置翻译术语库仅在 AstrBot 端读取，不增加协议字段。
+本文描述 AstrBot 插件 `v0.7.23` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。外置翻译术语库仅在 AstrBot 端读取，不增加协议字段。
 
-0.7.22 将正文和引用各自的目标语言译文组合后放入现有 `translations` 字段，不新增协议字段。混合源语言的引用消息不使用单一正文源语言过滤整条消息；旧 Mod 仍可显示原文。完整累计变化见 [发布说明](RELEASE_NOTES.md)。
+0.7.23 将正文和引用各自的目标语言译文组合后放入现有 `translations` 字段，不新增协议字段。混合源语言的引用消息不使用单一正文源语言过滤整条消息；旧 Mod 仍可显示原文。完整累计变化见 [发布说明](RELEASE_NOTES.md)。
 
 ## 连接与认证
 
@@ -23,7 +23,7 @@ Authorization: Bearer <token>
   "protocol": 1,
   "server_id": "survival",
   "server_name": "Survival Server",
-  "mod_version": "0.7.22",
+  "mod_version": "0.7.23",
   "chat_capabilities": ["native_chat_translation"]
 }
 ```
@@ -406,7 +406,7 @@ AstrBot 返回：
 实现要求：
 
 - 不要阻塞 Minecraft 主线程等待网络；在平台允许的异步登录事件/阶段发起，并设置短超时。
-- AstrBot 连接不可用或超时时的 fail-open / fail-closed 策略必须由 Mod 服务端配置明确决定。建议默认 fail-open，避免 AstrBot 故障锁死服务器，并向控制台输出醒目告警。
+- AstrBot 连接不可用或超时时的 fail-open / fail-closed 策略必须由 Mod 服务端配置明确决定。强制绑定场景应使用 fail-closed（`loginCheckFailOpen=false`，NeoForge 新配置默认值）；仅在服主明确允许故障时跳过检查的场景使用 fail-open。适配器监听器缺失、异常或未返回布尔决定时拒绝登录；插件明确关闭绑定检查仍可返回允许。
 - `need_bind_to_login=false` 时 AstrBot 返回 `allowed=true`。
 - `VERIFY_CODE` 模式下，未绑定玩家的登录流程应先生成 `binding_code` 事件，再按配置拒绝本次登录。
 - 玩家名比较在 AstrBot 侧不区分大小写；Mod 侧应使用服务端解析出的真实玩家名，不能信任客户端自报字符串。

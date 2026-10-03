@@ -1716,11 +1716,12 @@ class MinecraftPlatformAdapter(Platform):
 
         if event_name == "player_login_check":
             response: dict[str, Any] = {
-                "allowed": True,
-                "message": "MineAstr AstrBot 侧未启用登录绑定检查。",
+                "allowed": False,
+                "message": "MineAstr 登录绑定检查暂不可用，请稍后重试。",
+                "message_key": "disconnect.mineastr.login.unavailable",
             }
             for candidate in results:
-                if "allowed" in candidate:
+                if isinstance(candidate.get("allowed"), bool):
                     response.update(candidate)
                     break
             await ws.send_str(

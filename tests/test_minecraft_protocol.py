@@ -792,6 +792,39 @@ class AdapterEventTests(unittest.IsolatedAsyncioTestCase):
             response["message_key"], "disconnect.mineastr.login.not_bound"
         )
 
+    async def test_login_check_missing_failed_or_malformed_handler_denies(self):
+        for mode in ("absent", "error", "malformed"):
+            with self.subTest(mode=mode):
+                adapter = MinecraftPlatformAdapter({}, {}, None)
+                websocket = FakeWebSocket()
+                await adapter.connection_manager.register(
+                    websocket, {"server_id": "survival", "server_name": "Survival"}
+                )
+                if mode != "absent":
+                    async def broken_handler(payload):
+                        if mode == "error":
+                            raise RuntimeError("binding database unavailable")
+                        return {"allowed": "true"}
+                    adapter.add_bridge_event_listener(broken_handler)
+                await adapter._handle_bridge_event(websocket, {
+                    "type": "event", "event": "player_login_check",
+                    "message_id": "login-deny", "player_name": "Unbound",
+                })
+                self.assertFalse(websocket.sent[-1]["allowed"])
+                self.assertEqual(websocket.sent[-1]["message_key"],
+                                 "disconnect.mineastr.login.unavailable")
+
+    async def test_login_check_explicitly_disabled_handler_can_allow(self):
+        adapter = MinecraftPlatformAdapter({}, {}, None)
+        websocket = FakeWebSocket()
+        await adapter.connection_manager.register(websocket, {"server_id": "survival"})
+        adapter.add_bridge_event_listener(lambda payload: {"allowed": True})
+        await adapter._handle_bridge_event(websocket, {
+            "type": "event", "event": "player_login_check",
+            "message_id": "disabled-login", "player_name": "Player",
+        })
+        self.assertTrue(websocket.sent[-1]["allowed"])
+
     async def test_chat_uses_registered_server_identity(self):
         adapter = MinecraftPlatformAdapter({}, {}, None)
         websocket = FakeWebSocket()

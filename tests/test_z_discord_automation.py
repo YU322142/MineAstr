@@ -376,6 +376,43 @@ class NotificationLocalizationTests(unittest.IsolatedAsyncioTestCase):
 
 
 class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_invalid_empty_translation_is_not_cached_and_can_recover(self):
+        provider = types.SimpleNamespace(text_chat=AsyncMock(side_effect=[
+            types.SimpleNamespace(completion_text='{"source_language":"en_us","translations":{}}'),
+            types.SimpleNamespace(completion_text='{"source_language":"en_us","translations":{"zh":"你好"}}'),
+        ]))
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {"bridge_settings": {"game_translation_provider_id": "",
+                         "game_translation_timeout_seconds": 5, "max_relay_length": 500}}
+        plugin.context = types.SimpleNamespace(get_using_provider=lambda origin: provider)
+        self.assertEqual(await plugin._translate_text("Hello", ("zh_cn",)), {})
+        recovered = await plugin._translate_text("Hello", ("zh_cn",))
+        self.assertEqual(recovered["translations"], {"zh_cn": "你好"})
+        self.assertEqual(provider.text_chat.await_count, 2)
+        await plugin._translate_text("Hello", ("zh_cn",))
+        self.assertEqual(provider.text_chat.await_count, 2)
+
+    async def test_same_language_empty_result_is_valid_and_cached(self):
+        provider = types.SimpleNamespace(text_chat=AsyncMock(return_value=
+            types.SimpleNamespace(completion_text='{"source_language":"en_us","translations":{}}')))
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {"bridge_settings": {"game_translation_provider_id": "",
+                         "game_translation_timeout_seconds": 5, "max_relay_length": 500}}
+        plugin.context = types.SimpleNamespace(get_using_provider=lambda origin: provider)
+        result = await plugin._translate_text("Hello", ("en_us",))
+        self.assertEqual(result["source_language"], "en_us")
+        await plugin._translate_text("Hello", ("en_us",))
+        self.assertEqual(provider.text_chat.await_count, 1)
+
+    def test_native_regional_languages_keep_configured_allowlist(self):
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {"bridge_settings": {"game_translation_enabled": True,
+                         "game_translation_languages": "zh_cn\nen_us"}}
+        self.assertEqual(plugin._native_chat_translation_languages(
+            {"target_languages": ["en_gb", "zh_hk", "ja_jp", "en_us"]}),
+            ("en_us", "zh_cn"))
+
+
     async def test_game_media_inlines_valid_base64_without_exposing_path(self):
         plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
         plugin.config = {

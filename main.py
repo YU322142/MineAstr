@@ -447,7 +447,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.7.22",
+    "0.7.23",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -2171,6 +2171,16 @@ class MineAstrPlugin(Star):
                 continue
             value = normalized.get(language)
             if not isinstance(value, str):
+                value = next(
+                    (
+                        candidate
+                        for locale, candidate in normalized.items()
+                        if MineAstrPlugin._same_translation_language(locale, language)
+                        and isinstance(candidate, str)
+                    ),
+                    None,
+                )
+            if not isinstance(value, str):
                 continue
             translated = trim_message(value.strip(), max_length)
             if translated:
@@ -2679,7 +2689,16 @@ class MineAstrPlugin(Star):
                     isinstance(translations.get("translations"), dict)
                     and translations.get("translations")
                 ) or translations.get("already_bilingual") is True
-                if not translations or (bilingual_review and not usable_bilingual_result):
+                same_language_only = bool(translations.get("source_language")) and all(
+                    self._same_translation_language(
+                        translations["source_language"], language
+                    )
+                    for language in languages
+                )
+                if (
+                    not translations
+                    or (not usable_bilingual_result and not same_language_only)
+                ):
                     raise RuntimeError("翻译模型没有返回有效的语言检测/翻译 JSON")
                 active_cache_key = (
                     bilingual_cache_key
@@ -2721,8 +2740,20 @@ class MineAstrPlugin(Star):
         requested = self._translation_languages(payload.get("target_languages"))
         if not requested:
             return ()
-        allowed = set(configured)
-        return tuple(language for language in requested if language in allowed)
+        # Use configured locales for regional variants (en_GB -> en_US),
+        # retaining the allowlist and the Mod's language-family fallback.
+        languages: list[str] = []
+        for language in requested:
+            allowed = language if language in configured else next(
+                (
+                    candidate for candidate in configured
+                    if candidate.split("_", 1)[0] == language.split("_", 1)[0]
+                ),
+                "",
+            )
+            if allowed and allowed not in languages:
+                languages.append(allowed)
+        return tuple(languages)
 
     async def _translate_game_message(
         self, content: str, origin: str = ""
