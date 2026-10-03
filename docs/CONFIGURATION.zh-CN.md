@@ -1,4 +1,4 @@
-# MineAstr 0.7.24 配置参考
+# MineAstr 0.7.25 配置参考
 
 本文只描述当前配置。历史字段变化见 [`CHANGELOG.md`](../CHANGELOG.md)。
 
@@ -61,7 +61,7 @@
 | `signTranslationMaxDistance` | `8` | 浮选最大距离 |
 | `signTranslationScale` | `1.0` | 浮选缩放 |
 
-`showOriginalTranslatedMessages` 只控制普通聊天。0.7.24 的目标 HUD 默认只显示译文。
+`showOriginalTranslatedMessages` 只控制普通聊天。0.7.25 的目标 HUD 默认只显示译文。
 
 Bot 端另有 `bridge_settings.relay_images_to_game` 总开关、`game_image_inline_max_bytes` 本地图片内联总上限和 `game_image_max_items` 单条消息图片数上限。关闭任意一端的开关都只停止图片，不影响文字桥接。图片路径和 URL 不会作为普通聊天文本显示。
 
@@ -83,6 +83,31 @@ F8 页面和本地服务端子页面的文字通过 `screen.mineastr.*` 翻译�
 
 通过 MCSync 发布配置 OTA 时，优先使用精确键级补丁；Token 和私有地址必须继续由本地配置提供。
 
-强制账号绑定：AstrBot 开启 `binding_enabled`、`need_bind_to_login`，服务端开启 `loginBindingCheckEnabled` 并设 `loginCheckFailOpen=false`。0.7.24 在 NeoForge 实际执行的配置任务中异步检查，完成前不得进入世界；旧 `PlayerNegotiationEvent` 不再使用。已有 TOML 值不会自动迁移，须检查故障放行策略。白名单同步不等于白名单已启用。
+强制账号绑定：AstrBot 开启 `binding_enabled`、`need_bind_to_login`，服务端开启 `loginBindingCheckEnabled` 并设 `loginCheckFailOpen=false`。0.7.25 在 NeoForge 实际执行的配置任务中异步检查，完成前不得进入世界；旧 `PlayerNegotiationEvent` 不再使用。已有 TOML 值不会自动迁移，须检查故障放行策略。白名单同步不等于白名单已启用。
 
 翻译模型须使用提供商实际的 API Base URL。若 OpenAI 兼容网关根地址返回 HTML 而 `/v1` 提供 API，应配置以 `/v1` 结尾的地址；插件不猜测或自动修改第三方路径。日志 `no_translation` 表示本次返回没有有效译文，`translated` 表示返回了译文；按客户端偏好显示。
+
+## F8 聊天动画、高清图片与高度限制
+
+| 配置键 | 默认 | 可选范围 / 作用 |
+| --- | --- | --- |
+| `chatImageScale` | 100 | 50–300%，自动受正文宽度和可见区域限制 |
+| `chatMaxHeightPercent` | 0 | 0 跟随 Minecraft；1–100% 限制可用屏幕高度，不扩大原版高度设置 |
+| `chatAnimationsEnabled` | true | 关闭时立即滚动、立即显示消息 |
+| `chatScrollDuration` | 180 | 80–500 毫秒，ModernUI 三次减速滚动 |
+| `chatArrivalDuration` | 200 | 80–500 毫秒，新消息淡入及整队消息上移的时长尺度 |
+| `chatArrivalDistance` | 4 | 0–12 GUI 像素，新消息额外轻移幅度 |
+
+高度会计入 GUI / 聊天缩放并至少保留一行。图片默认保持小尺寸（最高 96×54 聊天 GUI 像素），F8 可放大；原图最长边保留到 1024 像素。保存后重排历史，不重新下载图片。更大显示尺寸不会突破缓存、字节和像素上限；平台图标使用独立高清纹理。
+
+## 玩家主题色
+
+| Key | Default | Range |
+| --- | --- | --- |
+| `playerThemeColor` | `16777215` (#FFFFFF) | RGB24; contrast ≥ 4.5:1 against #303030 |
+| `playerThemeSecond` | `7530177` (#72E6C1) | Same restriction when enabled |
+| `playerThemeThird` | `11909375` (#B5B8FF) | Same restriction when enabled |
+| `playerThemeStops` | `1` | 1 solid / 2 or 3 animated colors |
+| `playerThemePeriod` | `8000` | 4000–20000 ms |
+
+F8 可以通过 RGB 滑块与 #RRGGBB 输入修改每个启用的颜色并预览渐变。过暗或未完成的输入会禁止保存，不自动调整颜色。昵称和正文着色，左侧图标与图片不着色。服务器按 UUID 随世界保存主题，并同步历史主题；重连以该服务器已保存的主题为准。颜色不会更改消息内容、日志或原有字体。对比度以深色聊天背景为参考，完全透明背景下的任意世界画面无法通过颜色本身保证对比度。

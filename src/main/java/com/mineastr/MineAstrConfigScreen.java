@@ -10,6 +10,8 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -44,6 +46,72 @@ public final class MineAstrConfigScreen extends Screen {
     private double jpegQuality;
     private int maxBytes;
 
+    private int themeColor, themeSecond, themeThird, themeStops, themePeriod, themeEditingStop = 1;
+    private ThemeSettings savedThemeSettings;
+    private EditBox themeHex;
+    private Button saveButton;
+    private final List<ValueSlider> themeChannels = new ArrayList<>();
+    private boolean updatingTheme;
+    private record ThemeSettings(int color, int second, int third, int stops, int period) {
+        static ThemeSettings load() { return new ThemeSettings(MineAstrClientConfig.PLAYER_THEME_COLOR.getAsInt(), MineAstrClientConfig.PLAYER_THEME_SECOND.getAsInt(), MineAstrClientConfig.PLAYER_THEME_THIRD.getAsInt(), MineAstrClientConfig.PLAYER_THEME_STOPS.getAsInt(), MineAstrClientConfig.PLAYER_THEME_PERIOD.getAsInt()); }
+        static ThemeSettings defaults() { return new ThemeSettings(MineAstrClientConfig.PLAYER_THEME_COLOR.getDefault(), MineAstrClientConfig.PLAYER_THEME_SECOND.getDefault(), MineAstrClientConfig.PLAYER_THEME_THIRD.getDefault(), MineAstrClientConfig.PLAYER_THEME_STOPS.getDefault(), MineAstrClientConfig.PLAYER_THEME_PERIOD.getDefault()); }
+    }
+    private ThemeSettings currentThemeSettings() { return new ThemeSettings(themeColor, themeSecond, themeThird, themeStops, themePeriod); }
+    private void applyThemeSettings(ThemeSettings settings) {
+        themeColor = settings.color(); themeSecond = settings.second(); themeThird = settings.third(); themeStops = settings.stops(); themePeriod = settings.period();
+    }
+    private boolean themeValid() {
+        boolean hexValid = themeHex == null || themeHex.getValue().matches("#?[0-9a-fA-F]{6}");
+        return hexValid && new MineAstrPayloads.PlayerTheme(new java.util.UUID(0, 0), "", themeColor, themeSecond, themeThird, themeStops, themePeriod).valid();
+    }
+    private int selectedThemeColor() { return themeEditingStop == 1 ? themeColor : themeEditingStop == 2 ? themeSecond : themeThird; }
+    private void setThemeColor(int color, boolean syncHex) {
+        if (themeEditingStop == 1) themeColor = color; else if (themeEditingStop == 2) themeSecond = color; else themeThird = color;
+        updatingTheme = true;
+        try {
+            if (syncHex && themeHex != null) themeHex.setValue(MineAstrThemeColor.hex(color));
+            for (int index = 0; index < themeChannels.size(); index++) themeChannels.get(index).setActual((color >>> (16 - 8 * index)) & 255);
+        } finally { updatingTheme = false; }
+    }
+
+    private int chatImageScale, chatMaxHeight, chatScrollDuration, chatArrivalDuration, chatArrivalDistance;
+    private boolean chatAnimations;
+    private ChatSettings savedChatSettings;
+
+    private record ChatSettings(int imageScale, int maxHeight, boolean animations,
+            int scrollDuration, int arrivalDuration, int arrivalDistance) {
+        static ChatSettings load() {
+            return new ChatSettings(MineAstrClientConfig.CHAT_IMAGE_SCALE.getAsInt(),
+                    MineAstrClientConfig.CHAT_MAX_HEIGHT_PERCENT.getAsInt(),
+                    MineAstrClientConfig.CHAT_ANIMATIONS_ENABLED.getAsBoolean(),
+                    MineAstrClientConfig.CHAT_SCROLL_DURATION.getAsInt(),
+                    MineAstrClientConfig.CHAT_ARRIVAL_DURATION.getAsInt(),
+                    MineAstrClientConfig.CHAT_ARRIVAL_DISTANCE.getAsInt());
+        }
+        static ChatSettings defaults() {
+            return new ChatSettings(MineAstrClientConfig.CHAT_IMAGE_SCALE.getDefault(),
+                    MineAstrClientConfig.CHAT_MAX_HEIGHT_PERCENT.getDefault(),
+                    MineAstrClientConfig.CHAT_ANIMATIONS_ENABLED.getDefault(),
+                    MineAstrClientConfig.CHAT_SCROLL_DURATION.getDefault(),
+                    MineAstrClientConfig.CHAT_ARRIVAL_DURATION.getDefault(),
+                    MineAstrClientConfig.CHAT_ARRIVAL_DISTANCE.getDefault());
+        }
+    }
+
+    private ChatSettings currentChatSettings() {
+        return new ChatSettings(chatImageScale, chatMaxHeight, chatAnimations,
+                chatScrollDuration, chatArrivalDuration, chatArrivalDistance);
+    }
+
+    private void applyChatSettings(ChatSettings settings) {
+        chatImageScale = settings.imageScale();
+        chatMaxHeight = settings.maxHeight();
+        chatAnimations = settings.animations();
+        chatScrollDuration = settings.scrollDuration();
+        chatArrivalDuration = settings.arrivalDuration();
+        chatArrivalDistance = settings.arrivalDistance();
+    }
+
     // 已保存快照（用于撤销）
     private boolean savedReceiveImageMessages;
     private boolean savedOpenConfigKeyEnabled;
@@ -74,6 +142,8 @@ public final class MineAstrConfigScreen extends Screen {
     }
 
     private void loadValues() {
+        applyThemeSettings(ThemeSettings.load());
+        applyChatSettings(ChatSettings.load());
         receiveImageMessages = MineAstrClientConfig.receivesBotImages();
         openConfigKeyEnabled = MineAstrClientConfig.OPEN_CONFIG_KEY_ENABLED.getAsBoolean();
         screenshotMode = MineAstrClientConfig.SCREENSHOT_MODE.get();
@@ -91,6 +161,8 @@ public final class MineAstrConfigScreen extends Screen {
 
     /** 将当前编辑值保存为撤销快照。 */
     private void saveSnapshot() {
+        savedThemeSettings = currentThemeSettings();
+        savedChatSettings = currentChatSettings();
         savedReceiveImageMessages = receiveImageMessages;
         savedOpenConfigKeyEnabled = openConfigKeyEnabled;
         savedScreenshotMode = screenshotMode;
@@ -107,6 +179,8 @@ public final class MineAstrConfigScreen extends Screen {
 
     /** 撤销：恢复到上次保存的快照。 */
     private void undoChanges() {
+        applyThemeSettings(savedThemeSettings);
+        applyChatSettings(savedChatSettings);
         receiveImageMessages = savedReceiveImageMessages;
         openConfigKeyEnabled = savedOpenConfigKeyEnabled;
         screenshotMode = savedScreenshotMode;
@@ -155,6 +229,8 @@ public final class MineAstrConfigScreen extends Screen {
 
     /** 重置客户端配置：将当前编辑值恢复为默认值（不写入文件，需点保存生效）。 */
     private void resetClientConfigToDefaults() {
+        applyThemeSettings(ThemeSettings.defaults());
+        applyChatSettings(ChatSettings.defaults());
         ClientConfigDefaults defaults = ClientConfigDefaults.fromConfig();
         receiveImageMessages = defaults.receiveImageMessages();
         openConfigKeyEnabled = defaults.openConfigKeyEnabled();
@@ -211,11 +287,71 @@ public final class MineAstrConfigScreen extends Screen {
         rowWidgets.clear();
         int rowIndex = 0;
 
-        // Row 0: 接收图片消息
+        themeChannels.clear();
+        rowWidgets.add(addRenderableWidget(new ValueCycleButton<>(controlLeft, rowY(rowIndex++), controlWidth, 20,
+                List.of(1, 2, 3), themeStops, count -> Component.translatable("screen.mineastr.config.theme_mode." + count),
+                count -> { themeStops = count; themeEditingStop = Math.min(themeEditingStop, count); rebuildWidgets(); }).widget()));
+        var stops = new ArrayList<Integer>(); for (int stop = 1; stop <= themeStops; stop++) stops.add(stop);
+        rowWidgets.add(addRenderableWidget(new ValueCycleButton<>(controlLeft, rowY(rowIndex++), controlWidth, 20,
+                stops, themeEditingStop, stop -> Component.translatable("screen.mineastr.config.theme_stop", stop),
+                stop -> { themeEditingStop = stop; rebuildWidgets(); }).widget()));
+        themeHex = new EditBox(font, controlLeft, rowY(rowIndex++), controlWidth, 20, Component.translatable("screen.mineastr.config.theme_hex.label"));
+        themeHex.setMaxLength(7); themeHex.setFilter(value -> value.matches("#?[0-9a-fA-F]{0,6}"));
+        themeHex.setValue(MineAstrThemeColor.hex(selectedThemeColor()));
+        themeHex.setTooltip(Tooltip.create(Component.translatable("screen.mineastr.config.theme_help")));
+        themeHex.setResponder(value -> {
+            if (updatingTheme || !value.matches("#?[0-9a-fA-F]{6}")) return;
+            setThemeColor(MineAstrThemeColor.parse(value), false);
+        });
+        rowWidgets.add(addRenderableWidget(themeHex));
+        for (int channel = 0; channel < 3; channel++) {
+            int shift = 16 - 8 * channel;
+            var slider = new ValueSlider(controlLeft, rowY(rowIndex++), controlWidth,
+                    "screen.mineastr.config.theme_channel", 0, 255, (selectedThemeColor() >>> shift) & 255,
+                    value -> setThemeColor((selectedThemeColor() & ~(255 << shift)) | ((int) Math.round(value) << shift), true),
+                    value -> Long.toString(Math.round(value)));
+            themeChannels.add(slider); rowWidgets.add(addRenderableWidget(slider));
+        }
+        rowWidgets.add(addRenderableWidget(new ThemePreview(controlLeft, rowY(rowIndex++), controlWidth)));
+        rowWidgets.add(addRenderableWidget(new ValueSlider(controlLeft, rowY(rowIndex++), controlWidth,
+                "screen.mineastr.config.theme_period", 4, 20, themePeriod / 1000.0,
+                value -> themePeriod = (int) Math.round(value * 1000), value -> String.format(Locale.ROOT, "%.1f", value))));
+
+        // 接收图片消息
         rowWidgets.add(addRenderableWidget(new ToggleButton(
                 controlLeft, rowY(rowIndex), controlWidth, 20,
                 receiveImageMessages, v -> receiveImageMessages = v).widget()));
         rowIndex++;
+
+        rowWidgets.add(addRenderableWidget(new ValueSlider(
+                controlLeft, rowY(rowIndex++), controlWidth,
+                "screen.mineastr.config.chat_image_scale", 50, 300, chatImageScale,
+                value -> chatImageScale = (int) Math.round(value),
+                value -> Integer.toString((int) Math.round(value)))));
+        rowWidgets.add(addRenderableWidget(new ValueSlider(
+                controlLeft, rowY(rowIndex++), controlWidth,
+                "screen.mineastr.config.chat_max_height", 0, 100, chatMaxHeight,
+                value -> chatMaxHeight = (int) Math.round(value),
+                value -> Math.round(value) == 0 ? Component.translatable("screen.mineastr.config.follow_minecraft").getString()
+                        : Component.translatable("screen.mineastr.config.percent", Math.round(value)).getString())));
+        rowWidgets.add(addRenderableWidget(new ToggleButton(
+                controlLeft, rowY(rowIndex++), controlWidth, 20,
+                chatAnimations, value -> chatAnimations = value).widget()));
+        rowWidgets.add(addRenderableWidget(new ValueSlider(
+                controlLeft, rowY(rowIndex++), controlWidth,
+                "screen.mineastr.config.chat_scroll_duration", 80, 500, chatScrollDuration,
+                value -> chatScrollDuration = (int) Math.round(value),
+                value -> Long.toString(Math.round(value)))));
+        rowWidgets.add(addRenderableWidget(new ValueSlider(
+                controlLeft, rowY(rowIndex++), controlWidth,
+                "screen.mineastr.config.chat_arrival_duration", 80, 500, chatArrivalDuration,
+                value -> chatArrivalDuration = (int) Math.round(value),
+                value -> Long.toString(Math.round(value)))));
+        rowWidgets.add(addRenderableWidget(new ValueSlider(
+                controlLeft, rowY(rowIndex++), controlWidth,
+                "screen.mineastr.config.chat_arrival_distance", 0, 12, chatArrivalDistance,
+                value -> chatArrivalDistance = (int) Math.round(value),
+                value -> Long.toString(Math.round(value)))));
 
         // Row 1: F8 唤起配置界面
         rowWidgets.add(addRenderableWidget(new ToggleButton(
@@ -334,13 +470,19 @@ public final class MineAstrConfigScreen extends Screen {
                 .bounds(buttonStartX, buttonY, buttonWidth, 20).build());
         addRenderableWidget(Button.builder(Component.translatable("screen.mineastr.config.undo"), button -> undoChanges())
                 .bounds(buttonStartX + buttonWidth + buttonGap, buttonY, buttonWidth, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable("screen.mineastr.config.save"), button -> saveAndClose())
+        saveButton = addRenderableWidget(Button.builder(Component.translatable("screen.mineastr.config.save"), button -> saveAndClose())
                 .bounds(buttonStartX + (buttonWidth + buttonGap) * 2, buttonY, buttonWidth, 20).build());
 
         repositionRows();
     }
 
     private void saveAndClose() {
+        if (!themeValid()) return;
+        MineAstrClientConfig.PLAYER_THEME_COLOR.set(themeColor);
+        MineAstrClientConfig.PLAYER_THEME_SECOND.set(themeSecond);
+        MineAstrClientConfig.PLAYER_THEME_THIRD.set(themeThird);
+        MineAstrClientConfig.PLAYER_THEME_STOPS.set(themeStops);
+        MineAstrClientConfig.PLAYER_THEME_PERIOD.set(themePeriod);
         MineAstrClientConfig.RECEIVE_IMAGE_MESSAGES.set(receiveImageMessages);
         MineAstrClientConfig.ACCEPT_BOT_IMAGES.set(receiveImageMessages);
         MineAstrClientConfig.OPEN_CONFIG_KEY_ENABLED.set(openConfigKeyEnabled);
@@ -354,10 +496,18 @@ public final class MineAstrConfigScreen extends Screen {
         MineAstrClientConfig.SCREENSHOT_MAX_HEIGHT.set(maxHeight);
         MineAstrClientConfig.SCREENSHOT_JPEG_QUALITY.set(jpegQuality);
         MineAstrClientConfig.SCREENSHOT_MAX_BYTES.set(maxBytes);
+        MineAstrClientConfig.CHAT_IMAGE_SCALE.set(chatImageScale);
+        MineAstrClientConfig.CHAT_MAX_HEIGHT_PERCENT.set(chatMaxHeight);
+        MineAstrClientConfig.CHAT_ANIMATIONS_ENABLED.set(chatAnimations);
+        MineAstrClientConfig.CHAT_SCROLL_DURATION.set(chatScrollDuration);
+        MineAstrClientConfig.CHAT_ARRIVAL_DURATION.set(chatArrivalDuration);
+        MineAstrClientConfig.CHAT_ARRIVAL_DISTANCE.set(chatArrivalDistance);
         MineAstrClientConfig.SPEC.save();
+        minecraft.gui.getChat().rescaleChat();
         saveSnapshot();
         MineAstrClient.sendTranslationPreferences();
         MineAstrClient.sendBotImagePreferences();
+        MineAstrClient.sendThemePreferences(true);
         onClose();
     }
 
@@ -375,6 +525,10 @@ public final class MineAstrConfigScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        if (saveButton != null) {
+            saveButton.active = themeValid();
+            saveButton.setTooltip(saveButton.active ? null : Tooltip.create(Component.translatable("screen.mineastr.config.theme_invalid")));
+        }
         renderBackground(graphics, mouseX, mouseY, partialTick);
 
         int panelWidth = Math.min(PANEL_WIDTH, width - 24);
@@ -410,7 +564,21 @@ public final class MineAstrConfigScreen extends Screen {
         }
 
         String[] labels = {
+                "screen.mineastr.config.theme_mode.label",
+                "screen.mineastr.config.theme_edit_stop.label",
+                "screen.mineastr.config.theme_hex.label",
+                "screen.mineastr.config.theme_red.label",
+                "screen.mineastr.config.theme_green.label",
+                "screen.mineastr.config.theme_blue.label",
+                "screen.mineastr.config.theme_preview.label",
+                "screen.mineastr.config.theme_period.label",
                 "screen.mineastr.config.receive_image_messages.label",
+                "screen.mineastr.config.chat_image_scale.label",
+                "screen.mineastr.config.chat_max_height.label",
+                "screen.mineastr.config.chat_animations.label",
+                "screen.mineastr.config.chat_scroll_duration.label",
+                "screen.mineastr.config.chat_arrival_duration.label",
+                "screen.mineastr.config.chat_arrival_distance.label",
                 "screen.mineastr.config.open_config_key.label",
                 "screen.mineastr.config.mode.label",
                 "screen.mineastr.config.translation.label",
@@ -545,6 +713,8 @@ public final class MineAstrConfigScreen extends Screen {
             updateMessage();
         }
 
+        private void setActual(double actual) { value = Mth.clamp((actual - min) / (max - min), 0.0, 1.0); updateMessage(); }
+
         private double actualValue() {
             return Mth.lerp(value, min, max);
         }
@@ -559,6 +729,33 @@ public final class MineAstrConfigScreen extends Screen {
             consumer.accept(actualValue());
             updateMessage();
         }
+    }
+
+    private final class ThemePreview extends AbstractWidget {
+        private ThemeSettings cached;
+        private final int[] palette = new int[1024];
+        private ThemePreview(int x, int y, int width) { super(x, y, width, 20, Component.translatable("screen.mineastr.config.theme_preview.label")); }
+        @Override protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+            graphics.fill(getX(), getY(), getX()+getWidth(), getY()+20, 0xFF303030);
+            if (!themeValid()) {
+                graphics.drawString(font, Component.translatable("screen.mineastr.config.theme_invalid"), getX()+4, getY()+6, 0xFFFF9090, false);
+                return;
+            }
+            ThemeSettings settings = currentThemeSettings();
+            if (!settings.equals(cached)) {
+                cached = settings;
+                for (int index=0; index<1024; index++) palette[index] = MineAstrThemeColor.gradient(themeColor, themeSecond, themeThird, themeStops, index/1024.0);
+            }
+            String text = Component.translatable("screen.mineastr.config.theme_sample").getString();
+            int phase = (int)((MineAstrChatEasing.now() % themePeriod) / themePeriod * 1024);
+            var component = Component.empty();
+            int[] points = text.codePoints().toArray();
+            for (int index=0; index<points.length; index++) { int color = palette[(phase + index*256/Math.max(1,points.length)) & 1023]; component.append(Component.literal(new String(Character.toChars(points[index])))
+                    .withStyle(style -> style.withBold(true).withColor(color))); }
+            var lines = font.split(component, getWidth()-8);
+            if (!lines.isEmpty()) graphics.drawString(font, lines.getFirst(), getX()+4, getY()+6, 0xFFFFFFFF, false);
+        }
+        @Override protected void updateWidgetNarration(NarrationElementOutput output) { defaultButtonNarrationText(output); }
     }
 
     private static final class ScrollBar extends AbstractWidget {

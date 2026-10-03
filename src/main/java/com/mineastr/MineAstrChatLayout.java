@@ -19,10 +19,11 @@ import net.minecraft.util.FormattedCharSequence;
 public final class MineAstrChatLayout {
     private static final ResourceLocation ICON_FONT = ResourceLocation.fromNamespaceAndPath("mineastr", "platforms");
     private static final ResourceLocation SPACE_FONT = ResourceLocation.fromNamespaceAndPath("mineastr", "spacing");
+    private static final String THEME_KEY = "message.mineastr.theme_sender";
     private static final String CHAT_KEY = "message.mineastr.chat_sender";
     private static final String IMAGE_KEY = "message.mineastr.image_preview";
     private static final String IMAGE_GLYPH = "\uE200";
-    private static final Map<FormattedCharSequence, Optional<ImageRow>> IMAGE_ROWS = new WeakHashMap<>();
+    private static final Map<FormattedCharSequence, LineDecorations> DECORATIONS = new WeakHashMap<>();
 
     private MineAstrChatLayout() {}
 
@@ -63,7 +64,8 @@ public final class MineAstrChatLayout {
             return original;
         }
         Font font = Minecraft.getInstance().font;
-        name = name.copy().withStyle(net.minecraft.ChatFormatting.BOLD);
+        String senderName = name.getString();
+        name = name.copy().withStyle(style -> style.withBold(true));
         int column = MineAstrChatGeometry.senderColumn(width);
         int bodyWidth = Math.max(24, width - column - 2);
         var clippedName = font.substrByWidth(name, Math.max(1, column - 18));
@@ -72,7 +74,7 @@ public final class MineAstrChatLayout {
             clippedComponent.append(Component.literal(textValue).setStyle(style));
             return java.util.Optional.empty();
         }, Style.EMPTY);
-        var header = Component.empty().append(icon(platform)).append(spaces(4)).append(clippedComponent);
+        var header = Component.empty().append(themeMarker(senderName)).append(icon(platform)).append(spaces(4)).append(clippedComponent);
         header.append(spaces(Math.max(1, column - font.width(header))));
         List<MutableComponent> rows = new ArrayList<>();
         MutableComponent text = Component.empty();
@@ -82,8 +84,8 @@ public final class MineAstrChatLayout {
             if (image != null && image.getArgs().length == 6) {
                 flushText(rows, text, font, bodyWidth);
                 text = Component.empty();
-                int maxWidth = MineAstrChatGeometry.imageWidth(bodyWidth);
-                int maxHeight = MineAstrChatGeometry.imageHeight(visibleLines, lineHeight);
+                int maxWidth = MineAstrChatGeometry.imageWidth(bodyWidth, MineAstrClientConfig.chatImageScale());
+                int maxHeight = MineAstrChatGeometry.imageHeight(visibleLines, lineHeight, MineAstrClientConfig.chatImageScale());
                 int count = (maxHeight + 4 + lineHeight - 1) / lineHeight;
                 for (int row = 0; row < count; row++) {
                     rows.add(imageMarker(argument(image, 0), argument(image, 1), row, column, maxWidth, maxHeight));
@@ -96,7 +98,7 @@ public final class MineAstrChatLayout {
         if (rows.isEmpty()) rows.add(Component.empty());
         MutableComponent result = Component.empty().append(header).append(rows.getFirst());
         for (int row = 1; row < rows.size(); row++) {
-            result.append(Component.literal("\n")).append(spaces(column)).append(rows.get(row));
+            result.append(Component.literal("\n")).append(themeMarker(senderName)).append(spaces(column)).append(rows.get(row));
         }
         return result;
     }
@@ -135,6 +137,12 @@ public final class MineAstrChatLayout {
                         }))));
     }
 
+    private static MutableComponent themeMarker(String name) {
+        return Component.literal("\uE300").withStyle(style -> style.withFont(SPACE_FONT)
+                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                        Component.translatable(THEME_KEY, Component.literal(name)))));
+    }
+
     private static MutableComponent spaces(int pixels) {
         StringBuilder glyphs = new StringBuilder();
         for (int bit = 0; bit < 12; bit++) if ((pixels & (1 << bit)) != 0) glyphs.append((char) (0xE100 + bit));
@@ -160,24 +168,45 @@ public final class MineAstrChatLayout {
         return index < contents.getArgs().length ? asComponent(contents.getArgs()[index]).getString() : "";
     }
 
-    public static ImageRow imageRow(FormattedCharSequence line) {
-        Optional<ImageRow> cached = IMAGE_ROWS.get(line);
-        if (cached != null) return cached.orElse(null);
+    public static ImageRow imageRow(FormattedCharSequence line) { return decorations(line).image(); }
+
+    public static LineDecorations decorations(FormattedCharSequence line) {
+        LineDecorations cached = DECORATIONS.get(line);
+        if (cached != null) return cached;
         ImageRow[] found = {null};
+        String[] platform = {null};
+        String[] sender = {null};
+        int[] textLength = {0};
         line.accept((index, style, codepoint) -> {
-            if (codepoint != 0xE200) return true;
-            TranslatableContents contents = hoverMetadata(style, IMAGE_KEY);
-            if (contents != null && contents.getArgs().length == 6) {
-                try {
-                    found[0] = new ImageRow(argument(contents, 1), Integer.parseInt(argument(contents, 2)),
-                            Integer.parseInt(argument(contents, 3)), Integer.parseInt(argument(contents, 4)),
-                            Integer.parseInt(argument(contents, 5)));
-                } catch (NumberFormatException ignored) {}
+            if (codepoint == 0xE300) {
+                var metadata = hoverMetadata(style, THEME_KEY);
+                if (metadata != null) sender[0] = argument(metadata, 0).toLowerCase(java.util.Locale.ROOT);
             }
-            return false;
+            if (isThemeTextFont(style.getFont())) textLength[0]++;
+            if (ICON_FONT.equals(style.getFont()) && codepoint >= 0xE000 && codepoint <= 0xE002) {
+                platform[0] = switch (codepoint) { case 0xE001 -> "discord"; case 0xE002 -> "qq"; default -> "minecraft"; };
+            }
+            if (codepoint == 0xE200) {
+                TranslatableContents contents = hoverMetadata(style, IMAGE_KEY);
+                if (contents != null && contents.getArgs().length == 6) {
+                    try {
+                        found[0] = new ImageRow(argument(contents, 1), Integer.parseInt(argument(contents, 2)),
+                                Integer.parseInt(argument(contents, 3)), Integer.parseInt(argument(contents, 4)),
+                                Integer.parseInt(argument(contents, 5)));
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+            return true;
         });
-        IMAGE_ROWS.put(line, Optional.ofNullable(found[0]));
-        return found[0];
+        LineDecorations result = new LineDecorations(found[0], platform[0], sender[0], textLength[0]);
+        DECORATIONS.put(line, result);
+        return result;
+    }
+
+    public record LineDecorations(ImageRow image, String platform, String sender, int textLength) {}
+
+    public static boolean isThemeTextFont(ResourceLocation font) {
+        return !ICON_FONT.equals(font) && !SPACE_FONT.equals(font);
     }
 
     public record ImageRow(String id, int row, int column, int width, int height) {}

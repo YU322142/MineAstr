@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.25 — 2026-10-03
+
+- Server-persisted player colors and slow two/three-color gradients for nickname and body; readable colors only, no automatic brightening, icons unchanged.
+
+- Smooth motion of the entire chat queue and ModernUI scrolling; F8 height, image and animation controls.
+- Independent high-resolution platform textures, 1024px images, mipmaps and bounded upload/texture budgets.
+- 52 mod tests and 166 plugin tests; original ZIP async methods and logging preserved.
+
 ## 0.7.24 — 2026-10-03
 
 - MC 内的用户名称统一优先使用已绑定的 Minecraft 游戏名，没有绑定时使用 QQ / Discord 用户名；平台图标仍表示消息来源。普通消息、模板、引用、编辑、撤回、@ 玩家提醒与广播同步此规则；多账号时使用最早绑定的游戏名，解绑后自动切换。昵称缓存最多 512 项、30 秒到期，绑定/解绑/迁移立即失效，登录鉴权仍读取实时绑定。

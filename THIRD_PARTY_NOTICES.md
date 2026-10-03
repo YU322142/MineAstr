@@ -33,10 +33,10 @@ SOFTWARE.
 
 ## ChatImage
 
-MineAstr's historical clients optionally emit CICode for ChatImage. Version 0.7.24 provides its own bounded inline thumbnail renderer and does not require ChatImage. No ChatImage binaries, source or assets are bundled. ChatImage remains an independent optional mod.
+MineAstr's historical clients optionally emit CICode for ChatImage. Version 0.7.25 provides its own bounded inline thumbnail renderer and does not require ChatImage. No ChatImage binaries, source or assets are bundled. ChatImage remains an independent optional mod.
 
 ChatImage project: https://github.com/kitUIN/ChatImage
 
 ## Platform marks
 
-The small Minecraft grass-block, Discord controller and QQ penguin bitmap marks in `assets/mineastr/textures/font/platforms.png` were drawn for this project. They identify message platforms. Platform names and recognizable brand designs belong to their respective owners; this integration is not an official partnership.
+The Minecraft grass-block, Discord controller and QQ penguin marks in `assets/mineastr/textures/gui/platform/` are independently authored SVG drawings with 256px PNG exports. They identify message platforms. No external assets are bundled. Platform names and recognizable brand designs belong to their respective owners; this integration is not an official partnership.

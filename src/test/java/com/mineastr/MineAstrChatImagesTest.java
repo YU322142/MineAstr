@@ -30,9 +30,30 @@ class MineAstrChatImagesTest {
         var bytes = new ByteArrayOutputStream();
         ImageIO.write(original, "png", bytes);
         BufferedImage decoded = MineAstrChatImages.decodeThumbnail(bytes.toByteArray());
-        assertEquals(162, decoded.getWidth());
-        assertEquals(108, decoded.getHeight());
+        assertEquals(600, decoded.getWidth());
+        assertEquals(400, decoded.getHeight());
         assertTrue(decoded.getColorModel().hasAlpha());
+        assertEquals(0x80112233, decoded.getRGB(0, 0));
+    }
+    @Test void highResolutionDecodeRetainsDetailWithinTheTextureBudget() throws IOException {
+        BufferedImage original = new BufferedImage(1800, 900, BufferedImage.TYPE_INT_ARGB);
+        var bytes = new ByteArrayOutputStream();
+        ImageIO.write(original, "png", bytes);
+        BufferedImage decoded = MineAstrChatImages.decodeThumbnail(bytes.toByteArray());
+        assertEquals(1024, decoded.getWidth());
+        assertEquals(512, decoded.getHeight());
+    }
+    @Test void configurableSizeGrowsButNeverEscapesTheBodyOrViewport() {
+        assertTrue(MineAstrChatGeometry.imageWidth(250, 200) > MineAstrChatGeometry.imageWidth(250, 100));
+        assertEquals(60, MineAstrChatGeometry.imageWidth(64, 300));
+        assertTrue(MineAstrChatGeometry.imageHeight(20, 9, 200) > MineAstrChatGeometry.imageHeight(20, 9, 100));
+        assertEquals(18, MineAstrChatGeometry.imageHeight(3, 9, 300));
+    }
+    @Test void heightLimitUsesScreenSpaceAndPreservesMinecraftAutoSetting() {
+        assertEquals(180, MineAstrChatGeometry.heightLimit(180, 350, 1, 0, 9));
+        assertEquals(151, MineAstrChatGeometry.heightLimit(180, 350, 1, 50, 9));
+        assertEquals(180, MineAstrChatGeometry.heightLimit(180, 350, .5, 50, 9));
+        assertEquals(9, MineAstrChatGeometry.heightLimit(180, 60, 1, 1, 9));
     }
     @Test void malformedImagesFailWithoutTextureAllocation() {
         assertThrows(IOException.class, () -> MineAstrChatImages.decodeThumbnail(new byte[] {1, 2, 3}));

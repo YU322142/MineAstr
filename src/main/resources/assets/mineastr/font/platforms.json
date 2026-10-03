@@ -1,13 +1,1 @@
-{
-  "providers": [
-    {
-      "type": "bitmap",
-      "file": "mineastr:font/platforms.png",
-      "ascent": 8,
-      "height": 9,
-      "chars": [
-        "\ue000\ue001\ue002"
-      ]
-    }
-  ]
-}
+{"providers":[{"type":"space","advances":{"\uE000":10,"\uE001":10,"\uE002":10}}]}

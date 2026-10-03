@@ -99,7 +99,10 @@ public final class MineAstrClient {
         modEventBus.addListener(MineAstrClient::registerGuiLayers);
         modEventBus.addListener((net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent event) ->
                 event.registerReloadListener((net.minecraft.server.packs.resources.ResourceManagerReloadListener)
-                        manager -> Minecraft.getInstance().gui.getChat().rescaleChat()));
+                        manager -> {
+                            MineAstrChatIcons.reload();
+                            Minecraft.getInstance().gui.getChat().rescaleChat();
+                        }));
         NeoForge.EVENT_BUS.register(MineAstrClient.class);
     }
 
@@ -116,15 +119,18 @@ public final class MineAstrClient {
 
     @SubscribeEvent
     public static void onClientLogin(ClientPlayerNetworkEvent.LoggingIn event) {
+        MineAstrClientThemes.clear();
         clearSignTranslationCache();
         MineAstrDisplayApi.clear();
         sendPayloadToServer(new MineAstrPayloads.ClientHello(MineAstr.MOD_VERSION, true));
         sendTranslationPreferences();
         sendBotImagePreferences();
+        sendThemePreferences(false);
     }
 
     @SubscribeEvent
     public static void onClientLogout(ClientPlayerNetworkEvent.LoggingOut event) {
+        MineAstrClientThemes.clear();
         pendingPromptRequestId = null;
         clearSignTranslationCache();
         IMAGE_TRANSLATION_REQUESTS.values().forEach(future ->
@@ -931,6 +937,18 @@ public final class MineAstrClient {
         } catch (RuntimeException exc) {
             return false;
         }
+    }
+
+    public static void handleThemePalette(MineAstrPayloads.ThemePalette payload) { MineAstrClientThemes.receive(payload); }
+
+    public static void sendThemePreferences(boolean update) {
+        if (!MineAstrClientConfig.isLoaded()) return;
+        int color = MineAstrClientConfig.PLAYER_THEME_COLOR.getAsInt();
+        var request = new MineAstrPayloads.ThemePreferences(update, color, MineAstrClientConfig.PLAYER_THEME_SECOND.getAsInt(),
+                MineAstrClientConfig.PLAYER_THEME_THIRD.getAsInt(), MineAstrClientConfig.PLAYER_THEME_STOPS.getAsInt(),
+                MineAstrClientConfig.PLAYER_THEME_PERIOD.getAsInt());
+        var profile = new MineAstrPayloads.PlayerTheme(new java.util.UUID(0, 0), "", request.color(), request.second(), request.third(), request.count(), request.period());
+        if (!update || profile.valid()) sendPayloadToServer(request);
     }
 
     public static void handleChatPresentation(MineAstrPayloads.ChatPresentation payload) {

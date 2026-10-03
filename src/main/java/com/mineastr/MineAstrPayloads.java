@@ -97,6 +97,45 @@ public final class MineAstrPayloads {
         }
     }
 
+    public record ThemePreferences(boolean update, int color, int second, int third, int count, int period) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<ThemePreferences> TYPE = MineAstrPayloads.type("theme_preferences");
+        public static final StreamCodec<RegistryFriendlyByteBuf, ThemePreferences> CODEC =
+                StreamCodec.ofMember(ThemePreferences::write, ThemePreferences::read);
+        private static ThemePreferences read(RegistryFriendlyByteBuf buffer) { return new ThemePreferences(buffer.readBoolean(), buffer.readInt(), buffer.readInt(), buffer.readInt(), buffer.readVarInt(), buffer.readVarInt()); }
+        private void write(RegistryFriendlyByteBuf buffer) { buffer.writeBoolean(update).writeInt(color).writeInt(second).writeInt(third).writeVarInt(count).writeVarInt(period); }
+        @Override public CustomPacketPayload.Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    public record PlayerTheme(java.util.UUID id, String name, int color, int second, int third, int count, int period) {
+        public boolean valid() {
+            return count >= 1 && count <= 3 && period >= 4000 && period <= 20000
+                    && MineAstrThemeColor.isReadable(color) && (count < 2 || MineAstrThemeColor.isReadable(second))
+                    && (count < 3 || MineAstrThemeColor.isReadable(third));
+        }
+        public int at(double milliseconds, double position) {
+            return MineAstrThemeColor.gradient(color, second, third, count, milliseconds / period + position * .25);
+        }
+    }
+    public record ThemePalette(boolean reset, List<PlayerTheme> profiles) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<ThemePalette> TYPE = MineAstrPayloads.type("theme_palette");
+        public static final StreamCodec<RegistryFriendlyByteBuf, ThemePalette> CODEC =
+                StreamCodec.ofMember(ThemePalette::write, ThemePalette::read);
+        public ThemePalette { profiles = List.copyOf(profiles); }
+        private static ThemePalette read(RegistryFriendlyByteBuf buffer) {
+            boolean reset = buffer.readBoolean(); int count = buffer.readVarInt();
+            if (count < 0 || count > 128) throw new IllegalArgumentException("theme profile count");
+            var profiles = new ArrayList<PlayerTheme>(count);
+            for (int index = 0; index < count; index++) profiles.add(new PlayerTheme(buffer.readUUID(), buffer.readUtf(64), buffer.readInt(), buffer.readInt(), buffer.readInt(), buffer.readVarInt(), buffer.readVarInt()));
+            return new ThemePalette(reset, profiles);
+        }
+        private void write(RegistryFriendlyByteBuf buffer) {
+            if (profiles.size() > 128) throw new IllegalArgumentException("theme profile count");
+            buffer.writeBoolean(reset).writeVarInt(profiles.size());
+            for (var profile : profiles) buffer.writeUUID(profile.id()).writeUtf(profile.name(), 64).writeInt(profile.color()).writeInt(profile.second()).writeInt(profile.third()).writeVarInt(profile.count()).writeVarInt(profile.period());
+        }
+        @Override public CustomPacketPayload.Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
     public record ImageRef(String id, String name) {}
 
     /** Optional channel: old clients keep their original text and ChatImage packets. */

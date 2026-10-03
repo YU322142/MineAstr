@@ -19,6 +19,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -36,6 +37,9 @@ import net.minecraft.resources.ResourceLocation;
 /** Bounded, asynchronous thumbnail decoding. Only texture upload/rendering uses the client thread. */
 public final class MineAstrChatImages {
     private static final int MAX_IMAGES = 128;
+    private static final long MAX_TEXTURE_PIXELS = 16_777_216L;
+    private static long texturePixels;
+    private static final Semaphore UPLOAD_SLOTS = new Semaphore(2);
     private static final Map<String, Entry> IMAGES = new LinkedHashMap<>(MAX_IMAGES, .75F, true);
     private static final AtomicLong GENERATION = new AtomicLong();
     private static final ThreadPoolExecutor WORKER = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
@@ -81,27 +85,20 @@ public final class MineAstrChatImages {
                     if (data.length > MineAstrPayloads.MAX_BOT_IMAGE_BYTES) throw new IOException("image byte limit");
                     BufferedImage image = decodeThumbnail(data);
                     cacheWrite.run();
-                    Minecraft.getInstance().execute(() -> {
-                        if (generation != GENERATION.get() || IMAGES.get(id) != entry) return;
-                        NativeImage pixels = new NativeImage(image.getWidth(), image.getHeight(), false);
+                    if (!UPLOAD_SLOTS.tryAcquire(5, TimeUnit.SECONDS)) throw new IOException("upload queue saturated");
+                    NativeImage pixels;
+                    try {
+                        pixels = new NativeImage(image.getWidth(), image.getHeight(), false);
                         try {
                             for (int y = 0; y < image.getHeight(); y++) for (int x = 0; x < image.getWidth(); x++) {
                                 int argb = image.getRGB(x, y);
                                 pixels.setPixelRGBA(x, y, (argb & 0xFF00FF00) | ((argb >>> 16) & 0xFF) | ((argb & 0xFF) << 16));
                             }
-                            entry.texture = ResourceLocation.fromNamespaceAndPath("mineastr", "chat/" + id);
-                            Minecraft.getInstance().getTextureManager().register(entry.texture, new DynamicTexture(pixels));
-                            entry.width = image.getWidth();
-                            entry.height = image.getHeight();
-                            MineAstr.LOGGER.debug("MineAstr 聊天缩略图就绪：name={} width={} height={}", entry.name, entry.width, entry.height);
-                        } catch (RuntimeException exc) {
-                            pixels.close();
-                            if (entry.texture != null) Minecraft.getInstance().getTextureManager().release(entry.texture);
-                            entry.texture = null;
-                            entry.failed = true;
-                            MineAstr.LOGGER.warn("MineAstr 聊天缩略图上传失败：{}", exc.getMessage());
-                        }
-                    });
+                        } catch (RuntimeException error) { pixels.close(); throw error; }
+                    } catch (RuntimeException error) { UPLOAD_SLOTS.release(); throw error; }
+                    try {
+                        Minecraft.getInstance().execute(() -> upload(id, entry, generation, pixels, image.getWidth(), image.getHeight()));
+                    } catch (RuntimeException error) { pixels.close(); UPLOAD_SLOTS.release(); throw error; }
                 } catch (Exception exc) {
                     Minecraft.getInstance().execute(() -> {
                         if (generation != GENERATION.get() || IMAGES.get(id) != entry) return;
@@ -116,6 +113,33 @@ public final class MineAstrChatImages {
         }
     }
 
+    private static void upload(String id, Entry entry, long generation, NativeImage pixels, int width, int height) {
+        DynamicTexture texture = null;
+        boolean registered = false;
+        try {
+            if (generation != GENERATION.get() || IMAGES.get(id) != entry) { pixels.close(); return; }
+            texture = new DynamicTexture(pixels);
+            MineAstrChatTextures.smooth(texture, width, height);
+            entry.texture = ResourceLocation.fromNamespaceAndPath("mineastr", "chat/" + id);
+            Minecraft.getInstance().getTextureManager().register(entry.texture, texture);
+            entry.width = width; entry.height = height;
+            texturePixels += (long) width * height;
+            registered = true;
+            var iterator = IMAGES.entrySet().iterator();
+            while (texturePixels > MAX_TEXTURE_PIXELS && iterator.hasNext()) {
+                Entry oldest = iterator.next().getValue();
+                iterator.remove(); release(oldest);
+            }
+            MineAstr.LOGGER.debug("MineAstr 聊天缩略图就绪：name={} width={} height={}", entry.name, width, height);
+        } catch (RuntimeException error) {
+            if (registered) release(entry);
+            else if (texture != null) texture.close();
+            else pixels.close();
+            entry.texture = null; entry.failed = true;
+            MineAstr.LOGGER.warn("MineAstr 聊天缩略图上传失败：{}", error.getMessage());
+        } finally { UPLOAD_SLOTS.release(); }
+    }
+
     static BufferedImage decodeThumbnail(byte[] data) throws IOException {
         try (var input = new MemoryCacheImageInputStream(new ByteArrayInputStream(data))) {
             Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
@@ -126,10 +150,11 @@ public final class MineAstrChatImages {
                 int width = reader.getWidth(0), height = reader.getHeight(0);
                 if (width <= 0 || height <= 0 || (long) width * height > 32_000_000L) throw new IOException("image pixel limit");
                 var parameters = reader.getDefaultReadParam();
-                int sample = Math.max(1, Math.max(width, height) / 512);
+                int sample = Math.max(1, Math.max(width, height) / 1024);
                 parameters.setSourceSubsampling(sample, sample, 0, 0);
                 BufferedImage source = reader.read(0, parameters);
-                var size = MineAstrChatGeometry.fit(width, height, 192, 108);
+                var size = MineAstrChatGeometry.fit(width, height, 1024, 1024);
+                if (source.getWidth() == size.width() && source.getHeight() == size.height()) return source;
                 BufferedImage target = new BufferedImage(size.width(), size.height(), BufferedImage.TYPE_INT_ARGB);
                 Graphics2D graphics = target.createGraphics();
                 try {
@@ -143,6 +168,11 @@ public final class MineAstrChatImages {
 
     public static void renderRow(GuiGraphics graphics, MineAstrChatLayout.ImageRow row, int lineBottom,
             int lineHeight, float scale, float alpha) {
+        renderRow(graphics, row, lineBottom, lineHeight, scale, alpha, 0);
+    }
+
+    public static void renderRow(GuiGraphics graphics, MineAstrChatLayout.ImageRow row, int lineBottom,
+            int lineHeight, float scale, float alpha, float offsetY) {
         Entry entry = IMAGES.get(row.id());
         int top = lineBottom - lineHeight - row.row() * lineHeight + 2;
         if (entry == null || entry.texture == null) {
@@ -158,9 +188,9 @@ public final class MineAstrChatImages {
         var size = MineAstrChatGeometry.fit(entry.width, entry.height, row.width(), row.height());
         // Scissor uses screen GUI coordinates; the enclosing pose uses vanilla chat scale/indent.
         graphics.enableScissor((int) Math.floor((row.column() + 4) * scale),
-                (int) Math.floor((lineBottom - lineHeight) * scale),
+                (int) Math.floor((lineBottom - lineHeight + offsetY) * scale),
                 (int) Math.ceil((row.column() + size.width() + 4) * scale),
-                (int) Math.ceil(lineBottom * scale));
+                (int) Math.ceil((lineBottom + offsetY) * scale));
         try {
             graphics.setColor(1, 1, 1, alpha);
             graphics.blit(entry.texture, row.column(), top, size.width(), size.height(),
@@ -179,7 +209,11 @@ public final class MineAstrChatImages {
     }
 
     private static void release(Entry entry) {
-        if (entry.texture != null) Minecraft.getInstance().getTextureManager().release(entry.texture);
+        if (entry.texture != null) {
+            Minecraft.getInstance().getTextureManager().release(entry.texture);
+            texturePixels = Math.max(0, texturePixels - (long) entry.width * entry.height);
+            entry.texture = null;
+        }
     }
 
     private static final class Entry {

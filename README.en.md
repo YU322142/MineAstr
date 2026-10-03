@@ -1,6 +1,6 @@
-# MineAstr 0.7.24
+# MineAstr 0.7.25
 
-0.7.24 restores binding checks before world entry on NeoForge 1.21.1 and fixes empty translation caching and regional locale matching. Plugin and Mod versions match; protocol 1 is unchanged. Update the server Mod to activate the login fix.
+0.7.25 adds continuous movement of the whole chat queue, ModernUI easing, high-resolution platform icons and images, and F8 controls for image size, chat height and animations. Existing translation, binding checks, MC-name priority, asynchronous optimizations and logging are retained. Plugin and Mod versions match; protocol 1 is unchanged.
 
 [中文](README.md) · [Configuration reference](docs/CONFIGURATION.en.md) · [Changelog](CHANGELOG.md) · [中文更新日志](CHANGELOG.zh-CN.md) · [External translation API](EXTERNAL_TRANSLATION_API.md)
 
@@ -12,11 +12,11 @@ MineAstr is an AstrBot bridge mod for Minecraft 1.21.1 on NeoForge. It forwards 
 - Original upstream: [Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr).
 - Immersive Paintings integration fork: [YU322142/ImmersivePaintings](https://github.com/YU322142/ImmersivePaintings), on branch `1.21.1-neoforge`.
 
-The integration between MineAstr 0.7.24 and Immersive Paintings 0.7.15 is jointly maintained by these two community forks. It is not an official integration supplied by either upstream project. Report related issues to the corresponding fork.
+The integration between MineAstr 0.7.25 and Immersive Paintings 0.7.15 is jointly maintained by these two community forks. It is not an official integration supplied by either upstream project. Report related issues to the corresponding fork.
 
 | Component | Requirement |
 | --- | --- |
-| MineAstr | `0.7.24` |
+| MineAstr | `0.7.25` |
 | Minecraft | `1.21.1` |
 | NeoForge | `21.1.219` or newer |
 | Java | `21` |
@@ -50,7 +50,7 @@ The client is not a hard requirement for ordinary chat bridging. It is required 
 
 ## Installation
 
-1. Put `mineastr-neoforge-1.21.1-0.7.24.jar` in the server's `mods/` directory.
+1. Put `mineastr-neoforge-1.21.1-0.7.25.jar` in the server's `mods/` directory.
 2. Put the same JAR in the `mods/` directory of every client that participates in translation features.
 3. After the first startup, edit the server's `config/mineastr-common.toml`.
 4. Configure the same WebSocket path and token in AstrBot's Minecraft adapter.
@@ -69,7 +69,7 @@ Real endpoints and tokens must remain in the runtime environment and must not be
 
 ## Translation Display Behavior
 
-Version 0.7.24 gives signs, entities, and Immersive Paintings one unified “current crosshair target” lifecycle:
+Version 0.7.25 gives signs, entities, and Immersive Paintings one unified “current crosshair target” lifecycle:
 
 - A translation is displayed only while its target remains valid.
 - Looking away, opening a screen, hiding the HUD, changing worlds, or invalidating the target clears it immediately.
@@ -80,7 +80,7 @@ The setting that controls whether ordinary chat also displays source text is ind
 
 ## Bot Images and ChatImage Integration
 
-- MineAstr `0.7.24` is recommended on both server and client; inline thumbnails are built in, and ChatImage is optional.
+- MineAstr `0.7.25` is recommended on both server and client; inline thumbnails are built in, and ChatImage is optional.
 - `bridge_settings.relay_images_to_game` in the AstrBot plugin is the Bot-side master switch.
 - Each client can disable “Receive image messages” under F8. The preference is stored independently of ChatImage; actual delivery requires MineAstr inline-thumbnail or ChatImage capability. Existing `acceptBotImages=false` settings are honoured.
 - Temporary Bot-local images are safely inlined within a configured limit; public HTTP(S) images are fetched by the bounded MineAstr worker. Bot-local paths and image URLs are never printed as ordinary chat text.
@@ -92,7 +92,7 @@ When native chat translation is enabled, MineAstr republishes the translation as
 
 Image translation requires:
 
-- MineAstr `0.7.24` on both client and server.
+- MineAstr `0.7.25` on both client and server.
 - Immersive Paintings `0.7.15+1.21.1` on both client and server.
 - A connected AstrBot bridge with image-translation support.
 - Game translations and floating translations enabled on the client.
@@ -101,7 +101,7 @@ Immersive Paintings obtains the complete image from its own cache, compresses it
 
 ## Common Commands
 
-The 0.7.24 F8 screen supports scrolling, undo, reset, independent image preferences and a shortcut toggle; footer buttons fit smaller windows. UI text and units use translation keys. Add or override `assets/mineastr/lang/<locale>.json` as described in the [configuration reference](docs/CONFIGURATION.en.md). `/mineastr-images on|off` updates the current player's server-side image preference.
+The 0.7.25 F8 screen supports scrolling, undo, reset, independent image preferences and a shortcut toggle; footer buttons fit smaller windows. UI text and units use translation keys. Add or override `assets/mineastr/lang/<locale>.json` as described in the [configuration reference](docs/CONFIGURATION.en.md). `/mineastr-images on|off` updates the current player's server-side image preference.
 
 | Command | Purpose |
 | --- | --- |
@@ -126,7 +126,7 @@ The 0.7.24 F8 screen supports scrolling, undo, reset, independent image preferen
 | --- | --- |
 | The log says MineAstr is disabled by configuration | `enabled` in the active `mineastr-common.toml` |
 | It never connects | `websocketUrl`, the AstrBot listener address, firewall, and token |
-| Signs work but paintings do not translate | Immersive Paintings 0.7.15 and whether MineAstr 0.7.24 is also installed on the client |
+| Signs work but paintings do not translate | Immersive Paintings 0.7.15 and whether MineAstr 0.7.25 is also installed on the client |
 | Bot images only appear as `[图片]` | Whether ChatImage is installed, F8 image receiving is enabled, and Bot-side image relay is enabled |
 | The overlay remains after looking away | Whether the client contains an old MineAstr or old painting JAR alongside the current one |
 | Image requests produce no result | AstrBot image capability and the client's complete-image cache |
@@ -149,7 +149,7 @@ This NeoForge 1.21.1 branch is licensed under `AGPL-3.0-or-later`. See [LICENSE]
 
 Generative AI was used to assist design, coding, review, testing, and documentation work. Maintainers remain responsible for reviewing and validating all published content.
 
-## In-game chat layout (0.7.24)
+## In-game chat layout (0.7.25)
 
 Platform icons (Minecraft, Discord, QQ) and names occupy the left column; text and proportionally sized thumbnails occupy the right. Bot replies retain the recipient platform. Vanilla input, history, scrolling and body link styles are retained. Inline thumbnails work without ChatImage and respect the F8 reception setting.
 
@@ -158,3 +158,9 @@ Platform icons (Minecraft, Discord, QQ) and names occupy the left column; text a
 Sender names use bold text. The layout retains logical text and Component styles and uses the Font/StringSplitter APIs enhanced by ModernUI. User typefaces, anti-aliasing, TrueType/OpenType fallback, Unicode shaping, bidi, emoji and link/hover styles remain available. No ModernUI font settings are overwritten. ModernUI 3.13.0.1, ModernFix 5.27.20 and ChatImage 1.4.7 are tested together.
 
 In-game names prefer the oldest bound Minecraft name; otherwise they use the QQ/Discord username. Source platform icons are retained. Display lookup uses a bounded cache (512 entries, 30-second TTL), invalidated on binding changes; login authorization stays live.
+
+0.7.25 adds smooth movement of the whole chat queue, ModernUI easing, independent high-resolution icons and images. F8 controls image scale, maximum chat height, animation toggles, duration and arrival distance. See [release notes](RELEASE_NOTES.md).
+
+Player themes offer solid, two-color and three-color slow gradients (4–20 seconds) for nicknames and message text only. Platform icons and images retain their colors. Dark colors are rejected, never brightened; every active stop must have at least 4.5:1 contrast against #303030. RGB sliders, hex input and a live preview are in F8. Themes are authenticated and stored by UUID on the server, including offline players. Gradient lookup tables are prepared once; rendering preserves ModernUI fonts, shaping, hover and click events.
+
+Forwarded QQ/Discord messages use the same saved MC identity and theme. The source icon stays QQ/Discord.

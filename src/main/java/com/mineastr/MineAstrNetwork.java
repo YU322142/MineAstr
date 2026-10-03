@@ -15,6 +15,11 @@ public final class MineAstrNetwork {
 
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar("1").optional();
+        registrar.playToServer(MineAstrPayloads.ThemePreferences.TYPE, MineAstrPayloads.ThemePreferences.CODEC,
+                (payload, context) -> context.enqueueWork(() -> withServerPlayer(context,
+                        player -> MineAstrPlayerThemes.receive(player, payload))));
+        registrar.playToClient(MineAstrPayloads.ThemePalette.TYPE, MineAstrPayloads.ThemePalette.CODEC,
+                (payload, context) -> invokeClientHandler(context, "handleThemePalette", MineAstrPayloads.ThemePalette.class, payload));
         registrar.playToServer(MineAstrPayloads.ClientHello.TYPE, MineAstrPayloads.ClientHello.CODEC,
                 MineAstrNetwork::handleClientHello);
         registrar.playToServer(MineAstrPayloads.TranslationPreferences.TYPE,
@@ -167,6 +172,10 @@ public final class MineAstrNetwork {
 
     public static void sendChatPresentation(ServerPlayer player, MineAstrPayloads.ChatPresentation payload) {
         if (canSendChatPresentation(player)) PacketDistributor.sendToPlayer(player, payload);
+    }
+
+    public static void sendThemePalette(ServerPlayer player, MineAstrPayloads.ThemePalette payload) {
+        if (canSend(player, MineAstrPayloads.ThemePalette.TYPE)) PacketDistributor.sendToPlayer(player, payload);
     }
 
     private static boolean canSend(ServerPlayer player, CustomPacketPayload.Type<?> type) {
