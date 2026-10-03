@@ -1,6 +1,6 @@
 # MineAstr 0.7.27
 
-0.7.28 新增现有模型选择与翻译回退、独立目标并行发送、正确的聊天图片透明混合及有界 GIF 播放。
+0.7.29 修复大 GIF 下载、QQ/Discord 动图提取及慢平台事件阻塞 WebSocket 心跳的问题。
 
 [English](README.en.md) · [配置参考](docs/CONFIGURATION.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md) · [Changelog](CHANGELOG.md) · [外部翻译 API](EXTERNAL_TRANSLATION_API.md)
 

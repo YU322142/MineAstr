@@ -12,6 +12,12 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class MineAstrChatImagesTest {
+    @Test void gifDownloadLimitUsesSignatureInsteadOfFilenameOrMime() {
+        assertEquals(16 * 1024 * 1024, MineAstrChatImages.downloadLimit("GIF89a".getBytes()));
+        assertEquals(16 * 1024 * 1024, MineAstrChatImages.downloadLimit("GIF87a".getBytes()));
+        assertEquals(MineAstrPayloads.MAX_BOT_IMAGE_BYTES, MineAstrChatImages.downloadLimit(new byte[]{1, 2, 3}));
+        assertEquals(MineAstrPayloads.MAX_BOT_IMAGE_BYTES, MineAstrChatImages.downloadLimit("GIF89".getBytes()));
+    }
     @Test void thumbnailsKeepAspectRatioAndNeverUpscale() {
         assertEquals(new MineAstrChatGeometry.Size(96, 48), MineAstrChatGeometry.fit(800, 400, 96, 54));
         assertEquals(new MineAstrChatGeometry.Size(27, 54), MineAstrChatGeometry.fit(400, 800, 96, 54));

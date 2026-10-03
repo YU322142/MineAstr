@@ -18,6 +18,7 @@ import org.w3c.dom.Node;
 /** Decodes bounded GIF timelines off the render thread, including disposal and loop metadata. */
 final class MineAstrGif {
     static final int MAX_FRAMES = 256;
+    static final int MAX_DOWNLOAD_BYTES = 16 * 1024 * 1024;
     static final long MAX_FRAME_PIXELS = 4_194_304L;
 
     record Animation(List<BufferedImage> frames, int[] delays, int plays) {

@@ -84,7 +84,7 @@ public final class MineAstrChatImages {
                         if (response.statusCode() != 200) throw new IOException("HTTP " + response.statusCode());
                         data = response.body();
                     }
-                    if (data.length > MineAstrPayloads.MAX_BOT_IMAGE_BYTES) throw new IOException("image byte limit");
+                    if (data.length > downloadLimit(data)) throw new IOException("image byte limit");
                     MineAstrGif.Animation animation = MineAstrGif.matches(data) ? MineAstrGif.decode(data) : null;
                     BufferedImage image = animation == null ? decodeThumbnail(data) : animation.frames().getFirst();
                     cacheWrite.run();
@@ -180,6 +180,10 @@ public final class MineAstrChatImages {
         entry.dynamicTexture.upload();
         MineAstrChatTextures.smooth(entry.dynamicTexture, entry.width, entry.height);
         entry.frameIndex = index;
+    }
+
+    static int downloadLimit(byte[] prefix) {
+        return MineAstrGif.matches(prefix) ? MineAstrGif.MAX_DOWNLOAD_BYTES : MineAstrPayloads.MAX_BOT_IMAGE_BYTES;
     }
 
     static BufferedImage decodeThumbnail(byte[] data) throws IOException {
@@ -310,6 +314,8 @@ public final class MineAstrChatImages {
     private static final class LimitedBody implements HttpResponse.BodySubscriber<byte[]> {
         private final CompletableFuture<byte[]> result = new CompletableFuture<>();
         private final ByteArrayOutputStream output = new ByteArrayOutputStream();
+        private final byte[] prefix = new byte[6];
+        private int prefixLength;
         private volatile Flow.Subscription subscription;
         LimitedBody() {
             result.orTimeout(15, TimeUnit.SECONDS).whenComplete((value, error) -> {
@@ -323,7 +329,11 @@ public final class MineAstrChatImages {
         }
         @Override public void onNext(List<ByteBuffer> chunks) {
             for (ByteBuffer chunk : chunks) {
-                if (chunk.remaining() > MineAstrPayloads.MAX_BOT_IMAGE_BYTES - output.size()) {
+                if (prefixLength < prefix.length) {
+                    ByteBuffer header = chunk.duplicate();
+                    while (header.hasRemaining() && prefixLength < prefix.length) prefix[prefixLength++] = header.get();
+                }
+                if (chunk.remaining() > downloadLimit(prefix) - output.size()) {
                     subscription.cancel();
                     result.completeExceptionally(new IOException("image byte limit"));
                     return;
