@@ -1,10 +1,10 @@
 # MineAstr WebSocket 协议
 
-v0.6.30 扩展可选的聊天媒体字段：`chat` 消息可带 `media` 数组。旧版 Mod 会忽略该字段；新版 Mod 只向已声明 ChatImage 能力且允许接收的客户端发送图片，不会把本地路径回显到聊天。
+v0.6.30 扩展可选的聊天媒体字段：`chat` 消息可带 `media` 数组。旧版 Mod 会忽略该字段；新版 Mod 只向已声明图片渲染能力且允许接收的客户端发送图片，不会把本地路径回显到聊天。
 
-本文描述 AstrBot 插件 `v0.7.23` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。外置翻译术语库仅在 AstrBot 端读取，不增加协议字段。
+本文描述 AstrBot 插件 `v0.7.24` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。外置翻译术语库仅在 AstrBot 端读取，不增加协议字段。
 
-0.7.23 将正文和引用各自的目标语言译文组合后放入现有 `translations` 字段，不新增协议字段。混合源语言的引用消息不使用单一正文源语言过滤整条消息；旧 Mod 仍可显示原文。完整累计变化见 [发布说明](RELEASE_NOTES.md)。
+0.7.24 将正文和引用各自的目标语言译文组合后放入现有 `translations` 字段，不新增协议字段。混合源语言的引用消息不使用单一正文源语言过滤整条消息；旧 Mod 仍可显示原文。本次版本变化见 [发布说明](RELEASE_NOTES.md)。
 
 ## 连接与认证
 
@@ -23,7 +23,7 @@ Authorization: Bearer <token>
   "protocol": 1,
   "server_id": "survival",
   "server_name": "Survival Server",
-  "mod_version": "0.7.23",
+  "mod_version": "0.7.24",
   "chat_capabilities": ["native_chat_translation"]
 }
 ```
@@ -133,7 +133,7 @@ AstrBot 插件只发送纯文本，不把译文解析为命令或 JSON 组件。
 }
 ```
 
-服务端不会转发本地路径；客户端只有在安装 ChatImage 并在 F8 开启 Bot 图片接收时才会显示图片。图片分片完成后由客户端写入 MineAstr 缓存，并以 ChatImage CICode 渲染；缺少 ChatImage、校验失败或玩家关闭接收时只保留文字，不显示 URL 或文件路径。
+服务端不会转发本地路径；客户端只有在具备图片渲染能力并在 F8 开启 Bot 图片接收时才会显示图片。新版自带有界异步缩略图，旧版仍使用 ChatImage CICode；校验失败或玩家关闭接收时不会泄露 URL 或文件路径。
 
 ### Minecraft 告示牌翻译
 
@@ -441,3 +441,11 @@ AstrBot 返回：
 - 不要因为 AstrBot 侧已经判断管理员，就在 Mod 侧允许任意命令。
 - 截图继续受客户端同意、大小、格式、冷却和超时限制。
 - 所有文本进入 Minecraft 命令、JSON 组件或日志前都要按目标上下文转义；聊天文本不能当作命令执行。
+
+## 0.7.24 平台与客户端展示扩展
+
+AstrBot → Mod 的 `chat` 可增加 `sender_platform`，有效值为 `minecraft`、`qq`、`discord`；机器人回复取请求来源平台，自定义平台 ID 在插件端映射。该字段省略或未知时回退 Minecraft；旧 Mod 会忽略它。
+
+NeoForge 可选客户端通道 `mineastr:chat_presentation` 按序编码 platform（UTF-8 上限 16）、senderName（64）、已按玩家语言选择的正文（16384）、VarInt 图片数（0–8），以及每张图片的 id（64）和 name（128）。服务器仅在连接声明该通道时使用，先发正文/图片引用，再发原有 `bot_image_chunk`，引用 ID 与分片 ID 一致。无该通道时保留旧流程，分片 CODEC 和协议号 1 不变。
+
+旧 `BotImagePreferences.chatImageAvailable` 在新版客户端表示具备图片渲染能力，包括 MineAstr 自带缩略图。实际发送仍须服务端启用图片且玩家接受；旧客户端仍依赖 ChatImage。

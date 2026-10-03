@@ -342,6 +342,7 @@ class MinecraftConnectionManager:
         translations: dict[str, str] | None = None,
         show_original: bool = False,
         media: list[dict[str, str]] | None = None,
+        sender_platform: str = "minecraft",
     ) -> None:
         content = _trim_outbound_content(content, self._outbound_max_message_length)
         if not content:
@@ -350,6 +351,7 @@ class MinecraftConnectionManager:
             "type": "chat",
             "message_id": str(uuid.uuid4()),
             "sender_name": _trim_sender_name(sender_name, self._bot_display_name),
+            "sender_platform": sender_platform if sender_platform in {"minecraft", "qq", "discord"} else "minecraft",
             "content": content,
         }
         localized = _normalize_translations(
@@ -614,26 +616,34 @@ class MinecraftPlatformEvent(AstrMessageEvent):
         translation_options: Callable[
             [str, str], Awaitable[dict[str, Any]]
         ] | None = None,
+        image_relay_handler: Callable[[list[dict[str, str]]], Any] | None = None,
     ):
         super().__init__(message_str, message_obj, platform_meta, session_id)
         self._connection_manager = connection_manager
         self._bot_display_name = bot_display_name
         self._translation_options = translation_options
         self._translation_origin_fallback = session_id
+        self._image_relay_handler = image_relay_handler
 
     async def send(self, message: MessageChain):
         content = _plain_text_from_chain(message)
-        if content:
+        media = _image_media_from_chain(message)
+        if self._image_relay_handler is not None and media:
+            try:
+                prepared = self._image_relay_handler(media)
+                media = await prepared if inspect.isawaitable(prepared) else prepared
+            except Exception as exc:
+                logger.warning("MineAstr MC 回复图片处理失败：%s", exc)
+                media = []
+        else:
+            media = []
+        if content or media:
+            content = content or "[图片]"
             options: dict[str, Any] = {}
             if self._translation_options is not None:
-                origin = str(
-                    getattr(self, "unified_msg_origin", "")
-                    or self._translation_origin_fallback
-                )
+                origin = str(getattr(self, "unified_msg_origin", "") or self._translation_origin_fallback)
                 options = await self._translation_options(content, origin)
-            await self._connection_manager.send_chat(
-                content, self._bot_display_name, **options
-            )
+            await self._connection_manager.send_chat(content, self._bot_display_name, media=media, **options)
         await super().send(message)
 
 
@@ -713,10 +723,25 @@ class MinecraftPlatformAdapter(Platform):
         self._native_chat_policy_handler: Callable[
             [], Awaitable[dict[str, Any]] | dict[str, Any]
         ] | None = None
+        self._chat_platform_handler: Callable[[str], str] | None = None
         self._native_chat_policy_task: asyncio.Task | None = None
         self._websocket_request_tasks: dict[
             web.WebSocketResponse, set[asyncio.Task[Any]]
         ] = {}
+
+    def set_chat_platform_handler(self, handler: Callable[[str], str] | None) -> None:
+        self._chat_platform_handler = handler
+
+    def _chat_platform(self, origin: str) -> str:
+        handler = getattr(self, "_chat_platform_handler", None)
+        if handler is not None:
+            platform = handler(origin)
+            if platform in {"minecraft", "qq", "discord"}:
+                return platform
+        platform_id = str(origin or "").split(":", 1)[0].casefold()
+        if platform_id in {"qq", "default", "aiocqhttp", "aqqbot", "qq_official"}: return "qq"
+        if platform_id in {"discord", "dc"}: return "discord"
+        return "minecraft"
 
     def set_chat_translation_handler(
         self,
@@ -985,7 +1010,7 @@ class MinecraftPlatformAdapter(Platform):
             content = "[图片]"
         options = await self._chat_translation_options(content, str(session))
         await self.connection_manager.send_chat(
-            content, self.bot_display_name, media=media, **options
+            content, self.bot_display_name, media=media, sender_platform="minecraft", **options
         )
 
     async def relay_chat(
@@ -1016,7 +1041,7 @@ class MinecraftPlatformAdapter(Platform):
                 else {}
             )
         await self.connection_manager.send_chat(
-            content, sender_name, server_id, media=media, **options
+            content, sender_name, server_id, media=media, sender_platform=self._chat_platform(origin), **options
         )
 
     async def query_status(self, server_id: str | None = None) -> dict[str, Any]:
@@ -1759,6 +1784,7 @@ class MinecraftPlatformAdapter(Platform):
             connection_manager=self.connection_manager,
             bot_display_name=self.bot_display_name,
             translation_options=self._chat_translation_options,
+            image_relay_handler=self._image_relay_handler,
         )
         self.commit_event(event)
 

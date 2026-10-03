@@ -17,4 +17,4 @@ See [AQQBOT_MIGRATION.md](AQQBOT_MIGRATION.md) for the compatibility boundary an
 
 ## ChatImage
 
-The optional Minecraft image display integration follows the public CICode message format documented by [kitUIN/ChatImage](https://github.com/kitUIN/ChatImage). MineAstr does not bundle, redistribute, or modify ChatImage; users who want Bot images in Minecraft install a compatible ChatImage client mod themselves. Without it, MineAstr keeps the text bridge and suppresses raw local paths.
+The optional Minecraft image display integration follows the public CICode message format documented by [kitUIN/ChatImage](https://github.com/kitUIN/ChatImage). MineAstr does not bundle, redistribute, or modify ChatImage; version 0.7.24 clients provide built-in inline thumbnails. ChatImage remains an independent optional mod. Legacy clients without rendering capability retain the text bridge and suppress raw local paths.

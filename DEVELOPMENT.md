@@ -1,8 +1,8 @@
 # MineAstr AstrBot 插件开发交接 / Developer Handoff
 
-0.7.23 修复 NeoForge 登录绑定检查未执行、空译文缓存及区域语言匹配问题。插件与模组统一版本，协议仍为 1；服务端须更新模组才能恢复进世界前的绑定校验。
+0.7.24 重写 Minecraft 聊天显示：MC / Discord / QQ 图标、发送人和正文分列，机器人回复沿用提问者的平台，图片使用有界异步内联缩略图。保留 0.7.24 的翻译、登录绑定、ZIP 异步优化及原有日志。插件与模组统一版本，Fabric 继续停止支持。
 
-本文按文件说明 0.7.23 插件的职责和后续 TODO，避免接手者依赖目录猜测。
+本文按文件说明 0.7.24 插件的职责和后续 TODO，避免接手者依赖目录猜测。
 
 ## 文件职责
 
@@ -27,11 +27,11 @@
 
 `AstrBot MessageChain/Image` → `MineAstrPlugin._game_media_payloads` → `MinecraftPlatformAdapter.send_chat` → MineAstr `chat.media`。
 
-公共 HTTPS 地址保留为地址；本地文件或 base64 只在大小、真实文件签名和 SHA-256 校验通过后转换为内联字段。任何本地路径都不会写入游戏聊天。客户端没有 ChatImage、服务端关闭总开关或玩家关闭 F8 接收时，图片被安全忽略，文字链路仍可用。
+公共 HTTPS 地址保留为地址；本地文件或 base64 只在大小、真实文件签名和 SHA-256 校验通过后转换为内联字段。任何本地路径都不会写入游戏聊天。客户端没有图片渲染能力、服务端关闭总开关或玩家关闭 F8 接收时，图片被安全忽略，文字链路仍可用。
 
 ## TODO
 
-本版 151 项单元测试通过；真实客户端 GUI 与 ChatImage 视觉显示仍需实机验证。[累计发布说明](RELEASE_NOTES.md) 记录两侧统一版本和全部变化。
+本版 166 项单元测试通过；真实 NeoForge + ModernFix + ChatImage 客户端已验证渲染与资源重载。[本次发布说明](RELEASE_NOTES.md) 记录两侧统一版本和本次变化。
 
 - [ ] 通过 AstrBot 真实 `MessageEventResult` 发送本地图片、URL 图片和图片-only 回复。
 - [ ] 增加图片转发统计（跳过原因、字节数、数量），但日志不得包含本地路径。
@@ -42,3 +42,17 @@
 ## English summary
 
 `main.py` owns plugin orchestration and safe media preparation; `minecraft_adapter.py` owns WebSocket transport; `_conf_schema.json` owns the WebUI controls; packaging and tests are isolated in `scripts/` and `tests/`. Local paths are never exposed to Minecraft. The TODO list is the intended next work queue.
+
+## 0.7.24 平台显示
+
+`_game_chat_platform` 从通知配置的自定义平台 ID 及适配器元信息判断平台；适配器回传 `sender_platform`，机器人回复沿用事件 origin。MinecraftPlatformEvent.send 也调用既有异步媒体准备器，使纯图片回复能通过图片接收策略。166 项测试包含平台映射、译文与媒体保留、Minecraft 图片回复。
+
+新 Release 只比較上一正式发布版本；历史只放 CHANGELOG。
+
+## ModernUI 字体兼容
+
+昵称使用粗体。正文通过 Minecraft 的 Font、StringSplitter 和 Component 样式 API 排版，沿用 ModernUI 3.13.0.1 已接管的 TrueType/OpenType、黑体/字体回退、抗锯齿与 Unicode 渲染；不覆盖玩家的字体设置。按逻辑文字和样式分段换行，保留粗体、颜色、链接、悬停、双向文字及 Emoji，避免把视觉顺序文字再次重排。ModernFix 5.27.20 继续负责性能优化和兼容性修复。
+
+[ModernUI 官方说明](https://github.com/BloCamLimb/ModernUI-MC) · [ModernFix 1.21.1 补丁说明](https://github.com/embeddedt/ModernFix/wiki/1.21.1-Summary-of-Patches)
+
+游戏昵称仅由 `_game_sender_name` / `_game_reply_context` 用 owner_key 查询绑定，不按昵称猜测账号。BindingStore.display_player_name 以最早绑定为准，最多 512 项、30 秒 TTL；冷读通过 asyncio.to_thread 和绑定写锁合并，bind/unbind/migrate 即时失效。缓存只服务显示，登录与白名单查询仍读取数据库。普通消息、引用、Discord 编辑、撤回和 /mc say 使用同一解析器，跨平台正文保持社交昵称。

@@ -447,7 +447,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.7.23",
+    "0.7.24",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -566,6 +566,8 @@ class MineAstrPlugin(Star):
             self._listener_adapter, "set_chat_translation_handler"
         ):
             self._listener_adapter.set_chat_translation_handler(None)
+        if self._listener_adapter is not None and hasattr(self._listener_adapter, "set_chat_platform_handler"):
+            self._listener_adapter.set_chat_platform_handler(None)
         if self._listener_adapter is not None and hasattr(
             self._listener_adapter, "set_sign_translation_handler"
         ):
@@ -1036,6 +1038,8 @@ class MineAstrPlugin(Star):
             self._listener_adapter, "set_chat_translation_handler"
         ):
             self._listener_adapter.set_chat_translation_handler(None)
+        if self._listener_adapter is not None and hasattr(self._listener_adapter, "set_chat_platform_handler"):
+            self._listener_adapter.set_chat_platform_handler(None)
         if self._listener_adapter is not None and hasattr(
             self._listener_adapter, "set_image_relay_handler"
         ):
@@ -1047,6 +1051,8 @@ class MineAstrPlugin(Star):
         self._listener_adapter = None
         if adapter is not None and hasattr(adapter, "add_bridge_event_listener"):
             adapter.add_bridge_event_listener(self._on_minecraft_bridge_event)
+            if hasattr(adapter, "set_chat_platform_handler"):
+                adapter.set_chat_platform_handler(self._game_chat_platform)
             if hasattr(adapter, "set_chat_translation_handler"):
                 adapter.set_chat_translation_handler(
                     self._translate_game_message
@@ -1066,6 +1072,25 @@ class MineAstrPlugin(Star):
                     self._native_chat_policy
                 )
             self._listener_adapter = adapter
+
+    def _game_chat_platform(self, origin: str) -> str:
+        """A bot reply keeps the recipient's origin platform, including custom adapter IDs."""
+        platform_id = str(origin or "").split(":", 1)[0].casefold()
+        if platform_id == "minecraft": return "minecraft"
+        for key, family in (("qq_notification_settings", "qq"), ("discord_notification_settings", "discord")):
+            profile = self._cfg(key)
+            if isinstance(profile, dict) and platform_id in {item.casefold() for item in parse_items(profile.get("platform_ids"))}:
+                return family
+        for adapter in self._platform_instances():
+            try:
+                if str(adapter.meta().id).casefold() != platform_id: continue
+                if self._is_discord_adapter(adapter): return "discord"
+                if self._is_qq_adapter(adapter): return "qq"
+            except Exception:
+                continue
+        if platform_id in {"default", "qq", "aiocqhttp", "aqqbot", "qq_official"}: return "qq"
+        if platform_id in {"discord", "dc"}: return "discord"
+        return "minecraft"
 
     def _platform_instances(self) -> list[Any]:
         manager = getattr(self.context, "platform_manager", None)
@@ -1217,6 +1242,7 @@ class MineAstrPlugin(Star):
             message_id=message_id,
             origin=origin,
             sender_name=sender_name,
+            owner_key=self._identity(event)["owner_key"],
         )
         return key
 
@@ -1228,6 +1254,7 @@ class MineAstrPlugin(Star):
         message_id: str,
         origin: str,
         sender_name: str,
+        owner_key: str = "",
     ) -> None:
         records = getattr(self, "_relay_message_records", None)
         if not isinstance(records, dict):
@@ -1241,6 +1268,8 @@ class MineAstrPlugin(Star):
             "sender_name": sender_name,
             "created_at": now,
         }
+        if owner_key:
+            records[key]["owner_key"] = owner_key
         cutoff = now - self._bounded_cfg_int(
             "relay_record_retention_seconds", 300, 30 * 86400
         )
@@ -1372,9 +1401,12 @@ class MineAstrPlugin(Star):
         adapter = self._minecraft_adapter()
         if adapter is not None and hasattr(adapter, "relay_chat"):
             try:
+                game_sender = await self._game_sender_name(
+                    str(record.get("owner_key") or ""), sender_name
+                )
                 await adapter.relay_chat(
-                    notice,
-                    sender_name,
+                    f"[{game_sender}] 消息已撤回",
+                    game_sender,
                     origin=origin,
                 )
             except Exception as exc:
@@ -1964,6 +1996,7 @@ class MineAstrPlugin(Star):
                 message_id=message_id,
                 origin=origin,
                 sender_name=sender_name,
+                owner_key=f"{platform_id}:{sender_id}",
             )
         target_sessions = self._relay_target_sessions(origin)
         adapter = self._minecraft_adapter()
@@ -1992,10 +2025,11 @@ class MineAstrPlugin(Star):
             )
             return
 
+        game_sender = await self._game_sender_name(f"{platform_id}:{sender_id}", sender_name)
         game_template = str(self._cfg("chat_to_game_template"))
         game_values = {
             "platform": platform_id,
-            "sender": sender_name,
+            "sender": game_sender,
             "user_id": sender_id,
         }
 
@@ -2026,7 +2060,7 @@ class MineAstrPlugin(Star):
                     game_content(edited_prefix + filtered + media_marker),
                     self._cfg_int("max_relay_length"),
                 ),
-                sender_name,
+                game_sender,
                 **relay_kwargs,
             )
         except Exception as exc:
@@ -2059,6 +2093,38 @@ class MineAstrPlugin(Star):
             "user_id": user_id,
             "owner_display": sender_name,
         }
+
+    async def _game_sender_name(self, owner_key: str, fallback: str) -> str:
+        """Resolve MC display identity without changing social relay identities."""
+        store = getattr(self, "_binding_store", None)
+        if store is None or not owner_key:
+            return fallback
+        try:
+            resolver = getattr(store, "display_player_name", None)
+            if callable(resolver):
+                return await resolver(owner_key) or fallback
+            records = await store.get_by_owner(owner_key)
+            return next((r.player_name for r in records if r.player_name), fallback)
+        except Exception as exc:
+            logger.warning("MineAstr MC 昵称查询失败，使用平台昵称：%s", type(exc).__name__)
+            return fallback
+
+    async def _game_reply_context(
+        self, context: dict[str, str], platform_id: str
+    ) -> dict[str, str]:
+        if not context or platform_id == "minecraft":
+            return context
+        record = getattr(self, "_relay_message_records", {}).get(
+            f"{platform_id}:{context.get('message_id', '')}", {}
+        )
+        owner_key = str(record.get("owner_key") or "")
+        if not owner_key and context.get("sender_id"):
+            owner_key = f"{platform_id}:{context['sender_id']}"
+        if not owner_key:
+            return context
+        return {**context, "sender": await self._game_sender_name(
+            owner_key, str(context.get("sender") or record.get("sender_name") or "")
+        )}
 
     def _is_bridge_admin(self, event: AstrMessageEvent) -> bool:
         if event.is_admin():
@@ -2501,11 +2567,15 @@ class MineAstrPlugin(Star):
             ).strip()
             message_id = str(getattr(component, "id", None) or "").strip()
             if quoted_text or sender or message_id:
-                return {
+                context = {
                     "message_id": message_id,
                     "sender": sender,
                     "text": trim_message(quoted_text, 240),
                 }
+                sender_id = str(getattr(component, "sender_id", None) or "").strip()
+                if sender_id:
+                    context["sender_id"] = sender_id
+                return context
         return {}
 
     @staticmethod
@@ -4008,12 +4078,15 @@ class MineAstrPlugin(Star):
         players = list(
             dict.fromkeys(re.findall(r"(?<![\w<])@([A-Za-z0-9_]{3,16})", text))
         )
+        if not players:
+            return
+        game_sender = await self._game_sender_name(identity["owner_key"], identity["owner_display"])
         for player in players[:5]:
             try:
                 await adapter.notify_player(
                     None,
                     player,
-                    identity["owner_display"],
+                    game_sender,
                     identity["user_id"],
                     identity["platform_id"],
                     text,
@@ -4245,10 +4318,11 @@ class MineAstrPlugin(Star):
             sender_name=identity["owner_display"],
             origin=event.unified_msg_origin,
         )
+        game_sender = await self._game_sender_name(identity["owner_key"], identity["owner_display"])
         game_template = str(self._cfg("chat_to_game_template"))
         game_values = {
             "platform": identity["platform_id"],
-            "sender": identity["owner_display"],
+            "sender": game_sender,
             "user_id": identity["user_id"],
         }
 
@@ -4297,14 +4371,15 @@ class MineAstrPlugin(Star):
         if not has_game_target:
             logger.warning("MineAstr minecraft 平台适配器未启用，无法转发聊天。")
             return
-        reply_prefix = self._reply_prefix(reply_context)
+        game_reply = await self._game_reply_context(reply_context, identity["platform_id"])
+        reply_prefix = self._reply_prefix(game_reply)
         game_media = await self._game_media_payloads(media)
         media_marker = "\n[图片]" if game_media and filtered else ("[图片]" if game_media else "")
         content = game_content(reply_prefix + filtered + media_marker)
         game_translation_result = self._game_reply_translation_result(
             filtered,
             translation_result,
-            reply_context,
+            game_reply,
             reply_result,
             lambda translated: game_content(translated + media_marker),
         )
@@ -4319,7 +4394,7 @@ class MineAstrPlugin(Star):
                 relay_kwargs["media"] = game_media
             await adapter.relay_chat(
                 trim_message(content, self._cfg_int("max_relay_length")),
-                identity["owner_display"],
+                game_sender,
                 **relay_kwargs,
             )
             await self._notify_mentioned_players(event, filtered)
@@ -4376,6 +4451,7 @@ class MineAstrPlugin(Star):
             if trigger_id and reply_context.get("message_id") == trigger_id:
                 reply_context["text"] = trim_message(event.message_str, 240)
                 reply_context["sender"] = str(event.get_sender_name() or "")
+                reply_context["sender_id"] = str(event.get_sender_id() or "")
         translation_result = await self._translate_relay_message(
             text, targets, event.unified_msg_origin, include_game=has_game_target
         )
@@ -4419,11 +4495,12 @@ class MineAstrPlugin(Star):
             game_text = text or ("[图片]" if game_media else "")
             if not game_text and not game_media:
                 return
+            game_reply = await self._game_reply_context(reply_context, source_platform)
             translated_result = self._game_reply_translation_result(
-                game_text, translation_result, reply_context, reply_result, lambda value: value
+                game_text, translation_result, game_reply, reply_result, lambda value: value
             )
             await adapter.relay_chat(
-                self._reply_prefix(reply_context) + game_text,
+                self._reply_prefix(game_reply) + game_text,
                 bot_name,
                 origin=event.unified_msg_origin,
                 translation_options=self._game_translation_options_from_result(
@@ -5059,7 +5136,7 @@ class MineAstrPlugin(Star):
         identity = self._identity(event)
         await adapter.relay_chat(
             content,
-            f"{identity['platform_id']}/{identity['owner_display']}",
+            await self._game_sender_name(identity["owner_key"], identity["owner_display"]),
             origin=event.unified_msg_origin,
         )
         yield event.plain_result("已发送到 Minecraft。")

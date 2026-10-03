@@ -10,6 +10,7 @@ import asyncio
 import re
 import sqlite3
 import time
+from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -84,6 +85,8 @@ class BindingStore:
     def __init__(self, database_path: str | Path = DEFAULT_BINDING_DATABASE):
         self.path = Path(database_path).expanduser()
         self._lock = asyncio.Lock()
+        # Display only: authentication always reads the current binding database.
+        self._display_names: OrderedDict[str, tuple[float, str]] = OrderedDict()
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(str(self.path), timeout=10)
@@ -100,9 +103,11 @@ class BindingStore:
         """Normalize stored player names without exposing their old values."""
 
         async with self._lock:
-            return await asyncio.to_thread(
+            result = await asyncio.to_thread(
                 self._migrate_player_names_sync, normalizer
             )
+            self._display_names.clear()
+            return result
 
     def _migrate_player_names_sync(
         self, normalizer: Callable[[str], str]
@@ -195,7 +200,7 @@ class BindingStore:
         max_bind_count: int,
     ) -> BindingRecord:
         async with self._lock:
-            return await asyncio.to_thread(
+            record = await asyncio.to_thread(
                 self._bind_sync,
                 owner_key,
                 platform_id,
@@ -204,6 +209,8 @@ class BindingStore:
                 player_name,
                 max_bind_count,
             )
+            self._display_names.pop(owner_key.strip(), None)
+            return record
 
     def _bind_sync(
         self,
@@ -279,7 +286,9 @@ class BindingStore:
         self, owner_key: str, player_name: str | None = None
     ) -> list[BindingRecord]:
         async with self._lock:
-            return await asyncio.to_thread(self._unbind_sync, owner_key, player_name)
+            records = await asyncio.to_thread(self._unbind_sync, owner_key, player_name)
+            self._display_names.pop(owner_key.strip(), None)
+            return records
 
     def _unbind_sync(
         self, owner_key: str, player_name: str | None
@@ -311,6 +320,29 @@ class BindingStore:
             raise
         finally:
             connection.close()
+
+    async def display_player_name(self, owner_key: str) -> str:
+        """Prefer the oldest binding, with a bounded, mutation-aware display cache."""
+        key = owner_key.strip()
+        if not key:
+            return ""
+        cached = self._display_names.get(key)
+        if cached is not None and cached[0] > time.monotonic():
+            self._display_names.move_to_end(key)
+            return cached[1]
+        # Collapse simultaneous cold reads and serialize them with binding writes.
+        async with self._lock:
+            cached = self._display_names.get(key)
+            if cached is not None and cached[0] > time.monotonic():
+                self._display_names.move_to_end(key)
+                return cached[1]
+            records = await self.get_by_owner(key)
+            name = next((r.player_name.strip() for r in records if r.player_name.strip()), "")
+            self._display_names[key] = (time.monotonic() + 30.0, name)
+            self._display_names.move_to_end(key)
+            while len(self._display_names) > 512:
+                self._display_names.popitem(last=False)
+            return name
 
     async def get_by_owner(self, owner_key: str) -> list[BindingRecord]:
         return await asyncio.to_thread(self._get_by_owner_sync, owner_key)
