@@ -7,6 +7,30 @@ from test_z_discord_automation import MAIN
 
 
 class ChatPresentationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_qq_sticker_only_event_reaches_game_media_protocol(self):
+        url = "https://qpic.cn/animated-face.gif"
+        event = SimpleNamespace(message_obj=SimpleNamespace(message=[], raw_message={
+            "message": [{"type": "mface", "data": {"url": url}}]
+        }))
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {"bridge_settings": {"relay_images_to_game": True}}
+        payloads = await plugin._game_media_payloads(plugin._event_media(event))
+        adapter = MinecraftPlatformAdapter({}, {}, None)
+        socket = FakeWebSocket()
+        await adapter.connection_manager.register(socket, {"server_id": "minecraft"})
+        await adapter.relay_chat("[图片]", "sender", origin="default:GroupMessage:1", media=payloads)
+        self.assertEqual(socket.sent[-1]["media"][0]["url"], url)
+
+    async def test_discord_embed_only_event_reaches_game_media_protocol(self):
+        url = "https://media.tenor.com/animated.gif"
+        event = SimpleNamespace(message_obj=SimpleNamespace(message=[], raw_message=SimpleNamespace(
+            embeds=[SimpleNamespace(image=SimpleNamespace(url=url), thumbnail=None)]
+        )))
+        plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
+        plugin.config = {"bridge_settings": {"relay_images_to_game": True}}
+        payloads = await plugin._game_media_payloads(plugin._event_media(event))
+        self.assertEqual(payloads[0]["url"], url)
+
     async def test_replies_inherit_qq_discord_and_minecraft_origin(self):
         adapter = MinecraftPlatformAdapter({}, {}, None)
         socket = FakeWebSocket()

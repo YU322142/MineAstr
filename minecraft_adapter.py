@@ -2,6 +2,7 @@ import asyncio
 import hmac
 import inspect
 import json
+import logging
 import re
 import time
 import urllib.parse
@@ -34,6 +35,8 @@ QUERY_TIMEOUT_SECONDS = 5.0
 SCREENSHOT_QUERY_TIMEOUT_SECONDS = 30.0
 MAX_WEBSOCKET_MESSAGE_BYTES = 2 * 1024 * 1024
 MAX_PENDING_TRANSLATION_REQUESTS_PER_WEBSOCKET = 1
+MAX_PENDING_BRIDGE_EVENTS_PER_WEBSOCKET = 16
+_WEBSOCKET_DIAGNOSTICS = logging.getLogger("mineastr.relay_diagnostics")
 LOGO_PATH = str(Path(__file__).resolve().with_name("logo.png"))
 MINECRAFT_LEADING_MENTION_RE = re.compile(
     r"^\s*@(?P<target>[^\s@]+)(?P<body>(?:\s+.*)?)$"
@@ -728,6 +731,7 @@ class MinecraftPlatformAdapter(Platform):
         self._websocket_request_tasks: dict[
             web.WebSocketResponse, set[asyncio.Task[Any]]
         ] = {}
+        self._websocket_event_tasks: dict[web.WebSocketResponse, set[asyncio.Task[Any]]] = {}
 
     def set_chat_platform_handler(self, handler: Callable[[str], str] | None) -> None:
         self._chat_platform_handler = handler
@@ -1385,6 +1389,8 @@ class MinecraftPlatformAdapter(Platform):
             heartbeat=30, max_msg_size=self.websocket_max_message_bytes
         )
         await ws.prepare(request)
+        connected_at = time.monotonic()
+        _WEBSOCKET_DIAGNOSTICS.info("WebSocket opened: peer=%s", request.remote)
         logger.info("MineAstr WebSocket 客户端已连接。")
 
         try:
@@ -1394,7 +1400,15 @@ class MinecraftPlatformAdapter(Platform):
                 elif msg.type == WSMsgType.ERROR:
                     logger.warning("MineAstr WebSocket 出错：%s", ws.exception())
         finally:
-            request_tasks = tuple(self._websocket_request_tasks.pop(ws, ()))
+            error = ws.exception()
+            _WEBSOCKET_DIAGNOSTICS.info(
+                "WebSocket ended: uptime_seconds=%.3f close_code=%s error_type=%s",
+                time.monotonic() - connected_at, ws.close_code,
+                type(error).__name__ if error else "none",
+            )
+            request_tasks = tuple(self._websocket_request_tasks.pop(ws, ())) + tuple(
+                self._websocket_event_tasks.pop(ws, ())
+            )
             for task in request_tasks:
                 task.cancel()
             if request_tasks:
@@ -1470,7 +1484,7 @@ class MinecraftPlatformAdapter(Platform):
                     )
                     return
                 await self.connection_manager.mark_seen(ws)
-                await self._handle_bridge_event(ws, payload)
+                await self._schedule_bridge_event(ws, payload)
             elif payload_type == "sign_translate_request":
                 if not await self.connection_manager.is_registered(ws):
                     await self.connection_manager.send_error(
@@ -1504,6 +1518,45 @@ class MinecraftPlatformAdapter(Platform):
         except (TypeError, ValueError, RuntimeError) as exc:
             logger.warning("MineAstr 处理 WebSocket 消息失败：%s", exc)
             await self.connection_manager.send_error(ws, str(exc))
+
+    async def _schedule_bridge_event(
+        self, ws: web.WebSocketResponse, payload: dict[str, Any], *, notification: bool = False
+    ) -> None:
+        """Keep platform notifications and login checks out of the socket reader."""
+        tasks = self._websocket_event_tasks.setdefault(ws, set())
+        if len(tasks) >= MAX_PENDING_BRIDGE_EVENTS_PER_WEBSOCKET:
+            await ws.send_str(json.dumps({
+                "type": "event_result", "event": payload.get("event"),
+                "message_id": payload.get("message_id", ""),
+                "ok": False, "allowed": False, "error": "bridge_event_busy",
+            }))
+            return
+
+        async def run_event() -> None:
+            try:
+                if notification:
+                    await asyncio.wait_for(self._notify_bridge_event(payload), 60)
+                else:
+                    await asyncio.wait_for(self._handle_bridge_event(ws, payload), 60)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("MineAstr background bridge event failed: type=%s error=%s",
+                               payload.get("event"), type(exc).__name__)
+
+        task = asyncio.create_task(run_event(), name=f"mineastr-event-{payload.get('event', 'unknown')}")
+        tasks.add(task)
+
+        def discard(completed: asyncio.Task[Any]) -> None:
+            if not completed.cancelled():
+                completed.exception()
+            active = self._websocket_event_tasks.get(ws)
+            if active is not None:
+                active.discard(completed)
+                if not active:
+                    self._websocket_event_tasks.pop(ws, None)
+
+        task.add_done_callback(discard)
 
     async def _schedule_translation_request(
         self,
@@ -1687,15 +1740,6 @@ class MinecraftPlatformAdapter(Platform):
             payload.get("server_id", "minecraft"),
             payload.get("server_name", "Minecraft Server"),
         )
-        if is_new:
-            await self._notify_bridge_event(
-                {
-                    "type": "event",
-                    "event": "server_start",
-                    **metadata,
-                    "time_ms": int(time.time() * 1000),
-                }
-            )
         if "native_chat_translation" in set(
             metadata.get("chat_capabilities") or ()
         ):
@@ -1710,6 +1754,11 @@ class MinecraftPlatformAdapter(Platform):
                     ensure_ascii=False,
                 )
             )
+        if is_new:
+            await self._schedule_bridge_event(ws, {
+                "type": "event", "event": "server_start", **metadata,
+                "time_ms": int(time.time() * 1000),
+            }, notification=True)
 
     async def _handle_bridge_event(
         self, ws: web.WebSocketResponse, payload: dict[str, Any]

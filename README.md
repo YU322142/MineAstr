@@ -1,6 +1,6 @@
 # MineAstr AstrBot 插件
 
-0.7.28 新增现有模型选择与翻译回退、独立目标并行发送、正确的聊天图片透明混合及有界 GIF 播放。
+0.7.29 修复大 GIF 下载、QQ/Discord 动图提取及慢平台事件阻塞 WebSocket 心跳的问题。
 
 [![AI Assisted](https://img.shields.io/badge/AI-OpenAI%20Codex%20Assisted-10A37F?style=for-the-badge&logo=openai&logoColor=white)](#ai-制作声明)
 [![Plugin tests](https://github.com/YU322142/MineAstr/actions/workflows/test.yml/badge.svg?branch=astrbot-plugin)](https://github.com/YU322142/MineAstr/actions/workflows/test.yml)

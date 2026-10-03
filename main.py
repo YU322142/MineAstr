@@ -51,6 +51,7 @@ from .aqqbot_compat import (
     trim_message,
 )
 from .mineastr_glossary import GlossaryProvider, append_glossary_instructions
+from .mineastr_media import discord_media, qq_market_faces, unique_media
 
 try:
     from mcp.types import CallToolResult, ImageContent, TextContent
@@ -470,7 +471,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.7.28",
+    "0.7.29",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -1942,21 +1943,7 @@ class MineAstrPlugin(Star):
 
     @staticmethod
     def _discord_message_media(message: Any) -> list[dict[str, str]]:
-        media: list[dict[str, str]] = []
-        for attachment in list(getattr(message, "attachments", ()) or ()):
-            content_type = str(getattr(attachment, "content_type", "") or "")
-            if not content_type.startswith("image/"):
-                continue
-            url = str(getattr(attachment, "url", "") or "").strip()
-            if url:
-                media.append(
-                    {
-                        "type": "image",
-                        "url": url,
-                        "name": str(getattr(attachment, "filename", "") or "image"),
-                    }
-                )
-        return media[:8]
+        return discord_media(message)
 
     @staticmethod
     def _discord_message_origin(platform_id: str, message: Any) -> str:
@@ -2412,27 +2399,12 @@ class MineAstrPlugin(Star):
 
     @classmethod
     def _event_media(cls, event: AstrMessageEvent) -> list[dict[str, str]]:
-        media: list[dict[str, str]] = []
-        for component in cls._event_chain(event):
-            if not isinstance(component, Image):
-                continue
-            reference = str(
-                getattr(component, "url", None)
-                or getattr(component, "file", None)
-                or getattr(component, "path", None)
-                or ""
-            ).strip()
-            if not reference:
-                continue
-            media.append(
-                {
-                    "type": "image",
-                    "url": reference,
-                    "name": str(getattr(component, "filename", None) or "image").strip()
-                    or "image",
-                }
-            )
-        return media[:8]
+        raw = getattr(getattr(event, "message_obj", None), "raw_message", None)
+        return unique_media(
+            cls._chain_media(cls._event_chain(event))
+            + qq_market_faces(raw)
+            + discord_media(raw)
+        )
 
     @staticmethod
     def _image_mime_type(data: bytes) -> str:

@@ -1,6 +1,6 @@
 # MineAstr AstrBot 插件开发交接 / Developer Handoff
 
-0.7.28 新增现有模型选择与翻译回退、独立目标并行发送、正确的聊天图片透明混合及有界 GIF 播放。
+0.7.29 修复大 GIF 下载、QQ/Discord 动图提取及慢平台事件阻塞 WebSocket 心跳的问题。
 
 本文按文件说明 0.7.27 插件的职责和后续 TODO，避免接手者依赖目录猜测。
 
