@@ -33,9 +33,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(ChatComponent.class)
-public abstract class MineAstrChatMixin {
+public abstract class MineAstrChatMixin implements com.mineastr.MineAstrChatAccess {
     @Shadow @Final private Minecraft minecraft;
     @Shadow @Final private List<GuiMessage.Line> trimmedMessages;
+    @Shadow @Final private List<GuiMessage> allMessages;
     @Shadow private int chatScrollbarPos;
     @Shadow public abstract int getWidth();
     @Shadow public abstract double getScale();
@@ -50,11 +51,36 @@ public abstract class MineAstrChatMixin {
     @Unique private final MineAstrChatInsertionMotion mineastr$insert = new MineAstrChatInsertionMotion();
     @Unique private final Map<GuiMessage.Line, Double> mineastr$arrivals = new WeakHashMap<>();
     @Unique private GuiMessage.Line mineastr$previous, mineastr$current;
-    @Unique private boolean mineastr$rebuilding, mineastr$clipActive;
+    @Unique private boolean mineastr$rebuilding, mineastr$clipActive, mineastr$updating;
     @Unique private double mineastr$now, mineastr$position, mineastr$insertRows;
     @Unique private int mineastr$base;
     @Unique private int mineastr$width = -1, mineastr$pages, mineastr$height, mineastr$imageScale;
     @Unique private double mineastr$scale;
+
+    @Override public boolean mineastr$replaceNative(java.util.UUID id, net.minecraft.network.chat.Component content) {
+        for(int index=0;index<allMessages.size();index++) {
+            GuiMessage original=allMessages.get(index);
+            if(!id.equals(com.mineastr.MineAstrNativeChatClient.id(original.content())))continue;
+            if(original.content().getString().equals(content.getString()))return true;
+            allMessages.set(index,new GuiMessage(original.addedTime(),content,original.signature(),original.tag()));
+            int scroll=chatScrollbarPos;
+            java.util.Map<Integer,Double> arrivals=new java.util.HashMap<>();
+            for(var line:trimmedMessages) {
+                Double started=mineastr$arrivals.get(line);
+                if(started!=null)arrivals.put(line.addedTime(),started);
+            }
+            mineastr$updating=true;
+            try { refreshTrimmedMessages(); }
+            finally { mineastr$updating=false; }
+            chatScrollbarPos=Math.clamp(scroll,0,Math.max(0,trimmedMessages.size()-getLinesPerPage()));
+            for(var line:trimmedMessages) {
+                Double started=arrivals.get(line.addedTime());
+                if(started!=null)mineastr$arrivals.put(line,started);
+            }
+            return true;
+        }
+        return false;
+    }
 
     @ModifyVariable(method = "addMessageToDisplayQueue", at = @At("HEAD"), argsOnly = true)
     private GuiMessage mineastr$layout(GuiMessage message) {
@@ -90,7 +116,7 @@ public abstract class MineAstrChatMixin {
     @Inject(method = "refreshTrimmedMessages", at = @At("RETURN"))
     private void mineastr$afterReflow(CallbackInfo ci) {
         mineastr$rebuilding = false;
-        mineastr$resetMotion();
+        if (!mineastr$updating) mineastr$resetMotion();
     }
 
     @Inject(method = {"clearMessages", "resetChatScroll"}, at = @At("RETURN"))
@@ -254,6 +280,7 @@ public abstract class MineAstrChatMixin {
     @Inject(method = "render", at = @At("RETURN"))
     private void mineastr$media(GuiGraphics graphics, int tick, int mouseX, int mouseY, boolean focused, CallbackInfo ci) {
         if (mineastr$clipActive) { graphics.disableScissor(); mineastr$clipActive = false; }
+        MineAstrChatImages.beginFrame();
         if (isChatHidden()) return;
         float scale = (float) getScale();
         int bottom = (int) Math.floor((graphics.guiHeight() - 40) / scale);
@@ -281,7 +308,7 @@ public abstract class MineAstrChatMixin {
                     graphics.pose().translate(0, offset, 0);
                     int lineBottom = bottom - index * height;
                     if (decorations.platform() != null) MineAstrChatIcons.render(graphics, decorations.platform(), lineBottom + baseline - 1, alpha);
-                    if (decorations.image() != null) MineAstrChatImages.renderRow(graphics, decorations.image(), lineBottom, height, scale, alpha, offset);
+                    if (decorations.image() != null) MineAstrChatImages.renderRow(graphics, decorations.image(), lineBottom, height, scale, alpha, offset, bottom - getLinesPerPage() * height, bottom);
                 } finally { graphics.pose().popPose(); }
             }
         } finally { graphics.pose().popPose(); graphics.disableScissor(); }

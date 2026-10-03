@@ -139,6 +139,19 @@ public final class MineAstrPayloads {
     public record ImageRef(String id, String name) {}
 
     /** Optional channel: old clients keep their original text and ChatImage packets. */
+    /** Original text arrives immediately; completion replaces the same client history entry. */
+    public record NativeChat(java.util.UUID id, java.util.UUID senderUuid, String sender, String content, boolean update) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<NativeChat> TYPE = MineAstrPayloads.type("native_chat");
+        public static final StreamCodec<RegistryFriendlyByteBuf, NativeChat> CODEC = StreamCodec.ofMember(NativeChat::write, NativeChat::read);
+        private static NativeChat read(RegistryFriendlyByteBuf buffer) {
+            return new NativeChat(buffer.readUUID(), buffer.readUUID(), buffer.readUtf(64), buffer.readUtf(4096), buffer.readBoolean());
+        }
+        private void write(RegistryFriendlyByteBuf buffer) {
+            buffer.writeUUID(id).writeUUID(senderUuid).writeUtf(sender,64).writeUtf(content,4096).writeBoolean(update);
+        }
+        @Override public CustomPacketPayload.Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
     public record ChatPresentation(String platform, String senderName, String content, List<ImageRef> images)
             implements CustomPacketPayload {
         public static final CustomPacketPayload.Type<ChatPresentation> TYPE = MineAstrPayloads.type("chat_presentation");

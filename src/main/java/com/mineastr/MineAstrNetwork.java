@@ -50,6 +50,8 @@ public final class MineAstrNetwork {
                 MineAstrPayloads.ImageTranslationResult.CODEC,
                 (payload, context) -> invokeClientHandler(context, "handleImageTranslationResult",
                         MineAstrPayloads.ImageTranslationResult.class, payload));
+        registrar.playToClient(MineAstrPayloads.NativeChat.TYPE, MineAstrPayloads.NativeChat.CODEC,
+                (payload, context) -> invokeClientHandler(context, "handleNativeChat", MineAstrPayloads.NativeChat.class, payload));
         registrar.playToClient(MineAstrPayloads.ChatPresentation.TYPE, MineAstrPayloads.ChatPresentation.CODEC,
                 (payload, context) -> invokeClientHandler(context, "handleChatPresentation",
                         MineAstrPayloads.ChatPresentation.class, payload));
@@ -118,6 +120,11 @@ public final class MineAstrNetwork {
                 MineAstr.LOGGER.warn("MineAstr client payload handler failed: {} {}", methodName, exc.getMessage());
             }
         });
+    }
+
+    public static boolean canSendNativeChat(ServerPlayer player) { return canSend(player, MineAstrPayloads.NativeChat.TYPE); }
+    public static void sendNativeChat(ServerPlayer player, MineAstrPayloads.NativeChat payload) {
+        if (canSendNativeChat(player)) PacketDistributor.sendToPlayer(player, payload);
     }
 
     public static boolean canSendScreenshotRequest(ServerPlayer player) {

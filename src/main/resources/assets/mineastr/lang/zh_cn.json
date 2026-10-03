@@ -153,5 +153,11 @@
   "screen.mineastr.config.theme_invalid": "颜色过暗或输入未完成",
   "screen.mineastr.config.theme_help": "昵称与正文主题色。可输入 #RRGGBB；每个启用的颜色相对 #303030 对比度至少 4.5:1。过暗颜色不可保存，不自动提亮。图标保持原色。",
   "screen.mineastr.config.theme_sample": "玩家名：这是一条示例消息",
-  "message.mineastr.theme_sender": "%s"
+  "message.mineastr.theme_sender": "%s",
+  "screen.mineastr.image.title": "图片查看器",
+  "screen.mineastr.image.reset": "重置缩放",
+  "screen.mineastr.image.help": "滚轮缩放 · 左键拖动 · 双击重置 · Esc 返回（%s%%）",
+  "screen.mineastr.image.click": "点击查看图片",
+  "message.mineastr.image_unavailable": "图片已不在缓存中",
+  "message.mineastr.native_chat_id": "%s"
 }

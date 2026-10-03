@@ -334,6 +334,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
             scheduleNativeChatBroadcast(pending, Map.of(), false, "request_id_collision");
             return true;
         }
+        previewNativeChat(pending);
         pending.timeout = scheduleNativeChatTimeout(messageId, policy.timeoutMs);
         if (pending.timeout == null) {
             if (pendingNativeChats.remove(messageId, pending)) {
@@ -422,6 +423,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
                 original,
                 recipients,
                 chatType);
+        previewNativeChat(pending);
         scheduleNativeChatBroadcast(pending, Map.of(), false, reason);
         return true;
     }
@@ -3022,8 +3024,9 @@ public final class MineAstrBridge implements WebSocket.Listener {
     }
 
     private void drainNativeChatDispatchQueue() {
+        var budget = new MineAstrDispatchBudget(System::nanoTime, 8, 2_000_000L);
         try {
-            while (true) {
+            while (budget.allowNext()) {
                 NativeChatCompletion completion;
                 synchronized (nativeChatOrderLock) {
                     completion = nativeChatDispatchQueue.pollFirst();
@@ -3043,10 +3046,27 @@ public final class MineAstrBridge implements WebSocket.Listener {
         } finally {
             synchronized (nativeChatOrderLock) {
                 nativeChatDispatchScheduled = false;
-                if (!nativeChatDispatchQueue.isEmpty()) {
+                if (!nativeChatDispatchQueue.isEmpty() && !continueNativeDispatchLater()) {
                     enqueueNativeChatCompletionsLocked(List.of());
                 }
             }
+        }
+    }
+
+    /** Called with nativeChatOrderLock held; the same ordered queue resumes on a later main-thread slice. */
+    private boolean continueNativeDispatchLater() {
+        ScheduledExecutorService executor = reconnectExecutor;
+        MinecraftServer current = server;
+        if (stopping || current == null || executor == null || executor.isShutdown()) return false;
+        nativeChatDispatchScheduled = true;
+        try {
+            executor.schedule(() -> {
+                if (!stopping && server == current) current.execute(this::drainNativeChatDispatchQueue);
+            }, 50, TimeUnit.MILLISECONDS);
+            return true;
+        } catch (java.util.concurrent.RejectedExecutionException error) {
+            nativeChatDispatchScheduled = false;
+            return false;
         }
     }
 
@@ -3066,6 +3086,24 @@ public final class MineAstrBridge implements WebSocket.Listener {
             timestamps.addLast(now);
             return true;
         }
+    }
+
+    private void previewNativeChat(PendingNativeChat pending) {
+        MinecraftServer current = server;
+        if (current == null) return;
+        var payload = new MineAstrPayloads.NativeChat(UUID.fromString(pending.messageId), pending.playerUuid, pending.playerName, pending.content, false);
+        for (UUID id : pending.recipientUuids) {
+            ServerPlayer target = current.getPlayerList().getPlayer(id);
+            if (target != null && MineAstrNetwork.canSendNativeChat(target)) {
+                try {
+                    MineAstrNetwork.sendNativeChat(target, payload);
+                    pending.previewRecipients.add(id);
+                } catch (RuntimeException error) {
+                    MineAstr.LOGGER.warn("MineAstr native chat preview failed; retaining completion fallback: {}", error.getClass().getSimpleName());
+                }
+            }
+        }
+        MineAstr.LOGGER.debug("MineAstr native chat preview {} recipients={}", pending.messageId, pending.previewRecipients.size());
     }
 
     private void broadcastNativeChatNow(NativeChatCompletion completion) {
@@ -3089,6 +3127,11 @@ public final class MineAstrBridge implements WebSocket.Listener {
                     pending,
                     completion.translations,
                     completion.defaultShowOriginal);
+            if (pending.previewRecipients.contains(recipientUuid) && MineAstrNetwork.canSendNativeChat(target)) {
+                MineAstrNetwork.sendNativeChat(target, new MineAstrPayloads.NativeChat(
+                        UUID.fromString(pending.messageId), pending.playerUuid, pending.playerName, displayed, true));
+                continue;
+            }
             PlayerChatMessage message = PlayerChatMessage.unsigned(
                     pending.playerUuid,
                     trimNativeChatPacketText(pending.content))
@@ -3099,10 +3142,11 @@ public final class MineAstrBridge implements WebSocket.Listener {
                     pending.chatType);
         }
         MineAstr.LOGGER.debug(
-                "MineAstr completed native chat {} via {} (translations={})",
+                "MineAstr completed native chat {} via {} (translations={}, elapsedMs={})",
                 pending.messageId,
                 completion.reason,
-                completion.translations.keySet());
+                completion.translations.keySet(),
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - pending.createdAtNanos));
     }
 
     private String renderNativeTranslatedChatText(
@@ -3720,6 +3764,8 @@ public final class MineAstrBridge implements WebSocket.Listener {
         private final String content;
         private final List<UUID> recipientUuids;
         private final ChatType.Bound chatType;
+        private final Set<UUID> previewRecipients = new java.util.HashSet<>();
+        private final long createdAtNanos = System.nanoTime();
         private volatile ScheduledFuture<?> timeout;
 
         private PendingNativeChat(

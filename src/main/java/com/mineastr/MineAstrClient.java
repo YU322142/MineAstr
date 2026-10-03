@@ -104,6 +104,7 @@ public final class MineAstrClient {
                             Minecraft.getInstance().gui.getChat().rescaleChat();
                         }));
         NeoForge.EVENT_BUS.register(MineAstrClient.class);
+        NeoForge.EVENT_BUS.register(MineAstrChatImageInteraction.class);
     }
 
     private static void registerKeyMappings(RegisterKeyMappingsEvent event) {
@@ -950,6 +951,8 @@ public final class MineAstrClient {
         var profile = new MineAstrPayloads.PlayerTheme(new java.util.UUID(0, 0), "", request.color(), request.second(), request.third(), request.count(), request.period());
         if (!update || profile.valid()) sendPayloadToServer(request);
     }
+
+    public static void handleNativeChat(MineAstrPayloads.NativeChat payload) { MineAstrNativeChatClient.receive(payload); }
 
     public static void handleChatPresentation(MineAstrPayloads.ChatPresentation payload) {
         Minecraft minecraft = Minecraft.getInstance();

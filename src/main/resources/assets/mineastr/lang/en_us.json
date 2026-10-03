@@ -153,5 +153,11 @@
   "screen.mineastr.config.theme_invalid": "Color too dark / incomplete",
   "screen.mineastr.config.theme_help": "Nickname and message colors. Enter #RRGGBB; each active color needs at least 4.5:1 contrast against #303030. Dark colors cannot be saved and are never brightened. Icons retain their original colors.",
   "screen.mineastr.config.theme_sample": "Player: sample message",
-  "message.mineastr.theme_sender": "%s"
+  "message.mineastr.theme_sender": "%s",
+  "screen.mineastr.image.title": "Image viewer",
+  "screen.mineastr.image.reset": "Reset zoom",
+  "screen.mineastr.image.help": "Wheel: zoom · Drag: pan · Double-click: reset · Esc: back (%s%%)",
+  "screen.mineastr.image.click": "Click to view image",
+  "message.mineastr.image_unavailable": "Image is no longer cached",
+  "message.mineastr.native_chat_id": "%s"
 }

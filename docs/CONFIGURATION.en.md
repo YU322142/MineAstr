@@ -1,4 +1,4 @@
-# MineAstr 0.7.26 Configuration Reference
+# MineAstr 0.7.27 Configuration Reference
 
 This document describes the current configuration only. See [`CHANGELOG.md`](../CHANGELOG.md) for historical field changes.
 
@@ -61,7 +61,7 @@ Whitelist synchronization and login checks are independent features. Define acco
 | `signTranslationMaxDistance` | `8` | Maximum overlay distance |
 | `signTranslationScale` | `1.0` | Overlay scale |
 
-`showOriginalTranslatedMessages` controls ordinary chat only. In 0.7.26, the target HUD displays translated text only by default.
+`showOriginalTranslatedMessages` controls ordinary chat only. In 0.7.27, the target HUD displays translated text only by default.
 
 The Bot side also provides the `bridge_settings.relay_images_to_game` master switch, the `game_image_inline_max_bytes` total limit for Bot-local images, and the `game_image_max_items` per-message count limit. Disabling either side stops only image delivery and does not affect text bridging. Image paths and URLs are never printed as ordinary chat text.
 
@@ -83,7 +83,7 @@ F8 and its local-server subpage use `screen.mineastr.*` translation keys for lab
 
 When publishing configuration OTA through MCSync, prefer exact key-level patches. Tokens and private endpoints must continue to come from local configuration.
 
-Mandatory binding requires AstrBot `binding_enabled=true`, `need_bind_to_login=true`, and server `loginBindingCheckEnabled=true`, `loginCheckFailOpen=false`. Version 0.7.26 checks asynchronously during configuration, before world entry. Existing TOML values are retained and must be reviewed. Whitelist synchronization does not enable the vanilla whitelist.
+Mandatory binding requires AstrBot `binding_enabled=true`, `need_bind_to_login=true`, and server `loginBindingCheckEnabled=true`, `loginCheckFailOpen=false`. Version 0.7.27 checks asynchronously during configuration, before world entry. Existing TOML values are retained and must be reviewed. Whitelist synchronization does not enable the vanilla whitelist.
 
 Use the provider's real API base URL. An OpenAI-compatible gateway may require `/v1` when its root serves HTML; MineAstr does not guess third-party API paths. Native-chat logs use `no_translation` for empty results and `translated` for available translations.
 
@@ -111,3 +111,5 @@ The height cap accounts for GUI/chat scaling and retains at least one line. Imag
 | `playerThemePeriod` | `8000` | 4000–20000 ms |
 
 F8 provides RGB sliders, #RRGGBB input and an animated preview for each active stop. Dark or incomplete input disables Save and is never brightened. Only nickname/message text is colored; platform icons and pictures stay unchanged. The server stores UUID-owned themes with the world and synchronizes existing themes, including offline users. Reconnection restores that server’s saved theme. Contrast uses the dark chat background reference; color alone cannot guarantee contrast against every world scene with a fully transparent background.
+
+Image interactions: hover for a cursor-side preview; left-click opens the in-game viewer. Use the wheel to zoom around the cursor, drag with the left button, double-click to reset and Esc to return. F8 image scale changes only the chat thumbnail. The viewer uses the existing bounded texture cache. Native MC chat appears immediately on updated clients and is replaced in place after translation; update both the server and client to 0.7.27.

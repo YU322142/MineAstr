@@ -39,6 +39,8 @@ public final class MineAstrChatImages {
     private static final int MAX_IMAGES = 128;
     private static final long MAX_TEXTURE_PIXELS = 16_777_216L;
     private static long texturePixels;
+    private static final java.util.ArrayList<ImageHit> HITS = new java.util.ArrayList<>();
+    private static long frameTime;
     private static final Semaphore UPLOAD_SLOTS = new Semaphore(2);
     private static final Map<String, Entry> IMAGES = new LinkedHashMap<>(MAX_IMAGES, .75F, true);
     private static final AtomicLong GENERATION = new AtomicLong();
@@ -123,6 +125,7 @@ public final class MineAstrChatImages {
             entry.texture = ResourceLocation.fromNamespaceAndPath("mineastr", "chat/" + id);
             Minecraft.getInstance().getTextureManager().register(entry.texture, texture);
             entry.width = width; entry.height = height;
+            entry.readyAt = MineAstrChatEasing.now();
             texturePixels += (long) width * height;
             registered = true;
             var iterator = IMAGES.entrySet().iterator();
@@ -173,6 +176,11 @@ public final class MineAstrChatImages {
 
     public static void renderRow(GuiGraphics graphics, MineAstrChatLayout.ImageRow row, int lineBottom,
             int lineHeight, float scale, float alpha, float offsetY) {
+        renderRow(graphics, row, lineBottom, lineHeight, scale, alpha, offsetY, 0, graphics.guiHeight() / scale);
+    }
+
+    public static void renderRow(GuiGraphics graphics, MineAstrChatLayout.ImageRow row, int lineBottom,
+            int lineHeight, float scale, float alpha, float offsetY, float viewportTop, float viewportBottom) {
         Entry entry = IMAGES.get(row.id());
         int top = lineBottom - lineHeight - row.row() * lineHeight + 2;
         if (entry == null || entry.texture == null) {
@@ -185,7 +193,16 @@ public final class MineAstrChatImages {
             }
             return;
         }
+        if(MineAstrClientConfig.chatAnimationsEnabled()) {
+            int duration=MineAstrClientConfig.isLoaded()?MineAstrClientConfig.CHAT_ARRIVAL_DURATION.getAsInt():200;
+            alpha *= (float)MineAstrChatEasing.gentle((MineAstrChatEasing.now()-entry.readyAt)/duration);
+        }
         var size = MineAstrChatGeometry.fit(entry.width, entry.height, row.width(), row.height());
+        float visibleTop = Math.max(viewportTop, Math.max(top + offsetY, lineBottom - lineHeight + offsetY));
+        float visibleBottom = Math.min(viewportBottom, Math.min(top + size.height() + offsetY, lineBottom + offsetY));
+        if (visibleBottom > visibleTop && alpha > .05F) HITS.add(new ImageHit(row.id(),
+                (row.column() + 4) * scale, visibleTop * scale,
+                (row.column() + size.width() + 4) * scale, visibleBottom * scale));
         // Scissor uses screen GUI coordinates; the enclosing pose uses vanilla chat scale/indent.
         graphics.enableScissor((int) Math.floor((row.column() + 4) * scale),
                 (int) Math.floor((lineBottom - lineHeight + offsetY) * scale),
@@ -201,7 +218,29 @@ public final class MineAstrChatImages {
         }
     }
 
+    public static void beginFrame() { HITS.clear(); frameTime = System.nanoTime(); }
+    public static String imageAt(double x, double y) {
+        if(System.nanoTime()-frameTime>250_000_000L)return null;
+        for(int i=HITS.size()-1;i>=0;i--) {
+            var hit=HITS.get(i);
+            if(x>=hit.left && x<hit.right && y>=hit.top && y<hit.bottom)return hit.id;
+        }
+        return null;
+    }
+    public static ImageView view(String id) {
+        Entry entry=IMAGES.get(id);
+        return entry==null || entry.texture==null ? null : new ImageView(entry.texture,entry.width,entry.height,entry.name);
+    }
+    public static void draw(GuiGraphics graphics, ImageView image, int x, int y, int width, int height, float alpha) {
+        graphics.setColor(1,1,1,alpha);
+        try { graphics.blit(image.texture,x,y,width,height,0F,0F,image.width,image.height,image.width,image.height); }
+        finally { graphics.setColor(1,1,1,1); }
+    }
+    public record ImageView(ResourceLocation texture,int width,int height,String name) {}
+    private record ImageHit(String id,float left,float top,float right,float bottom) {}
+
     public static void clear() {
+        HITS.clear();
         GENERATION.incrementAndGet();
         WORKER.getQueue().clear();
         IMAGES.values().forEach(MineAstrChatImages::release);
@@ -220,6 +259,7 @@ public final class MineAstrChatImages {
         final String name;
         boolean loading, failed;
         int width, height;
+        double readyAt;
         ResourceLocation texture;
         Entry(String name) { this.name = name; }
     }

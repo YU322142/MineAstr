@@ -33,7 +33,7 @@ SOFTWARE.
 
 ## ChatImage
 
-MineAstr's historical clients optionally emit CICode for ChatImage. Version 0.7.26 provides its own bounded inline thumbnail renderer and does not require ChatImage. No ChatImage binaries, source or assets are bundled. ChatImage remains an independent optional mod.
+MineAstr's historical clients optionally emit CICode for ChatImage. Version 0.7.27 provides its own bounded inline thumbnail renderer and does not require ChatImage. No ChatImage binaries, source or assets are bundled. ChatImage remains an independent optional mod.
 
 ChatImage project: https://github.com/kitUIN/ChatImage
 
