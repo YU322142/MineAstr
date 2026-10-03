@@ -1,6 +1,6 @@
-# MineAstr 0.7.27
+# MineAstr 0.7.31
 
-0.7.30 为每张聊天图片提供独立的有界异步任务，隔离下载等待与解码，并记录各阶段耗时。
+0.7.31 增加本地登录名单、GIF 首帧优先显示与并行下载，配合 AstrBot 在传输前缩小大图。
 
 [English](README.en.md) · [配置参考](docs/CONFIGURATION.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md) · [Changelog](CHANGELOG.md) · [外部翻译 API](EXTERNAL_TRANSLATION_API.md)
 

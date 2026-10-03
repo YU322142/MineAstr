@@ -113,3 +113,7 @@ F8 页面和本地服务端子页面的文字通过 `screen.mineastr.*` 翻译�
 F8 可以通过 RGB 滑块与 #RRGGBB 输入修改每个启用的颜色并预览渐变。过暗或未完成的输入会禁止保存，不自动调整颜色。昵称和正文着色，左侧图标与图片不着色。服务器按 UUID 随世界保存主题，并同步历史主题；重连以该服务器已保存的主题为准。颜色不会更改消息内容、日志或原有字体。对比度以深色聊天背景为参考，完全透明背景下的任意世界画面无法通过颜色本身保证对比度。
 
 图片交互：鼠标悬停在旁边预览，左键点击进入游戏内查看器；滚轮以光标为中心缩放，左键拖动，双击重置，Esc 返回并保留聊天草稿。F8 图片比例调整聊天缩略图，查看器复用原有有界纹理缓存。原生 MC 聊天先显示原文，译文完成后原位更新；客户端和服务端需同时更新至 0.7.27。
+
+## 0.7.31 登录本地名单
+
+保持 `enableBindingSync=true`、`bindingSyncWhitelist=true`、`loginBindingCheckEnabled=true`、`loginUseLocalBindings=true`、`loginCheckFailOpen=false`。AstrBot 开启 `binding_enabled`、`need_bind_to_login`、`sync_binding_to_server`，`binding_sync_interval_seconds` 默认 60（30–3600）。MC 世界 data/mineastr_binding_whitelist.json 为最近成功同步的授权缓存，不要提交 Git；断线保留名单，未知玩家仍实时校验。

@@ -105,6 +105,9 @@ public final class MineAstrConfig {
     public static final ModConfigSpec.BooleanValue LOGIN_BINDING_CHECK_ENABLED = BUILDER
             .comment("玩家登录前是否向 AstrBot 检查账号绑定。")
             .define("loginBindingCheckEnabled", false);
+    public static final ModConfigSpec.BooleanValue LOGIN_USE_LOCAL_BINDINGS = BUILDER
+            .comment("优先使用最近一次成功同步的本地绑定白名单；名单外玩家仍实时校验。")
+            .define("loginUseLocalBindings", true);
     public static final ModConfigSpec.IntValue LOGIN_CHECK_TIMEOUT_SECONDS = BUILDER
             .comment("登录绑定检查超时，单位为秒。")
             .defineInRange("loginCheckTimeoutSeconds", 5, 1, 30);

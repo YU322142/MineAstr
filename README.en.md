@@ -1,6 +1,6 @@
-# MineAstr 0.7.27
+# MineAstr 0.7.31
 
-0.7.30 runs each chat image on its own bounded virtual-thread task, isolating downloads from decoding.
+0.7.31 adds persistent local login bindings, GIF first-frame previews and parallel range downloads.
 
 [中文](README.md) · [Configuration reference](docs/CONFIGURATION.en.md) · [Changelog](CHANGELOG.md) · [中文更新日志](CHANGELOG.zh-CN.md) · [External translation API](EXTERNAL_TRANSLATION_API.md)
 

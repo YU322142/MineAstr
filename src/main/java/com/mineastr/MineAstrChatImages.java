@@ -40,6 +40,7 @@ public final class MineAstrChatImages {
     private static long frameTime;
     private static final Semaphore UPLOAD_SLOTS = new Semaphore(2);
     private static final Map<String, Entry> IMAGES = new LinkedHashMap<>(MAX_IMAGES, .75F, true);
+    private static final AtomicLong TEXTURE_SEQUENCE = new AtomicLong();
     private static final AtomicLong GENERATION = new AtomicLong();
     private static final MineAstrImageJobs JOBS = new MineAstrImageJobs(32, 4, 2);
     private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
@@ -66,10 +67,15 @@ public final class MineAstrChatImages {
         entry.loading = true;
         long generation = GENERATION.get();
         boolean remote = bytes.length == 0;
-        boolean accepted = JOBS.submit(remote, () -> remote ? download(url) : bytes, data -> {
+        boolean accepted = JOBS.submit(remote, () -> remote ? download(url, preview -> queuePreview(id, entry, generation, preview)) : bytes, data -> {
                     if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
                     if (data.length > downloadLimit(data)) throw new IOException("image byte limit");
-                    MineAstrGif.Animation animation = MineAstrGif.matches(data) ? MineAstrGif.decode(data) : null;
+                    boolean gif = MineAstrGif.matches(data);
+                    if (gif && !remote) {
+                        byte[] preview = MineAstrGifPreview.firstFrame(data, data.length);
+                        if (preview != null) preparePreview(id, entry, generation, preview);
+                    }
+                    MineAstrGif.Animation animation = gif ? MineAstrGif.decode(data) : null;
                     BufferedImage image = animation == null ? decodeThumbnail(data) : animation.frames().getFirst();
                     if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
                     cacheWrite.run();
@@ -95,7 +101,7 @@ public final class MineAstrChatImages {
             }, exc -> {
                     Minecraft.getInstance().execute(() -> {
                         if (generation != GENERATION.get() || IMAGES.get(id) != entry) return;
-                        entry.failed = true;
+                        entry.failed = entry.texture == null;
                         MineAstr.LOGGER.warn("MineAstr 聊天缩略图加载失败：name={} reason={}", entry.name, exc.getClass().getSimpleName());
                     });
             }, timing -> MineAstr.LOGGER.info(
@@ -107,16 +113,35 @@ public final class MineAstrChatImages {
         }
     }
 
-    private static byte[] download(String url) throws Exception {
-        var request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(15)).GET().build();
-        var future = HTTP.sendAsync(request, ignored -> new LimitedBody());
+    private static void queuePreview(String id, Entry entry, long generation, byte[] preview) {
+        JOBS.submit(false, () -> preview, data -> preparePreview(id, entry, generation, data),
+                error -> MineAstr.LOGGER.debug("MineAstr GIF preview skipped: {}", error.getClass().getSimpleName()), timing -> {});
+    }
+
+    private static void preparePreview(String id, Entry entry, long generation, byte[] preview) throws Exception {
+        if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+        BufferedImage image = MineAstrGif.decode(preview).frames().getFirst();
+        if (!UPLOAD_SLOTS.tryAcquire(5, TimeUnit.SECONDS)) throw new IOException("preview upload queue saturated");
+        NativeImage pixels = null;
         try {
-            var response = future.get(15, TimeUnit.SECONDS);
-            if (response.statusCode() != 200) throw new IOException("HTTP " + response.statusCode());
-            return response.body();
-        } finally {
-            if (!future.isDone()) future.cancel(true);
+            pixels = nativePixels(image);
+            NativeImage prepared = pixels;
+            Minecraft.getInstance().execute(() -> {
+                if (entry.texture != null || generation != GENERATION.get() || IMAGES.get(id) != entry) {
+                    prepared.close(); UPLOAD_SLOTS.release(); return;
+                }
+                upload(id, entry, generation, prepared, image.getWidth(), image.getHeight(), null, null);
+                MineAstr.LOGGER.info("MineAstr GIF first frame ready; animation continues in background");
+            });
+        } catch (RuntimeException error) {
+            if (pixels != null) pixels.close();
+            UPLOAD_SLOTS.release();
+            throw error;
         }
+    }
+
+    private static byte[] download(String url, java.util.function.Consumer<byte[]> preview) throws Exception {
+        return MineAstrRangeDownload.load(HTTP, url, preview, LimitedBody::new);
     }
 
     private static void upload(String id, Entry entry, long generation, NativeImage pixels, int width, int height,
@@ -125,12 +150,17 @@ public final class MineAstrChatImages {
         boolean registered = false;
         try {
             if (generation != GENERATION.get() || IMAGES.get(id) != entry) { pixels.close(); closeFrames(frames); return; }
+            double firstReady = entry.readyAt;
+            boolean replacing = entry.texture != null;
             texture = new DynamicTexture(pixels);
             MineAstrChatTextures.smooth(texture, width, height);
-            entry.texture = ResourceLocation.fromNamespaceAndPath("mineastr", "chat/" + id);
-            Minecraft.getInstance().getTextureManager().register(entry.texture, texture);
+            ResourceLocation location = ResourceLocation.fromNamespaceAndPath("mineastr", "chat/" + id + "/" + TEXTURE_SEQUENCE.incrementAndGet());
+            Minecraft.getInstance().getTextureManager().register(location, texture);
+            if (replacing) release(entry);
+            entry.texture = location;
             entry.width = width; entry.height = height;
-            entry.readyAt = MineAstrChatEasing.now();
+            entry.readyAt = replacing ? firstReady : MineAstrChatEasing.now();
+            entry.animationStartedAt = MineAstrChatEasing.now();
             entry.dynamicTexture = texture;
             entry.animation = frames == null ? null : animation;
             entry.frames = frames;
@@ -150,7 +180,7 @@ public final class MineAstrChatImages {
                 if (texture != null) texture.close(); else pixels.close();
                 closeFrames(frames);
             }
-            entry.texture = null; entry.failed = true;
+            entry.failed = entry.texture == null;
             MineAstr.LOGGER.warn("MineAstr 聊天缩略图上传失败：{}", error.getMessage());
         } finally { UPLOAD_SLOTS.release(); }
     }
@@ -172,7 +202,7 @@ public final class MineAstrChatImages {
 
     private static void animate(Entry entry) {
         if (entry.animation == null || entry.frames == null || entry.dynamicTexture == null) return;
-        int index = entry.animation.frameAt((long) (MineAstrChatEasing.now() - entry.readyAt));
+        int index = entry.animation.frameAt((long) (MineAstrChatEasing.now() - entry.animationStartedAt));
         if (index == entry.frameIndex) return;
         entry.dynamicTexture.getPixels().copyFrom(entry.frames[index]);
         entry.dynamicTexture.upload();
@@ -298,7 +328,7 @@ public final class MineAstrChatImages {
         final String name;
         boolean loading, failed;
         int width, height;
-        double readyAt;
+        double readyAt, animationStartedAt;
         long pixelCost;
         int frameIndex;
         NativeImage[] frames;
@@ -309,13 +339,21 @@ public final class MineAstrChatImages {
     }
 
     /** Never buffer an unbounded HTTP body; cancel the subscription on size/timeout. */
-    private static final class LimitedBody implements HttpResponse.BodySubscriber<byte[]> {
+    static final class LimitedBody implements HttpResponse.BodySubscriber<byte[]> {
         private final CompletableFuture<byte[]> result = new CompletableFuture<>();
-        private final ByteArrayOutputStream output = new ByteArrayOutputStream();
+        private static final class Buffer extends ByteArrayOutputStream {
+            byte[] firstFrame() { return MineAstrGifPreview.firstFrame(buf, count); }
+        }
+        private final Buffer output = new Buffer();
+        private final java.util.function.Consumer<byte[]> preview;
+        private boolean previewSent;
+        private final int byteLimit;
         private final byte[] prefix = new byte[6];
         private int prefixLength;
         private volatile Flow.Subscription subscription;
-        LimitedBody() {
+        LimitedBody(int byteLimit, java.util.function.Consumer<byte[]> preview) {
+            this.preview = preview;
+            this.byteLimit = byteLimit;
             result.orTimeout(15, TimeUnit.SECONDS).whenComplete((value, error) -> {
                 if (error != null && subscription != null) subscription.cancel();
             });
@@ -331,7 +369,7 @@ public final class MineAstrChatImages {
                     ByteBuffer header = chunk.duplicate();
                     while (header.hasRemaining() && prefixLength < prefix.length) prefix[prefixLength++] = header.get();
                 }
-                if (chunk.remaining() > downloadLimit(prefix) - output.size()) {
+                if (chunk.remaining() > (byteLimit > 0 ? byteLimit : downloadLimit(prefix)) - output.size()) {
                     subscription.cancel();
                     result.completeExceptionally(new IOException("image byte limit"));
                     return;
@@ -339,6 +377,10 @@ public final class MineAstrChatImages {
                 byte[] bytes = new byte[chunk.remaining()];
                 chunk.get(bytes);
                 output.writeBytes(bytes);
+            }
+            if (!previewSent && MineAstrGif.matches(prefix)) {
+                byte[] first = output.firstFrame();
+                if (first != null) { previewSent = true; preview.accept(first); }
             }
             subscription.request(1);
         }

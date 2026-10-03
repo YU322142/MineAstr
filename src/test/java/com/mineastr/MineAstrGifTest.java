@@ -63,6 +63,20 @@ class MineAstrGifTest {
         return bytes.toByteArray();
     }
 
+    @Test void firstFrameIsDecodableBeforeTheRemainingAnimationArrives() throws IOException {
+        byte[] whole = gif("restoreToPrevious", 0);
+        byte[] preview = MineAstrGifPreview.firstFrame(whole, whole.length);
+        assertNotNull(preview); assertTrue(preview.length < whole.length);
+        int firstEnd = preview.length - 1;
+        for (int length = 0; length < firstEnd; length++)
+            assertNull(MineAstrGifPreview.firstFrame(whole, length));
+        assertArrayEquals(preview, MineAstrGifPreview.firstFrame(whole, firstEnd));
+        var still = MineAstrGif.decode(preview); var animation = MineAstrGif.decode(whole);
+        assertEquals(1, still.frames().size()); assertEquals(3, animation.frames().size());
+        for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++)
+            assertEquals(animation.frames().getFirst().getRGB(x,y), still.frames().getFirst().getRGB(x,y));
+    }
+
     @Test void partialFramesCompositeAndRestorePrevious() throws IOException {
         var animation=MineAstrGif.decode(gif("restoreToPrevious",0));
         assertEquals(3,animation.frames().size());

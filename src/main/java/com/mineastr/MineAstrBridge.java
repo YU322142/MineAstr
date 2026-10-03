@@ -134,6 +134,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
     private volatile ScheduledFuture<?> reconnectTask;
     private volatile boolean stopping;
     private volatile long startedAtMs;
+    private volatile BindingWhitelistStore bindingWhitelistStore;
     private volatile SignTranslationStore signTranslationStore = new SignTranslationStore();
 
     public void start(MinecraftServer server) {
@@ -148,6 +149,19 @@ public final class MineAstrBridge implements WebSocket.Listener {
         nativeChatRateWindows.clear();
         signTranslationStore = new SignTranslationStore();
         signTranslationStore.load(server.getWorldPath(LevelResource.ROOT));
+        syncedBindings.clear();
+        String bindingScope = UUID.nameUUIDFromBytes((MineAstrConfig.SERVER_ID.get() + "\n"
+                + MineAstrConfig.WEBSOCKET_URL.get() + "\n" + MineAstrConfig.TOKEN.get()).getBytes(StandardCharsets.UTF_8)).toString();
+        bindingWhitelistStore = new BindingWhitelistStore(
+                server.getWorldPath(LevelResource.ROOT).resolve("data/mineastr_binding_whitelist.json"), bindingScope);
+        try {
+            bindingWhitelistStore.load();
+            for (BindingWhitelistStore.Entry entry : bindingWhitelistStore.snapshot()) {
+                syncedBindings.put(entry.playerName().toLowerCase(Locale.ROOT), new SyncedBinding(
+                        entry.playerName(), entry.ownerKey(), entry.ownerDisplay(), new PlayerIdentity(entry.uuid(), entry.playerName())));
+            }
+            MineAstr.LOGGER.info("MineAstr 已加载本地绑定白名单：count={}", syncedBindings.size());
+        } catch (IOException error) { MineAstr.LOGGER.warn("MineAstr 本地绑定白名单加载失败，未知玩家仍需远端校验", error); }
         this.stopping = false;
         this.startedAtMs = System.currentTimeMillis();
         ensureReconnectExecutor();
@@ -492,6 +506,11 @@ public final class MineAstrBridge implements WebSocket.Listener {
 
     public CompletableFuture<LoginCheckResult> checkPlayerLogin(String playerName) {
         if (!MineAstrConfig.LOGIN_BINDING_CHECK_ENABLED.getAsBoolean()) {
+            return CompletableFuture.completedFuture(new LoginCheckResult(true, "", "", ""));
+        }
+        if (MineAstrConfig.LOGIN_USE_LOCAL_BINDINGS.getAsBoolean()
+                && bindingWhitelistStore != null && bindingWhitelistStore.allows(playerName)) {
+            MineAstr.LOGGER.info("MineAstr 登录绑定校验：source=local_whitelist allowed=true");
             return CompletableFuture.completedFuture(new LoginCheckResult(true, "", "", ""));
         }
         WebSocket socket = webSocket.get();
@@ -1325,6 +1344,18 @@ public final class MineAstrBridge implements WebSocket.Listener {
                 message = (message.isBlank() ? "[MC] 该账号尚未绑定。" : message) + codeMessage;
                 messageKey = "";
             }
+        }
+        String boundOwner = trimFlatContent(getString(payload, "owner_key", ""), 256);
+        if (allowed && !boundOwner.isBlank() && server != null) {
+            MinecraftServer current = server;
+            current.execute(() -> {
+                PlayerIdentity identity = observedLoginIdentities.get(pending.playerName.toLowerCase(Locale.ROOT));
+                if (identity == null) return;
+                syncedBindings.put(pending.playerName.toLowerCase(Locale.ROOT),
+                        new SyncedBinding(pending.playerName, boundOwner, "", identity));
+                if (MineAstrConfig.BINDING_SYNC_WHITELIST.getAsBoolean()) updateWhitelist(current, identity, true, true);
+                persistSyncedBindings();
+            });
         }
         pending.future.complete(new LoginCheckResult(allowed, message, messageKey, localizedCode));
     }
@@ -2485,6 +2516,10 @@ public final class MineAstrBridge implements WebSocket.Listener {
         String playerName = trimFlatContent(getString(payload, "player_name", ""), 64);
         String ownerKey = trimFlatContent(getString(payload, "owner_key", ""), 256);
         String ownerDisplay = trimFlatContent(getString(payload, "owner_display", ""), 128);
+        if ("replace".equals(action)) {
+            handleBindingReplacement(socket, messageId, payload, currentServer);
+            return;
+        }
         if ("reset".equals(action)) {
             boolean whitelistChanged = false;
             if (MineAstrConfig.BINDING_SYNC_WHITELIST.getAsBoolean()) {
@@ -2500,6 +2535,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
                 }
             }
             syncedBindings.clear();
+            persistSyncedBindings();
             MineAstr.LOGGER.warn("MineAstr 绑定同步：action=reset whitelist={}", whitelistChanged);
             JsonObject data = new JsonObject();
             data.addProperty("action", action);
@@ -2578,6 +2614,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
             syncedBindings.remove(normalizedPlayer);
         }
 
+        persistSyncedBindings();
         MineAstr.LOGGER.info(
                 "MineAstr 绑定同步成功：action={} player={} uuid={} owner={} whitelist_changed={} whitelist_verified={}",
                 action, identity.name(), identity.id(), ownerKey, whitelistResult.changed, whitelistResult.verified);
@@ -2592,6 +2629,76 @@ public final class MineAstrBridge implements WebSocket.Listener {
         data.addProperty("whitelist_changed", whitelistResult.changed);
         data.addProperty("whitelist_verified", whitelistResult.verified);
         sendQueryResult(socket, messageId, "binding", data);
+    }
+
+    private void persistSyncedBindings() {
+        if (bindingWhitelistStore == null) return;
+        try {
+            bindingWhitelistStore.replace(syncedBindings.values().stream().map(binding ->
+                    new BindingWhitelistStore.Entry(binding.playerName, binding.ownerKey, binding.ownerDisplay, binding.identity.id())).toList());
+        } catch (IOException error) {
+            // Never keep a revoked local grant merely because disk persistence failed.
+            bindingWhitelistStore.invalidate();
+            MineAstr.LOGGER.error("MineAstr 无法持久化绑定白名单，已暂停本地放行", error);
+        }
+    }
+
+    private void handleBindingReplacement(WebSocket socket, String messageId, JsonObject payload, MinecraftServer currentServer) {
+        try {
+            if (!payload.has("bindings") || !payload.get("bindings").isJsonArray()) throw new IOException("invalid_binding_snapshot");
+            JsonArray rows = payload.getAsJsonArray("bindings");
+            if (rows.size() > BindingWhitelistStore.MAX_ENTRIES) throw new IOException("binding_snapshot_limit");
+            Map<String, SyncedBinding> replacement = new LinkedHashMap<>();
+            for (JsonElement row : rows) {
+                if (!row.isJsonObject()) throw new IOException("invalid_binding_identity");
+                JsonObject object = row.getAsJsonObject();
+                String name = getString(object, "player_name", "");
+                String owner = getString(object, "owner_key", "");
+                String display = getString(object, "owner_display", "");
+                if (!isSafeBindingPlayerName(name) || owner.isBlank() || owner.length() > 256 || display.length() > 128)
+                    throw new IOException("invalid_binding_identity");
+                String key = name.toLowerCase(Locale.ROOT);
+                SyncedBinding existing = syncedBindings.get(key);
+                PlayerIdentity identity = observedLoginIdentities.get(key);
+                if (identity == null && existing != null) identity = existing.identity;
+                if (identity == null) {
+                    for (UserWhiteListEntry whiteEntry : currentServer.getPlayerList().getWhiteList().getEntries()) {
+                        PlayerIdentity candidate = PlayerIdentity.fromProfile(whitelistEntryProfile(whiteEntry));
+                        if (candidate != null && candidate.name().equalsIgnoreCase(name)) { identity = candidate; break; }
+                    }
+                }
+                // Unseen online/proxy identities are reconciled from the authenticated login profile.
+                if (identity == null) identity = PlayerIdentity.createOffline(name);
+                if (replacement.putIfAbsent(key, new SyncedBinding(name, owner, display, identity)) != null)
+                    throw new IOException("duplicate_binding_identity");
+            }
+            if (MineAstrConfig.BINDING_SYNC_WHITELIST.getAsBoolean()) {
+                for (SyncedBinding binding : replacement.values()) {
+                    WhitelistSyncResult result = updateWhitelist(currentServer, binding.identity, true, true);
+                    if (!result.ok) throw new IOException(result.error);
+                }
+                for (var previous : syncedBindings.entrySet()) {
+                    if (!replacement.containsKey(previous.getKey())) {
+                        WhitelistSyncResult result = updateWhitelist(currentServer, previous.getValue().identity, false);
+                        if (!result.ok) throw new IOException(result.error);
+                    }
+                }
+            }
+            // Persist/validate the complete replacement before publishing its local access decisions.
+            if (bindingWhitelistStore == null) throw new IOException("binding_store_unavailable");
+            bindingWhitelistStore.replace(replacement.values().stream().map(binding ->
+                    new BindingWhitelistStore.Entry(binding.playerName, binding.ownerKey, binding.ownerDisplay, binding.identity.id())).toList());
+            syncedBindings.clear();
+            syncedBindings.putAll(replacement);
+            JsonObject result = new JsonObject();
+            result.addProperty("applied", replacement.size());
+            result.addProperty("action", "replace");
+            sendQueryResult(socket, messageId, "binding", result);
+            MineAstr.LOGGER.info("MineAstr 绑定白名单整批同步成功：count={}", replacement.size());
+        } catch (IOException | RuntimeException error) {
+            MineAstr.LOGGER.warn("MineAstr 绑定白名单同步失败，保留上次成功缓存：{}", error.getMessage());
+            sendQueryError(socket, messageId, "binding", "binding_snapshot_failed");
+        }
     }
 
     /**
@@ -2631,6 +2738,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
             syncedBindings.put(normalizedPlayer, new SyncedBinding(
                     loginIdentity.name(), binding.ownerKey, binding.ownerDisplay, loginIdentity));
         }
+        if (identityChanged) persistSyncedBindings();
         if (identityChanged || result.changed) {
             MineAstr.LOGGER.info(
                     "MineAstr 已按本次登录身份修正原版白名单：player={} old_uuid={} login_uuid={} changed={} verified={}",
