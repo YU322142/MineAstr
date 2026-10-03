@@ -1,8 +1,8 @@
 # MineAstr 开发交接 / Developer Handoff
 
-0.7.22 修复客户端加载画面崩溃。协议保持版本 1，可连接现有 0.7.21 服务端与插件；此修复只需替换客户端 JAR，无需重启生产服务。
+0.7.23 修复 NeoForge 登录绑定检查未执行、空译文缓存及区域语言匹配问题。插件与模组统一版本，协议仍为 1；服务端须更新模组才能恢复进世界前的绑定校验。
 
-本文按文件记录当前 0.7.22 代码的职责、协议边界和后续 TODO。源码行为以 NeoForge 1.21.1 分支为准。
+本文按文件记录当前 0.7.23 代码的职责、协议边界和后续 TODO。源码行为以 NeoForge 1.21.1 分支为准。
 
 ## 文件职责
 
@@ -22,7 +22,7 @@
 | `src/main/templates/META-INF/neoforge.mods.toml` | Mod 元数据及 ChatImage 的可选客户端依赖声明。 |
 | `src/test/java/com/mineastr/MineAstrConnectionTest.java` | 真实回环 WebSocket 握手超时/后续连接、失败日志脱敏和占位清理回归测试。 |
 | `build.gradle` | NeoForge 构建、测试和发布产物配置。 |
-| `gradle.properties` | Minecraft、NeoForge 和 MineAstr 版本；本次为 `0.7.22`。 |
+| `gradle.properties` | Minecraft、NeoForge 和 MineAstr 版本；本次为 `0.7.23`。 |
 | `README.md` / `README.en.md` | 面向使用者的中文/英文安装与配置说明。 |
 | `docs/CONFIGURATION.zh-CN.md` / `docs/CONFIGURATION.en.md` | 配置项级参考。 |
 | `CHANGELOG.zh-CN.md` / `CHANGELOG.md` | 双语版本变更记录。 |
@@ -39,7 +39,7 @@
 
 ## TODO
 
-0.7.22 完整 `test build` 与 21 项测试通过。`connectWebSocket` 为 Upgrade 添加 10 秒超时并对同步/异步失败使用同一安全日志消息；不应把网络等待搬到主线程。ZIP 中的发送队列、截图后台编码和聊天按序派发等 12 个方法内容保持一致，已有运行日志保留。完整累计变化见 [发布说明](RELEASE_NOTES.md)。
+0.7.23 完整 `test build` 与 24 项测试通过。`connectWebSocket` 为 Upgrade 添加 10 秒超时并对同步/异步失败使用同一安全日志消息；不应把网络等待搬到主线程。ZIP 中的发送队列、截图后台编码和聊天按序派发等 12 个方法内容保持一致，已有运行日志保留。完整累计变化见 [发布说明](RELEASE_NOTES.md)。
 
 - [ ] 在真实 NeoForge 客户端安装 ChatImage，验证 PNG/JPEG/WEBP 分片显示和缓存过期。
 - [ ] 增加协议版本协商，允许未来图片传输字段平滑扩展。

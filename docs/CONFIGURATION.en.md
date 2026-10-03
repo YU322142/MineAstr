@@ -1,4 +1,4 @@
-# MineAstr 0.7.22 Configuration Reference
+# MineAstr 0.7.23 Configuration Reference
 
 This document describes the current configuration only. See [`CHANGELOG.md`](../CHANGELOG.md) for historical field changes.
 
@@ -42,7 +42,7 @@ Player state, inventory summaries, nearby entities, and loaded-region features c
 | `enableBindingSync` | `false` | Synchronize MineAstr account bindings |
 | `bindingSyncWhitelist` | `false` | Synchronize binding results to the vanilla whitelist |
 | `loginBindingCheckEnabled` | `false` | Check binding before login |
-| `loginCheckFailOpen` | `true` | Whether to allow login when AstrBot is unavailable |
+| `loginCheckFailOpen` | `false` | Whether to allow login when AstrBot is unavailable |
 | `generateBindingCodeOnReject` | `true` | Generate a one-time binding code when login is rejected |
 
 Whitelist synchronization and login checks are independent features. Define account-recovery and AstrBot-outage policies before enabling them.
@@ -61,7 +61,7 @@ Whitelist synchronization and login checks are independent features. Define acco
 | `signTranslationMaxDistance` | `8` | Maximum overlay distance |
 | `signTranslationScale` | `1.0` | Overlay scale |
 
-`showOriginalTranslatedMessages` controls ordinary chat only. In 0.7.22, the target HUD displays translated text only by default.
+`showOriginalTranslatedMessages` controls ordinary chat only. In 0.7.23, the target HUD displays translated text only by default.
 
 The Bot side also provides the `bridge_settings.relay_images_to_game` master switch, the `game_image_inline_max_bytes` total limit for Bot-local images, and the `game_image_max_items` per-message count limit. Disabling either side stops only image delivery and does not affect text bridging. Image paths and URLs are never printed as ordinary chat text.
 
@@ -82,3 +82,7 @@ F8 and its local-server subpage use `screen.mineastr.*` translation keys for lab
 5. After restarting, run `/mineastr status` and inspect the log.
 
 When publishing configuration OTA through MCSync, prefer exact key-level patches. Tokens and private endpoints must continue to come from local configuration.
+
+Mandatory binding requires AstrBot `binding_enabled=true`, `need_bind_to_login=true`, and server `loginBindingCheckEnabled=true`, `loginCheckFailOpen=false`. Version 0.7.23 checks asynchronously during configuration, before world entry. Existing TOML values are retained and must be reviewed. Whitelist synchronization does not enable the vanilla whitelist.
+
+Use the provider's real API base URL. An OpenAI-compatible gateway may require `/v1` when its root serves HTML; MineAstr does not guess third-party API paths. Native-chat logs use `no_translation` for empty results and `translated` for available translations.

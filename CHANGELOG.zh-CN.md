@@ -4,6 +4,13 @@
 
 社区 Fork：[YU322142/MineAstr](https://github.com/YU322142/MineAstr) · 原始上游：[Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr) · 联动 Fork：[YU322142/ImmersivePaintings](https://github.com/YU322142/ImmersivePaintings)
 
+## 0.7.23 - NeoForge 1.21.1 - 2026-10-03
+
+- 使用实际执行的配置阶段任务进行进世界前异步绑定校验，拒绝未绑定或异常结果；保留登录身份白名单对账及验证码。
+- 新配置默认 fail-closed；校验响应必须包含布尔 `allowed`。
+- 空译文记录为 `no_translation`；保留 ZIP 12 个异步优化方法与已有日志。
+- 增加 3 项异步登录回归测试，共 24 项 JUnit。完整累计变化见 RELEASE_NOTES.md。
+
 ## 0.7.22 - NeoForge 1.21.1 - 2026-10-03
 
 - 修复加载画面期间客户端 Tick 在 CLIENT 配置加载前读取翻译开关而崩溃的问题。

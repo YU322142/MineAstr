@@ -1,6 +1,6 @@
-# MineAstr 0.7.22
+# MineAstr 0.7.23
 
-0.7.22 修复客户端加载画面崩溃。协议保持版本 1，可连接现有 0.7.21 服务端与插件；此修复只需替换客户端 JAR，无需重启生产服务。
+0.7.23 修复 NeoForge 登录绑定检查未执行、空译文缓存及区域语言匹配问题。插件与模组统一版本，协议仍为 1；服务端须更新模组才能恢复进世界前的绑定校验。
 
 [English](README.en.md) · [配置参考](docs/CONFIGURATION.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md) · [Changelog](CHANGELOG.md) · [外部翻译 API](EXTERNAL_TRANSLATION_API.md)
 
@@ -12,11 +12,11 @@ MineAstr 是面向 Minecraft 1.21.1 / NeoForge 的 AstrBot 桥接模组。它把
 - 原始上游：[Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr)。
 - 沉浸画框联动 Fork：[YU322142/ImmersivePaintings](https://github.com/YU322142/ImmersivePaintings)，对应分支为 `1.21.1-neoforge`。
 
-0.7.22 与 Immersive Paintings 0.7.15 的联动由上述两个社区 Fork 共同维护，并非两个上游项目的官方联动。相关问题请提交到对应 Fork。
+0.7.23 与 Immersive Paintings 0.7.15 的联动由上述两个社区 Fork 共同维护，并非两个上游项目的官方联动。相关问题请提交到对应 Fork。
 
 | 项目 | 要求 |
 | --- | --- |
-| MineAstr | `0.7.22` |
+| MineAstr | `0.7.23` |
 | Minecraft | `1.21.1` |
 | NeoForge | `21.1.219` 或更高 |
 | Java | `21` |
@@ -50,7 +50,7 @@ AstrBot
 
 ## 安装
 
-1. 把 `mineastr-neoforge-1.21.1-0.7.22.jar` 放入服务端 `mods/`。
+1. 把 `mineastr-neoforge-1.21.1-0.7.23.jar` 放入服务端 `mods/`。
 2. 把同一个 JAR 放入参与翻译功能的客户端 `mods/`。
 3. 首次启动后编辑服务端 `config/mineastr-common.toml`。
 4. 在 AstrBot 的 Minecraft 适配器中设置相同的 WebSocket 路径和 Token。
@@ -69,7 +69,7 @@ serverId = "minecraft"
 
 ## 翻译显示行为
 
-0.7.22 将告示牌、实体和沉浸画框统一为“当前准星目标”生命周期：
+0.7.23 将告示牌、实体和沉浸画框统一为“当前准星目标”生命周期：
 
 - 只在目标仍然有效时显示译文。
 - 移开准星、打开界面、隐藏 HUD、切换世界或目标失效时立即清理。
@@ -80,7 +80,7 @@ serverId = "minecraft"
 
 ## Bot 图片与 ChatImage 联动
 
-- 推荐服务端和客户端安装 MineAstr `0.7.22`（0.7.21 服务端亦兼容此客户端修复）；希望显示图片的客户端还需安装 ChatImage。
+- 推荐服务端和客户端安装 MineAstr `0.7.23`；希望显示图片的客户端还需安装 ChatImage。
 - AstrBot 插件的 `bridge_settings.relay_images_to_game` 是 Bot 端总开关。
 - 客户端按 F8 后可单独关闭“接收图片消息”；偏好独立于 ChatImage 保存，实际图片发送仍要求客户端具备 ChatImage 能力。兼容旧 `acceptBotImages=false` 设置。
 - Bot 本机临时图片会在限定大小内安全内联；公网 HTTP(S) 图片由 ChatImage 获取。Bot 本机路径和图片 URL 都不会作为普通聊天正文显示。
@@ -92,7 +92,7 @@ serverId = "minecraft"
 
 图片翻译要求：
 
-- 推荐客户端与服务端安装 MineAstr `0.7.22`；客户端修复兼容 0.7.21 服务端。
+- 推荐客户端与服务端安装 MineAstr `0.7.23`；登录绑定修复需要服务端同步更新。
 - 客户端与服务端均安装 Immersive Paintings `0.7.15+1.21.1`。
 - AstrBot 桥接已连接并支持图片翻译。
 - 客户端开启游戏翻译和悬浮翻译。
@@ -101,7 +101,7 @@ serverId = "minecraft"
 
 ## 常用命令
 
-0.7.22 的 F8 设置支持滚动、撤销、恢复默认、独立图片接收偏好及快捷键开关；窗口较小时底部按钮仍保持可见。所有界面文字与单位通过语言键提供，多语言可添加或覆盖 `assets/mineastr/lang/<locale>.json`，详见 [配置参考](docs/CONFIGURATION.zh-CN.md)。`/mineastr-images on|off` 可直接更改当前玩家的服务端图片偏好。
+0.7.23 的 F8 设置支持滚动、撤销、恢复默认、独立图片接收偏好及快捷键开关；窗口较小时底部按钮仍保持可见。所有界面文字与单位通过语言键提供，多语言可添加或覆盖 `assets/mineastr/lang/<locale>.json`，详见 [配置参考](docs/CONFIGURATION.zh-CN.md)。`/mineastr-images on|off` 可直接更改当前玩家的服务端图片偏好。
 
 | 命令 | 用途 |
 | --- | --- |
@@ -126,7 +126,7 @@ serverId = "minecraft"
 | --- | --- |
 | 日志显示“已被配置禁用” | 活动 `mineastr-common.toml` 的 `enabled` |
 | 一直未连接 | `websocketUrl`、AstrBot 监听地址、防火墙和 Token |
-| 告示牌正常、画作不翻译 | Immersive Paintings 0.7.15，客户端是否同样安装 MineAstr 0.7.22 |
+| 告示牌正常、画作不翻译 | Immersive Paintings 0.7.15，客户端是否同样安装 MineAstr 0.7.23 |
 | Bot 图片只显示为 `[图片]` | 客户端是否安装 ChatImage、F8 图片接收是否开启、Bot 端图片转发是否开启 |
 | 移开准星仍显示 | 客户端是否混装旧 MineAstr 或旧画框 JAR |
 | 图片请求没有结果 | AstrBot 图片能力和客户端完整图缓存 |

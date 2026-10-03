@@ -1290,7 +1290,12 @@ public final class MineAstrBridge implements WebSocket.Listener {
             return;
         }
 
-        boolean allowed = getBoolean(payload, "allowed", true);
+        if (!payload.has("allowed") || !payload.get("allowed").isJsonPrimitive()
+                || !payload.get("allowed").getAsJsonPrimitive().isBoolean()) {
+            pending.future.complete(loginCheckFallback("AstrBot 未返回有效的登录校验决定"));
+            return;
+        }
+        boolean allowed = payload.get("allowed").getAsBoolean();
         String message = trimContent(getString(payload, "message", ""), 1024);
         String messageKey = trimFlatContent(getString(payload, "message_key", ""), 128);
         if (!allowed && messageKey.isBlank() && isKnownUnboundMessage(message)) {
@@ -1435,7 +1440,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
                 pending,
                 Map.copyOf(translations),
                 getBoolean(payload, "show_original", false),
-                "translated");
+                translations.isEmpty() ? "no_translation" : "translated");
     }
 
     private void handleChat(JsonObject payload) {

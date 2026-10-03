@@ -1,6 +1,5 @@
 package com.mineastr;
 
-import com.mojang.authlib.GameProfile;
 import com.mojang.logging.LogUtils;
 import java.lang.reflect.Method;
 import net.minecraft.server.level.ServerPlayer;
@@ -21,7 +20,7 @@ import net.neoforged.neoforge.event.ServerChatEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
-import net.neoforged.neoforge.event.entity.player.PlayerNegotiationEvent;
+import net.neoforged.neoforge.network.event.RegisterConfigurationTasksEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import org.slf4j.Logger;
@@ -29,7 +28,7 @@ import org.slf4j.Logger;
 @Mod(MineAstr.MODID)
 public final class MineAstr {
     public static final String MODID = "mineastr";
-    public static final String MOD_VERSION = "0.7.22";
+    public static final String MOD_VERSION = "0.7.23";
     public static final Logger LOGGER = LogUtils.getLogger();
 
     private static final MineAstrBridge BRIDGE = new MineAstrBridge();
@@ -37,6 +36,7 @@ public final class MineAstr {
     public MineAstr(IEventBus modEventBus, ModContainer modContainer) {
         NeoForge.EVENT_BUS.register(this);
         modEventBus.addListener(MineAstrNetwork::register);
+        modEventBus.addListener(MineAstr::registerLoginCheck);
         modContainer.registerConfig(ModConfig.Type.COMMON, MineAstrConfig.SPEC);
         if (FMLEnvironment.dist == Dist.CLIENT) {
             modContainer.registerConfig(ModConfig.Type.CLIENT, MineAstrClientConfig.SPEC);
@@ -125,27 +125,9 @@ public final class MineAstr {
         }
     }
 
-    @SubscribeEvent
-    public void onPlayerNegotiation(PlayerNegotiationEvent event) {
-        GameProfile profile = event.getProfile();
-        if (profile == null || profile.getName() == null || profile.getName().isBlank()) {
-            if (MineAstrConfig.LOGIN_BINDING_CHECK_ENABLED.getAsBoolean()
-                    && !MineAstrConfig.LOGIN_CHECK_FAIL_OPEN.getAsBoolean()) {
-                event.getConnection().disconnect(net.minecraft.network.chat.Component.translatableWithFallback(
-                        "disconnect.mineastr.login.identity_unavailable",
-                        "[MC] Unable to read the login identity. Please try again later."));
-            }
-            return;
-        }
-
-        BRIDGE.reconcileLoginWhitelistIdentity(profile);
-        if (!MineAstrConfig.LOGIN_BINDING_CHECK_ENABLED.getAsBoolean()) {
-            return;
-        }
-        event.enqueueWork(BRIDGE.checkPlayerLogin(profile.getName()).thenAccept(result -> {
-            if (!result.allowed()) {
-                event.getConnection().disconnect(result.component());
-            }
-        }));
+    private static void registerLoginCheck(RegisterConfigurationTasksEvent event) {
+        // PlayerNegotiationEvent is no longer posted in NeoForge 1.21.1.
+        // Configuration tasks run for both modded and vanilla connections.
+        event.register(MineAstrLoginTask.forConnection(event.getListener(), BRIDGE));
     }
 }

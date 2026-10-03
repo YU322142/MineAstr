@@ -110,7 +110,7 @@ public final class MineAstrConfig {
             .defineInRange("loginCheckTimeoutSeconds", 5, 1, 30);
     public static final ModConfigSpec.BooleanValue LOGIN_CHECK_FAIL_OPEN = BUILDER
             .comment("AstrBot 不可用时是否允许玩家登录。")
-            .define("loginCheckFailOpen", true);
+            .define("loginCheckFailOpen", false);
     public static final ModConfigSpec.BooleanValue GENERATE_BINDING_CODE_ON_REJECT = BUILDER
             .comment("未绑定玩家被拒绝时是否生成验证码。")
             .define("generateBindingCodeOnReject", true);

@@ -4,6 +4,13 @@
 
 Community fork: [YU322142/MineAstr](https://github.com/YU322142/MineAstr) · Upstream: [Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr) · Integration fork: [YU322142/ImmersivePaintings](https://github.com/YU322142/ImmersivePaintings)
 
+## 0.7.23 - NeoForge 1.21.1 - 2026-10-03
+
+- Replace the unused negotiation event with an asynchronous configuration task that gates world entry on binding verification. Preserve identity reconciliation and binding codes.
+- Default new configs to fail-closed; require a boolean login decision.
+- Log empty native-chat results as `no_translation`; retain the ZIP's 12 async optimizations and logging.
+- Add 3 login regression tests; 24 JUnit tests pass. See RELEASE_NOTES.md for cumulative changes.
+
 ## 0.7.22 - NeoForge 1.21.1 - 2026-10-03
 
 - Fix a loading-screen crash caused by reading CLIENT config values before NeoForge loads the config.
