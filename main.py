@@ -3,17 +3,20 @@ import base64
 import copy
 import hashlib
 import json
+import logging
 import math
 import re
 import time
 import urllib.parse
 from collections import deque
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Callable
 
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.message_components import Plain
+from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 
 try:
     from astrbot.api.message_components import Image, Reply
@@ -28,6 +31,8 @@ except ImportError:
 
     class Reply:  # type: ignore[no-redef]
         pass
+
+
 from astrbot.api.star import Context, Star, register
 
 from .aqqbot_compat import (
@@ -53,6 +58,22 @@ except ImportError:
     CallToolResult = None
     ImageContent = None
     TextContent = None
+
+
+_RELAY_DIAGNOSTICS = logging.getLogger("mineastr.relay_diagnostics")
+_RELAY_DIAGNOSTICS.setLevel(logging.INFO)
+_RELAY_DIAGNOSTICS.propagate = False
+if not _RELAY_DIAGNOSTICS.handlers:
+    diagnostics_path = Path(get_astrbot_data_path()) / "plugin_data" / "mineastr"
+    diagnostics_path.mkdir(parents=True, exist_ok=True)
+    handler = RotatingFileHandler(
+        diagnostics_path / "relay_diagnostics.log",
+        maxBytes=1_000_000,
+        backupCount=2,
+        encoding="utf-8",
+    )
+    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    _RELAY_DIAGNOSTICS.addHandler(handler)
 
 
 MINEASTR_TOOL_HINT = (
@@ -276,6 +297,7 @@ AQQBOT_DEFAULT_CONFIG: dict[str, Any] = {
     "max_relay_length": 500,
     "game_translation_enabled": False,
     "game_translation_provider_id": "",
+    "game_translation_fallback_provider_ids": [],
     "game_translation_languages": "zh_cn\nen_us",
     "game_translation_show_original": True,
     "game_translation_timeout_seconds": 20,
@@ -355,6 +377,7 @@ CONFIG_GROUP_KEYS: dict[str, tuple[str, ...]] = {
         "max_relay_length",
         "game_translation_enabled",
         "game_translation_provider_id",
+        "game_translation_fallback_provider_ids",
         "game_translation_languages",
         "game_translation_show_original",
         "game_translation_timeout_seconds",
@@ -447,7 +470,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.7.27",
+    "0.7.28",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -503,6 +526,15 @@ class MineAstrPlugin(Star):
         self._relay_outbound_message_records: dict[str, dict[str, Any]] = {}
         self._binding_store = BindingStore(str(self._cfg("binding_database")))
         self._refresh_relay_sessions()
+        _RELAY_DIAGNOSTICS.info(
+            "Plugin loaded: game_translation=%s targets=%s target_languages=%s provider=%s",
+            self._cfg_bool("game_translation_enabled"),
+            sorted(self._relay_sessions),
+            self._platform_translation_languages_for_sessions(
+                sorted(self._relay_sessions)
+            ),
+            self._cfg("game_translation_provider_id") or "session-default",
+        )
         from .minecraft_adapter import MinecraftPlatformAdapter  # noqa: F401
 
     async def initialize(self):
@@ -2617,6 +2649,131 @@ class MineAstrPlugin(Star):
             },
         }
 
+    def _translation_provider_ids(self, origin: str) -> tuple[str, ...]:
+        """Resolve configured models and the session default without duplicates."""
+        primary = str(self._cfg("game_translation_provider_id") or "").strip()
+        fallbacks = self._cfg("game_translation_fallback_provider_ids")
+        if not isinstance(fallbacks, list):
+            fallbacks = []
+        try:
+            default = self.context.get_using_provider(origin or None)
+        except Exception as exc:  # noqa: BLE001 - provider resolution is a fallback boundary
+            _RELAY_DIAGNOSTICS.warning(
+                "Session translation model unavailable: error_type=%s",
+                type(exc).__name__,
+            )
+            default = None
+        default_id = str(getattr(default, "provider_config", {}).get("id") or "")
+        if default is not None and not default_id:
+            default_id = "@session-default"
+        configured = [primary or default_id, *fallbacks, default_id]
+        return tuple(
+            dict.fromkeys(
+                str(item).strip() for item in configured if str(item or "").strip()
+            )
+        )
+
+    async def _translation_response(
+        self,
+        prompt: str,
+        system_prompt: str,
+        languages: tuple[str, ...],
+        origin: str,
+        *,
+        timeout_seconds: float,
+        image_urls: list[str] | None = None,
+        allow_already_bilingual: bool = False,
+    ) -> Any:
+        """Try selected models within one deadline and validate their responses."""
+        candidates = self._translation_provider_ids(origin)
+        deadline = time.monotonic() + max(0.1, min(60.0, timeout_seconds))
+        errors = []
+        for index, provider_id in enumerate(candidates):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                provider = (
+                    self.context.get_using_provider(origin or None)
+                    if provider_id == "@session-default"
+                    else self.context.get_provider_by_id(provider_id)
+                )
+                if provider is None or not callable(
+                    getattr(provider, "text_chat", None)
+                ):
+                    raise RuntimeError("Selected translation model is unavailable")
+                if (
+                    getattr(provider, "provider_config", {}).get("enable", True)
+                    is False
+                ):
+                    raise RuntimeError("Selected translation model is disabled")
+                attempt_timeout = remaining / (len(candidates) - index)
+                _RELAY_DIAGNOSTICS.info(
+                    "Translation attempt: origin=%s provider=%s attempt=%s budget=%.1f targets=%s",
+                    origin,
+                    provider_id,
+                    index + 1,
+                    attempt_timeout,
+                    languages,
+                )
+                arguments = {
+                    "prompt": prompt,
+                    "system_prompt": system_prompt,
+                    "session_id": f"mineastr-translation-{time.monotonic_ns()}",
+                    "persist": False,
+                }
+                if image_urls is not None:
+                    arguments["image_urls"] = image_urls
+                response = await asyncio.wait_for(
+                    provider.text_chat(**arguments), timeout=attempt_timeout
+                )
+                raw = getattr(response, "completion_text", "")
+                result = self._parse_translation_response(
+                    raw,
+                    languages,
+                    self._cfg_int("max_relay_length"),
+                    allow_already_bilingual=allow_already_bilingual,
+                )
+                translated = result.get("translations")
+                required_languages = [
+                    language
+                    for language in languages
+                    if not self._same_translation_language(
+                        result.get("source_language", ""), language
+                    )
+                ]
+                valid = bool(translated or result.get("source_language")) and all(
+                    isinstance(translated, dict) and bool(translated.get(language))
+                    for language in required_languages
+                )
+                valid = valid or result.get("already_bilingual") is True
+                if image_urls is not None:
+                    match = re.search(
+                        r"\{.*\}", str(raw or "").strip(), flags=re.DOTALL
+                    )
+                    parsed = json.loads(match.group(0)) if match else {}
+                    recognized = (
+                        parsed.get("source_text") or parsed.get("ocr_text")
+                        if isinstance(parsed, dict)
+                        else ""
+                    )
+                    valid = valid and bool(translated or recognized)
+                if not valid:
+                    raise ValueError(
+                        "Translation model returned invalid or incomplete JSON"
+                    )
+                return response
+            except Exception as exc:  # noqa: BLE001 - one provider failure must allow fallback
+                errors.append(f"{provider_id}: {type(exc).__name__}")
+                _RELAY_DIAGNOSTICS.warning(
+                    "Translation attempt failed: provider=%s error_type=%s",
+                    provider_id,
+                    type(exc).__name__,
+                )
+        raise RuntimeError(
+            "All selected translation models failed: " + "; ".join(errors)
+        )
+
     async def _translate_text(
         self,
         content: str,
@@ -2638,9 +2795,7 @@ class MineAstrPlugin(Star):
             TRANSLATION_PROMPT_MAX_LENGTH,
         )
         if inject_glossary:
-            instructions = await self._append_translation_glossary(
-                instructions, source
-            )
+            instructions = await self._append_translation_glossary(instructions, source)
         bilingual_review = bool(
             detect_bilingual_equivalence
             and self._contains_han_and_latin_candidate(source)
@@ -2652,6 +2807,7 @@ class MineAstrPlugin(Star):
             instructions,
             context,
             bilingual_review,
+            self._translation_provider_ids(origin),
         )
         cache = getattr(self, "_game_translation_cache", None)
         if not isinstance(cache, dict):
@@ -2664,6 +2820,7 @@ class MineAstrPlugin(Star):
         bilingual_cache_key = (
             "bilingual-equivalence",
             self._normalize_translation_text(source),
+            self._translation_provider_ids(origin),
         )
         translations = cache.get(bilingual_cache_key) if bilingual_review else None
         if not (
@@ -2678,13 +2835,6 @@ class MineAstrPlugin(Star):
             accessed_at[active_cache_key] = time.monotonic()
         if translations is None:
             try:
-                provider_id = str(self._cfg("game_translation_provider_id")).strip()
-                if provider_id:
-                    provider = self.context.get_provider_by_id(provider_id)
-                else:
-                    provider = self.context.get_using_provider(origin or None)
-                if provider is None or not hasattr(provider, "text_chat"):
-                    raise RuntimeError("没有可用的 AstrBot 文本模型提供商")
                 context_items = [
                     {"speaker": speaker, "text": text}
                     for speaker, text in context
@@ -2730,24 +2880,17 @@ class MineAstrPlugin(Star):
                         "languages are visibly present in the current text and their meanings "
                         "match; otherwise use the normal translation JSON shape."
                     )
-                response = await asyncio.wait_for(
-                    provider.text_chat(
-                        prompt=prompt,
-                        system_prompt=system_prompt,
-                        session_id=f"mineastr-translation-{time.monotonic_ns()}",
-                        persist=False,
-                    ),
-                    timeout=(
-                        max(0.1, min(60.0, float(timeout_seconds)))
+                response = await self._translation_response(
+                    prompt,
+                    system_prompt,
+                    languages,
+                    origin,
+                    timeout_seconds=(
+                        float(timeout_seconds)
                         if timeout_seconds is not None
-                        else max(
-                            1,
-                            min(
-                                60,
-                                self._cfg_int("game_translation_timeout_seconds"),
-                            ),
-                        )
+                        else max(1, self._cfg_int("game_translation_timeout_seconds"))
                     ),
+                    allow_already_bilingual=bilingual_review,
                 )
                 translations = self._parse_translation_response(
                     getattr(response, "completion_text", ""),
@@ -2755,21 +2898,29 @@ class MineAstrPlugin(Star):
                     self._cfg_int("max_relay_length"),
                     allow_already_bilingual=bilingual_review,
                 )
-                usable_bilingual_result = bool(
-                    isinstance(translations.get("translations"), dict)
-                    and translations.get("translations")
-                ) or translations.get("already_bilingual") is True
+                usable_bilingual_result = (
+                    bool(
+                        isinstance(translations.get("translations"), dict)
+                        and translations.get("translations")
+                    )
+                    or translations.get("already_bilingual") is True
+                )
                 same_language_only = bool(translations.get("source_language")) and all(
                     self._same_translation_language(
                         translations["source_language"], language
                     )
                     for language in languages
                 )
-                if (
-                    not translations
-                    or (not usable_bilingual_result and not same_language_only)
+                if not translations or (
+                    not usable_bilingual_result and not same_language_only
                 ):
                     raise RuntimeError("翻译模型没有返回有效的语言检测/翻译 JSON")
+                _RELAY_DIAGNOSTICS.info(
+                    "Translation completed: source=%s translated_languages=%s bilingual=%s",
+                    translations.get("source_language"),
+                    sorted(translations.get("translations", {})),
+                    translations.get("already_bilingual", False),
+                )
                 active_cache_key = (
                     bilingual_cache_key
                     if translations.get("already_bilingual") is True
@@ -2782,6 +2933,11 @@ class MineAstrPlugin(Star):
                     cache.pop(oldest, None)
                     accessed_at.pop(oldest, None)
             except Exception as exc:
+                _RELAY_DIAGNOSTICS.warning(
+                    "Translation fallback: error_type=%s origin=%s",
+                    type(exc).__name__,
+                    origin,
+                )
                 logger.warning("MineAstr 自动翻译失败，已发送原文：%s", exc)
                 return {}
         return copy.deepcopy(translations)
@@ -2934,9 +3090,7 @@ class MineAstrPlugin(Star):
             response["already_bilingual"] = True
         return response
 
-    async def _translate_image_request(
-        self, request: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def _translate_image_request(self, request: dict[str, Any]) -> dict[str, Any]:
         """Translate an external image through AstrBot's multimodal provider."""
 
         if not self._cfg_bool("game_translation_enabled"):
@@ -2968,9 +3122,7 @@ class MineAstrPlugin(Star):
             return {}
         prompt_instructions = trim_message(
             str(
-                request.get("prompt")
-                or self._cfg("image_translation_prompt")
-                or ""
+                request.get("prompt") or self._cfg("image_translation_prompt") or ""
             ).strip(),
             TRANSLATION_PROMPT_MAX_LENGTH,
         )
@@ -2993,7 +3145,8 @@ class MineAstrPlugin(Star):
         )
         show_original = self._cfg_bool("game_translation_show_original")
         max_relay_length = self._cfg_int("max_relay_length")
-        provider_id = str(self._cfg("game_translation_provider_id")).strip()
+        origin = f"minecraft://{str(request.get('server_id') or 'minecraft')}"
+        provider_ids = self._translation_provider_ids(origin)
         glossary_token = await self._translation_glossary_cache_token()
         cache_key: tuple[Any, ...] = (
             hashlib.sha256(image_bytes).hexdigest(),
@@ -3003,7 +3156,7 @@ class MineAstrPlugin(Star):
             glossary_max_chars,
             show_original,
             max_relay_length,
-            provider_id,
+            provider_ids,
         )
         if glossary_token is not None:
             cache_key += (glossary_token,)
@@ -3018,15 +3171,6 @@ class MineAstrPlugin(Star):
 
         request_deadline = self._translation_clock() + total_budget
         try:
-            provider = (
-                self.context.get_provider_by_id(provider_id)
-                if provider_id
-                else self.context.get_using_provider(
-                    f"minecraft://{str(request.get('server_id') or 'minecraft')}"
-                )
-            )
-            if provider is None or not hasattr(provider, "text_chat"):
-                raise RuntimeError("没有可用的 AstrBot 多模态模型提供商")
             prompt = json.dumps(
                 {
                     "target_languages": list(languages),
@@ -3055,22 +3199,16 @@ class MineAstrPlugin(Star):
                 configured_timeout,
                 max(0.1, remaining - correction_reserve),
             )
-            response = await asyncio.wait_for(
-                provider.text_chat(
-                    prompt=prompt,
-                    system_prompt=system_prompt,
-                    image_urls=[
-                        f"data:{mime_type};base64,{encoded}"
-                    ],
-                    session_id=f"mineastr-image-translation-{time.monotonic_ns()}",
-                    persist=False,
-                ),
-                timeout=initial_timeout,
+            response = await self._translation_response(
+                prompt,
+                system_prompt,
+                languages,
+                origin,
+                image_urls=[f"data:{mime_type};base64,{encoded}"],
+                timeout_seconds=initial_timeout,
             )
             raw = getattr(response, "completion_text", "")
-            result = self._parse_translation_response(
-                raw, languages, max_relay_length
-            )
+            result = self._parse_translation_response(raw, languages, max_relay_length)
             parsed_source = ""
             match = re.search(r"\{.*\}", str(raw or "").strip(), flags=re.DOTALL)
             if match:
@@ -3285,6 +3423,12 @@ class MineAstrPlugin(Star):
         detect_bilingual_equivalence: bool = False,
     ) -> dict[str, Any]:
         languages = self._platform_translation_languages_for_sessions(sessions)
+        _RELAY_DIAGNOSTICS.info(
+            "Relay language selection: origin=%s targets=%s languages=%s",
+            origin,
+            sessions,
+            languages,
+        )
         if include_game and self._cfg_bool("game_translation_enabled"):
             for language in self._game_translation_languages():
                 if language not in languages:
@@ -3297,16 +3441,20 @@ class MineAstrPlugin(Star):
             return {}
         resolved_scope = cache_scope or f"relay-unified:{origin}"
         context = self._translation_context_snapshot(origin, resolved_scope)
+        translation_started = time.monotonic()
         result = await self._translate_text(
             content,
             tuple(languages),
             origin,
-            custom_instructions=str(
-                self._cfg("translation_custom_instructions") or ""
-            ),
+            custom_instructions=str(self._cfg("translation_custom_instructions") or ""),
             cache_scope=resolved_scope,
             context=context,
             detect_bilingual_equivalence=detect_bilingual_equivalence,
+        )
+        _RELAY_DIAGNOSTICS.info(
+            "Relay translation timing: origin=%s translation_seconds=%.3f",
+            origin,
+            time.monotonic() - translation_started,
         )
         self._remember_translation_context(origin, resolved_scope, content)
         return result
@@ -3407,9 +3555,7 @@ class MineAstrPlugin(Star):
     ) -> None:
         target_sessions = sessions
         if target_sessions is None:
-            target_sessions = self._relay_target_sessions(
-                exclude, source_platform
-            )
+            target_sessions = self._relay_target_sessions(exclude, source_platform)
         translation_origin = exclude or (target_sessions[0] if target_sessions else "")
         result = translation_result
         if result is None:
@@ -3428,7 +3574,8 @@ class MineAstrPlugin(Star):
                 translation_origin,
             )
 
-        for session in target_sessions:
+        async def send_session(session: str) -> None:
+            started = time.monotonic()
             message = await self._platform_chat_message(
                 session,
                 content,
@@ -3453,6 +3600,15 @@ class MineAstrPlugin(Star):
                 )
             else:
                 await self._send_to_relay_session(session, message)
+            _RELAY_DIAGNOSTICS.info(
+                "Relay destination finished: session=%s transport_seconds=%.3f",
+                session,
+                time.monotonic() - started,
+            )
+
+        await asyncio.gather(
+            *(send_session(session) for session in dict.fromkeys(target_sessions))
+        )
 
     async def _send_to_relay_session(
         self,
@@ -3493,21 +3649,26 @@ class MineAstrPlugin(Star):
                 logger.debug("MineAstr 忽略无效图片引用：%s", reference)
         if not chain:
             return
+        send_started = time.monotonic()
         try:
-            sent = await self.context.send_message(
-                session, MessageChain(chain)
+            sent = await self.context.send_message(session, MessageChain(chain))
+            _RELAY_DIAGNOSTICS.info(
+                "Platform send result: session=%s accepted=%s send_seconds=%.3f",
+                session,
+                bool(sent),
+                time.monotonic() - send_started,
             )
             if not sent:
                 logger.warning("MineAstr 找不到桥接会话：%s", session)
             else:
                 logger.debug(
                     "MineAstr 桥接消息已发送：platform=%s quote=%s media=%s",
-                    self._session_platform_id(session), bool(reply_context), len(media or ()),
+                    self._session_platform_id(session),
+                    bool(reply_context),
+                    len(media or ()),
                 )
                 for outbound_text in outbound_texts:
-                    self._store_outbound_relay_message(
-                        session, outbound_text
-                    )
+                    self._store_outbound_relay_message(session, outbound_text)
         except Exception as exc:
             logger.warning("MineAstr 向桥接会话 %s 发送消息失败：%s", session, exc)
 
@@ -4132,23 +4293,165 @@ class MineAstrPlugin(Star):
             # the player's original message.
             logger.warning("MineAstr 回传原生聊天翻译失败，等待 Mod 回退原文：%s", exc)
 
+    async def _relay_minecraft_chat(
+        self, event: AstrMessageEvent, raw: dict[str, Any], text: str
+    ) -> None:
+        """Send original-only destinations while the shared translation runs."""
+        _RELAY_DIAGNOSTICS.info(
+            "Minecraft relay received: origin=%s native=%s",
+            event.unified_msg_origin,
+            bool(raw.get("native_chat")),
+        )
+        received = raw.get("_mineastr_received_monotonic")
+        if isinstance(received, (int, float)):
+            _RELAY_DIAGNOSTICS.info(
+                "Minecraft event queue_seconds=%.3f",
+                max(0, time.monotonic() - received),
+            )
+        filtered = apply_aqqbot_filters(text, self._cfg("game_to_chat_filters"))
+        filtered = strip_minecraft_colors(filtered) if filtered is not None else None
+        native_content = strip_minecraft_colors(
+            str(
+                raw.get("native_original_content") or raw.get("content") or text
+            ).strip()
+        )
+        native_message_id = (
+            trim_message(raw.get("native_chat_id"), 64)
+            if bool(raw.get("native_chat"))
+            else ""
+        )
+        native_languages = self._native_chat_translation_languages(raw)
+        origin = event.unified_msg_origin
+        server_scope = trim_message(raw.get("server_id"), 64) or "minecraft"
+        shared_scope = f"relay-unified:{origin}:{server_scope}"
+        sessions = (
+            self._relay_target_sessions(origin, source_platform="minecraft")
+            if filtered is not None
+            else []
+        )
+        immediate_sessions: list[str] = []
+        translated_sessions: list[str] = []
+        for session in sessions:
+            targets = (
+                translated_sessions
+                if self._platform_translation_languages_for_sessions([session])
+                else immediate_sessions
+            )
+            targets.append(session)
+        values = {
+            "server": str(
+                raw.get("server_name") or raw.get("server_id") or "Minecraft"
+            ),
+            "server_id": str(raw.get("server_id") or "minecraft"),
+            "player": str(raw.get("player_name") or event.get_sender_name() or "玩家"),
+            "player_uuid": str(raw.get("player_uuid") or event.get_sender_id()),
+            "message": filtered or "",
+        }
+        template = str(self._cfg("game_to_chat_template"))
+        content = format_template(template, values)
+
+        async def send_platforms(targets: list[str], result: dict[str, Any]) -> None:
+            transformed = self._transform_translation_result(
+                result,
+                lambda translated: format_template(
+                    template, {**values, "message": translated}
+                ),
+            )
+            # A slow platform must not hold up another destination or the
+            # native-chat response. All sends remain owned by this event.
+            await asyncio.gather(
+                *(
+                    self._send_to_relay_sessions(
+                        content,
+                        exclude=origin,
+                        sessions=[session],
+                        translation_result=transformed,
+                    )
+                    for session in targets
+                )
+            )
+
+        async def translate(
+            source: str, targets: list[str], *, native: bool, scope: str
+        ) -> dict[str, Any]:
+            try:
+                return await self._translate_relay_message(
+                    source,
+                    targets,
+                    origin,
+                    extra_languages=native_languages if native else (),
+                    cache_scope=scope,
+                    detect_bilingual_equivalence=native,
+                )
+            except Exception as exc:
+                logger.warning("MineAstr Minecraft 聊天翻译失败，已回退原文：%s", exc)
+                return {}
+
+        async def complete_native(result: dict[str, Any]) -> None:
+            await self._complete_native_minecraft_chat(
+                raw,
+                native_content,
+                result,
+                native_languages,
+            )
+
+        async def shared_translation() -> None:
+            result = await translate(
+                native_content,
+                translated_sessions,
+                native=True,
+                scope=shared_scope,
+            )
+            await asyncio.gather(
+                complete_native(result),
+                send_platforms(translated_sessions, result),
+            )
+
+        async def native_translation() -> None:
+            result = await translate(
+                native_content,
+                [],
+                native=True,
+                scope=f"native-chat:{origin}:{server_scope}",
+            )
+            await complete_native(result)
+
+        async def platform_translation() -> None:
+            result = await translate(
+                filtered or "",
+                translated_sessions,
+                native=False,
+                scope=shared_scope,
+            )
+            await send_platforms(translated_sessions, result)
+
+        jobs = []
+        if immediate_sessions:
+            jobs.append(send_platforms(immediate_sessions, {}))
+        if native_message_id and filtered == native_content:
+            # Keep one model call for identical game/platform text and the
+            # union of their locales, including bilingual detection.
+            jobs.append(shared_translation())
+        else:
+            if native_message_id:
+                jobs.append(native_translation())
+            if translated_sessions:
+                jobs.append(platform_translation())
+        await asyncio.gather(*jobs)
+
     @filter.custom_filter(MineAstrRelayFilter, priority=-100)
     async def mineastr_relay_message(self, event: AstrMessageEvent) -> None:
         platform_id = str(event.get_platform_id() or "")
         raw = self._event_raw_message(event) if platform_id == "minecraft" else {}
         reply_context = self._event_reply_context(event)
-        reply_to_synced = self._is_reply_to_synced_message(
-            event, reply_context
-        )
+        reply_to_synced = self._is_reply_to_synced_message(event, reply_context)
         if not self._cfg_bool("bridge_enabled"):
             if reply_to_synced:
                 event.stop_event()
             if bool(raw.get("native_chat")):
                 fallback = strip_minecraft_colors(
                     str(
-                        raw.get("native_original_content")
-                        or raw.get("content")
-                        or ""
+                        raw.get("native_original_content") or raw.get("content") or ""
                     ).strip()
                 )
                 await self._complete_native_minecraft_chat(raw, fallback, {}, ())
@@ -4161,120 +4464,14 @@ class MineAstrPlugin(Star):
             if bool(raw.get("native_chat")):
                 fallback = strip_minecraft_colors(
                     str(
-                        raw.get("native_original_content")
-                        or raw.get("content")
-                        or ""
+                        raw.get("native_original_content") or raw.get("content") or ""
                     ).strip()
                 )
                 await self._complete_native_minecraft_chat(raw, fallback, {}, ())
             return
 
         if platform_id == "minecraft":
-            filtered = apply_aqqbot_filters(text, self._cfg("game_to_chat_filters"))
-            native_content = strip_minecraft_colors(
-                str(
-                    raw.get("native_original_content")
-                    or raw.get("content")
-                    or text
-                ).strip()
-            )
-            native_message_id = (
-                trim_message(raw.get("native_chat_id"), 64)
-                if bool(raw.get("native_chat"))
-                else ""
-            )
-            native_languages = self._native_chat_translation_languages(raw)
-            server_scope = trim_message(raw.get("server_id"), 64) or "minecraft"
-            shared_cache_scope = (
-                f"relay-unified:{event.unified_msg_origin}:{server_scope}"
-            )
-            native_cache_scope = (
-                f"native-chat:{event.unified_msg_origin}:{server_scope}"
-            )
-            target_sessions = self._relay_target_sessions(
-                event.unified_msg_origin,
-                source_platform="minecraft",
-            )
-            native_result: dict[str, Any] = {}
-            shared_result: dict[str, Any] | None = None
-            normalized_filtered = (
-                strip_minecraft_colors(filtered)
-                if filtered is not None
-                else None
-            )
-
-            if native_message_id:
-                try:
-                    if normalized_filtered == native_content:
-                        shared_result = await self._translate_relay_message(
-                            native_content,
-                            target_sessions,
-                            event.unified_msg_origin,
-                            extra_languages=native_languages,
-                            cache_scope=shared_cache_scope,
-                            detect_bilingual_equivalence=True,
-                        )
-                        native_result = shared_result
-                    else:
-                        native_result = await self._translate_relay_message(
-                            native_content,
-                            [],
-                            event.unified_msg_origin,
-                            extra_languages=native_languages,
-                            cache_scope=native_cache_scope,
-                            detect_bilingual_equivalence=True,
-                        )
-                except Exception as exc:
-                    logger.warning(
-                        "MineAstr 原生 Minecraft 聊天翻译失败，已回退原文：%s",
-                        exc,
-                    )
-                await self._complete_native_minecraft_chat(
-                    raw,
-                    native_content,
-                    native_result,
-                    native_languages,
-                )
-
-            if filtered is not None:
-                filtered = normalized_filtered or ""
-                values = {
-                    "server": str(
-                        raw.get("server_name") or raw.get("server_id") or "Minecraft"
-                    ),
-                    "server_id": str(raw.get("server_id") or "minecraft"),
-                    "player": str(
-                        raw.get("player_name") or event.get_sender_name() or "玩家"
-                    ),
-                    "player_uuid": str(raw.get("player_uuid") or event.get_sender_id()),
-                    "message": filtered,
-                }
-                template = str(self._cfg("game_to_chat_template"))
-                content = format_template(template, values)
-                translation_result = shared_result
-                if translation_result is None:
-                    translation_result = await self._translate_relay_message(
-                        filtered,
-                        target_sessions,
-                        event.unified_msg_origin,
-                        cache_scope=shared_cache_scope,
-                    )
-                translated_result = self._transform_translation_result(
-                    translation_result,
-                    lambda translated: format_template(
-                        template,
-                        {
-                            **values,
-                            "message": translated,
-                        },
-                    ),
-                )
-                await self._send_to_relay_sessions(
-                    content,
-                    exclude=event.unified_msg_origin,
-                    sessions=target_sessions,
-                    translation_result=translated_result,
-                )
+            await self._relay_minecraft_chat(event, raw, text)
             if (
                 not raw.get("minecraft_mentioned_bot")
                 and not event.is_at_or_wake_command
@@ -4318,7 +4515,9 @@ class MineAstrPlugin(Star):
             sender_name=identity["owner_display"],
             origin=event.unified_msg_origin,
         )
-        game_sender = await self._game_sender_name(identity["owner_key"], identity["owner_display"])
+        game_sender = await self._game_sender_name(
+            identity["owner_key"], identity["owner_display"]
+        )
         game_template = str(self._cfg("chat_to_game_template"))
         game_values = {
             "platform": identity["platform_id"],
@@ -4357,50 +4556,62 @@ class MineAstrPlugin(Star):
             if quoted_text
             else {}
         )
-        await self._send_to_relay_sessions(
-            platform_prefix + filtered,
-            sessions=target_sessions,
-            translation_result=self._transform_translation_result(
-                translation_result,
-                lambda translated: platform_prefix + translated,
-            ),
-            media=media,
-            reply_context=reply_context,
-            reply_translation_result=reply_result,
-        )
-        if not has_game_target:
-            logger.warning("MineAstr minecraft 平台适配器未启用，无法转发聊天。")
-            return
-        game_reply = await self._game_reply_context(reply_context, identity["platform_id"])
-        reply_prefix = self._reply_prefix(game_reply)
-        game_media = await self._game_media_payloads(media)
-        media_marker = "\n[图片]" if game_media and filtered else ("[图片]" if game_media else "")
-        content = game_content(reply_prefix + filtered + media_marker)
-        game_translation_result = self._game_reply_translation_result(
-            filtered,
-            translation_result,
-            game_reply,
-            reply_result,
-            lambda translated: game_content(translated + media_marker),
-        )
-        try:
-            relay_kwargs = {
-                "origin": event.unified_msg_origin,
-                "translation_options": self._game_translation_options_from_result(
-                    game_translation_result
-                ),
-            }
-            if game_media:
-                relay_kwargs["media"] = game_media
-            await adapter.relay_chat(
-                trim_message(content, self._cfg_int("max_relay_length")),
-                game_sender,
-                **relay_kwargs,
+
+        async def send_to_game() -> None:
+            if not has_game_target:
+                logger.warning("MineAstr minecraft 平台适配器未启用，无法转发聊天。")
+                return
+            game_reply = await self._game_reply_context(
+                reply_context, identity["platform_id"]
             )
-            await self._notify_mentioned_players(event, filtered)
-        except Exception as exc:
-            logger.warning("MineAstr 转发聊天到 Minecraft 失败：%s", exc)
-            return
+            reply_prefix = self._reply_prefix(game_reply)
+            game_media = await self._game_media_payloads(media)
+            media_marker = (
+                "\n[图片]"
+                if game_media and filtered
+                else ("[图片]" if game_media else "")
+            )
+            content = game_content(reply_prefix + filtered + media_marker)
+            game_translation_result = self._game_reply_translation_result(
+                filtered,
+                translation_result,
+                game_reply,
+                reply_result,
+                lambda translated: game_content(translated + media_marker),
+            )
+            try:
+                relay_kwargs = {
+                    "origin": event.unified_msg_origin,
+                    "translation_options": self._game_translation_options_from_result(
+                        game_translation_result
+                    ),
+                }
+                if game_media:
+                    relay_kwargs["media"] = game_media
+                await adapter.relay_chat(
+                    trim_message(content, self._cfg_int("max_relay_length")),
+                    game_sender,
+                    **relay_kwargs,
+                )
+                await self._notify_mentioned_players(event, filtered)
+            except Exception as exc:
+                logger.warning("MineAstr 转发聊天到 Minecraft 失败：%s", exc)
+                return
+
+        await asyncio.gather(
+            self._send_to_relay_sessions(
+                platform_prefix + filtered,
+                sessions=target_sessions,
+                translation_result=self._transform_translation_result(
+                    translation_result,
+                    lambda translated: platform_prefix + translated,
+                ),
+                media=media,
+                reply_context=reply_context,
+                reply_translation_result=reply_result,
+            ),
+            send_to_game(),
+        )
         if reply_to_synced or not event.is_at_or_wake_command:
             event.stop_event()
 

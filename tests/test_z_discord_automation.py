@@ -85,6 +85,11 @@ def _install_main_stubs():
     star.register = _identity_decorator
     astrbot.api = api
     sys.modules["astrbot.api.star"] = star
+    for name in ["astrbot.core", "astrbot.core.utils"]:
+        sys.modules.setdefault(name, types.ModuleType(name))
+    paths = types.ModuleType("astrbot.core.utils.astrbot_path")
+    paths.get_astrbot_data_path = lambda: str(Path(tempfile.gettempdir()) / "mineastr-test-data")
+    sys.modules["astrbot.core.utils.astrbot_path"] = paths
 
 
 def _load_main_module():
@@ -1999,7 +2004,7 @@ class CacheCleanupTests(unittest.IsolatedAsyncioTestCase):
             "image_translation_prompt": "",
             "translation_context_messages": 1,
         }
-        text_key = ("game", "hello", ("en_us",), "", (), False)
+        text_key = ("game", "hello", ("en_us",), "", (), False, plugin._translation_provider_ids(""))
         plugin._game_translation_cache[text_key] = {
             "source_language": "zh_cn",
             "translations": {"en_us": "hello"},
@@ -2015,7 +2020,7 @@ class CacheCleanupTests(unittest.IsolatedAsyncioTestCase):
             ),
             plugin._cfg_bool("game_translation_show_original"),
             plugin._cfg_int("max_relay_length"),
-            str(plugin._cfg("game_translation_provider_id")).strip(),
+            plugin._translation_provider_ids("minecraft://minecraft"),
         )
         plugin._image_translation_cache[image_key] = {
             "source_language": "zh_cn",

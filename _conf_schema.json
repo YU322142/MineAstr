@@ -106,10 +106,18 @@
         "default": false
       },
       "game_translation_provider_id": {
-        "description": "翻译模型 Provider ID",
+        "description": "翻译主模型",
         "type": "string",
-        "hint": "留空使用消息会话当前选择的文本模型；也可填写 AstrBot 提供商 ID 固定使用低成本翻译模型。",
-        "default": ""
+        "hint": "从 AstrBot 已配置的聊天模型中选择。留空使用当前会话模型；指定模型失败后，依次尝试回退模型，最后尝试当前会话模型。",
+        "default": "",
+        "_special": "select_provider"
+      },
+      "game_translation_fallback_provider_ids": {
+        "description": "翻译回退模型（按选择顺序）",
+        "type": "list",
+        "_special": "select_providers",
+        "default": [],
+        "hint": "从现有模型中多选。主模型不可用、超时或返回无效翻译时，按此列表顺序回退；重复模型只调用一次。所有尝试共用翻译超时预算，全部失败保留原文。"
       },
       "game_translation_languages": {
         "description": "游戏内翻译目标语言（每行一个）",
@@ -126,7 +134,7 @@
       "game_translation_timeout_seconds": {
         "description": "翻译等待超时（秒）",
         "type": "int",
-        "hint": "普通文字超时后直接发送原文，允许 1–60 秒。图片 OCR 与可选术语校正受 MineAstr 协议保护，共用最长 27 秒总预算，避免超过 Mod 的 30 秒等待上限。",
+        "hint": "所有主模型和回退模型共用此等待上限（1–60 秒），超时保留原文。图片 OCR 与可选术语校正继续共用协议总预算。",
         "default": 20
       },
       "translation_context_messages": {
@@ -690,7 +698,12 @@
   "game_to_chat_filters": {"type": "text", "default": "", "invisible": true},
   "max_relay_length": {"type": "int", "default": 500, "invisible": true},
   "game_translation_enabled": {"type": "bool", "default": false, "invisible": true},
-  "game_translation_provider_id": {"type": "string", "default": "", "invisible": true},
+  "game_translation_provider_id": {
+    "type": "string",
+    "default": "",
+    "invisible": true,
+    "_special": "select_provider"
+  },
   "game_translation_languages": {"type": "text", "default": "zh_cn\nen_us", "invisible": true},
   "game_translation_show_original": {"type": "bool", "default": true, "invisible": true},
   "game_translation_timeout_seconds": {"type": "int", "default": 20, "invisible": true},

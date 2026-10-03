@@ -1772,6 +1772,7 @@ class MinecraftPlatformAdapter(Platform):
         if not metadata:
             raise RuntimeError("Minecraft 服务器尚未注册")
         trusted_payload = dict(payload)
+        trusted_payload["_mineastr_received_monotonic"] = time.monotonic()
         trusted_payload["server_id"] = metadata.get("server_id", "minecraft")
         trusted_payload["server_name"] = metadata.get("server_name", "Minecraft Server")
         trusted_payload["connection_id"] = metadata.get("connection_id", "")
