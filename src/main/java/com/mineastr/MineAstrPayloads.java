@@ -1,6 +1,8 @@
 package com.mineastr;
 
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -93,6 +95,33 @@ public final class MineAstrPayloads {
         public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
             return TYPE;
         }
+    }
+
+    public record ImageRef(String id, String name) {}
+
+    /** Optional channel: old clients keep their original text and ChatImage packets. */
+    public record ChatPresentation(String platform, String senderName, String content, List<ImageRef> images)
+            implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<ChatPresentation> TYPE = MineAstrPayloads.type("chat_presentation");
+        public static final StreamCodec<RegistryFriendlyByteBuf, ChatPresentation> CODEC =
+                StreamCodec.ofMember(ChatPresentation::write, ChatPresentation::read);
+
+        private static ChatPresentation read(RegistryFriendlyByteBuf buffer) {
+            String platform = buffer.readUtf(16), sender = buffer.readUtf(64), content = buffer.readUtf(16384);
+            int count = buffer.readVarInt();
+            if (count < 0 || count > 8) throw new IllegalArgumentException("chat image count");
+            List<ImageRef> images = new ArrayList<>();
+            for (int index = 0; index < count; index++) images.add(new ImageRef(buffer.readUtf(64), buffer.readUtf(MAX_BOT_IMAGE_NAME_LENGTH)));
+            return new ChatPresentation(platform, sender, content, List.copyOf(images));
+        }
+
+        private void write(RegistryFriendlyByteBuf buffer) {
+            if (images.size() > 8) throw new IllegalArgumentException("chat image count");
+            buffer.writeUtf(platform, 16).writeUtf(senderName, 64).writeUtf(content, 16384).writeVarInt(images.size());
+            for (ImageRef image : images) buffer.writeUtf(image.id(), 64).writeUtf(image.name(), MAX_BOT_IMAGE_NAME_LENGTH);
+        }
+
+        @Override public CustomPacketPayload.Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
     public record BotImageChunk(

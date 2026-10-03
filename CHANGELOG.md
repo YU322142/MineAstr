@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.24 — 2026-10-03
+
+- MC 内的用户名称统一优先使用已绑定的 Minecraft 游戏名，没有绑定时使用 QQ / Discord 用户名；平台图标仍表示消息来源。普通消息、模板、引用、编辑、撤回、@ 玩家提醒与广播同步此规则；多账号时使用最早绑定的游戏名，解绑后自动切换。昵称缓存最多 512 项、30 秒到期，绑定/解绑/迁移立即失效，登录鉴权仍读取实时绑定。
+- Platform icon/name/body columns; bot replies inherit the recipient platform.
+- Bounded asynchronous inline thumbnails, vanilla scrolling/fade and resource-reload compatibility.
+- Optional chat presentation channel; preserve legacy chunk codecs, original ZIP async methods and logging.
+- MC image-only replies and custom platform IDs; 31 mod and 166 plugin tests.
+
+
 [中文](CHANGELOG.zh-CN.md)
 
 Community fork: [YU322142/MineAstr](https://github.com/YU322142/MineAstr) · Upstream: [Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr) · Integration fork: [YU322142/ImmersivePaintings](https://github.com/YU322142/ImmersivePaintings)

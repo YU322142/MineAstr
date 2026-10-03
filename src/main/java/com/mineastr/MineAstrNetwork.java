@@ -45,6 +45,9 @@ public final class MineAstrNetwork {
                 MineAstrPayloads.ImageTranslationResult.CODEC,
                 (payload, context) -> invokeClientHandler(context, "handleImageTranslationResult",
                         MineAstrPayloads.ImageTranslationResult.class, payload));
+        registrar.playToClient(MineAstrPayloads.ChatPresentation.TYPE, MineAstrPayloads.ChatPresentation.CODEC,
+                (payload, context) -> invokeClientHandler(context, "handleChatPresentation",
+                        MineAstrPayloads.ChatPresentation.class, payload));
         registrar.playToClient(MineAstrPayloads.BotImageChunk.TYPE,
                 MineAstrPayloads.BotImageChunk.CODEC,
                 (payload, context) -> invokeClientHandler(context, "handleBotImageChunk",
@@ -156,6 +159,14 @@ public final class MineAstrNetwork {
         if (canSendBotImageChunk(player)) {
             PacketDistributor.sendToPlayer(player, chunk);
         }
+    }
+
+    public static boolean canSendChatPresentation(ServerPlayer player) {
+        return canSend(player, MineAstrPayloads.ChatPresentation.TYPE);
+    }
+
+    public static void sendChatPresentation(ServerPlayer player, MineAstrPayloads.ChatPresentation payload) {
+        if (canSendChatPresentation(player)) PacketDistributor.sendToPlayer(player, payload);
     }
 
     private static boolean canSend(ServerPlayer player, CustomPacketPayload.Type<?> type) {

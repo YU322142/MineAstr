@@ -2,6 +2,9 @@ modLoader="javafml"
 loaderVersion="${loader_version_range}"
 license="${mod_license}"
 
+[[mixins]]
+config="mineastr.client.mixins.json"
+
 [[mods]]
 modId="${mod_id}"
 version="${mod_version}"
@@ -17,7 +20,7 @@ MineAstr 将服务器聊天接入 AstrBot，实现按玩家语言 AI 翻译。
 
 服务器命令工具默认关闭，部分命令需管理员权限。
 
-如果玩家客户端也安装 MineAstr，可以按 F8 调整游戏翻译、告示牌/画框浮选和截图隐私；同时安装 ChatImage 后，还可自行开启或关闭 Bot 图片接收。告示牌译文会按原文指纹持久化到世界存档。
+如果玩家客户端也安装 MineAstr，可以按 F8 调整游戏翻译、告示牌/画框浮选和截图隐私；内置小尺寸聊天图片，可自行开启或关闭 Bot 图片接收。兼容 ModernUI 字体及可选 ChatImage。告示牌译文会按原文指纹持久化到世界存档。
 
 Mod 客户端可选。
 '''
@@ -40,5 +43,12 @@ Mod 客户端可选。
     modId="chatimage"
     type="optional"
     versionRange="[1,)"
+    ordering="AFTER"
+    side="CLIENT"
+
+[[dependencies.${mod_id}]]
+    modId="modernui"
+    type="optional"
+    versionRange="[3,)"
     ordering="AFTER"
     side="CLIENT"

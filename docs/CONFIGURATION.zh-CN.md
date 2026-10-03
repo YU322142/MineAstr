@@ -1,4 +1,4 @@
-# MineAstr 0.7.23 配置参考
+# MineAstr 0.7.24 配置参考
 
 本文只描述当前配置。历史字段变化见 [`CHANGELOG.md`](../CHANGELOG.md)。
 
@@ -23,7 +23,7 @@
 | `botDisplayName` | `AstrBot` | 游戏内机器人名称 |
 | `reconnectSeconds` | `5` | 断线重连间隔 |
 | `maxMessageLength` | `1000` | 转发聊天长度上限 |
-| `enableBotImageMessages` | `true` | 服务端是否允许向已安装 ChatImage 且主动接受的客户端下发 Bot 图片 |
+| `enableBotImageMessages` | `true` | 服务端是否允许向具备图片渲染能力且主动接受的客户端下发 Bot 图片 |
 
 远程 AstrBot 应通过受控网络、TLS 终结或可信反向代理暴露，不要把管理接口直接公开到互联网。
 
@@ -61,11 +61,11 @@
 | `signTranslationMaxDistance` | `8` | 浮选最大距离 |
 | `signTranslationScale` | `1.0` | 浮选缩放 |
 
-`showOriginalTranslatedMessages` 只控制普通聊天。0.7.23 的目标 HUD 默认只显示译文。
+`showOriginalTranslatedMessages` 只控制普通聊天。0.7.24 的目标 HUD 默认只显示译文。
 
 Bot 端另有 `bridge_settings.relay_images_to_game` 总开关、`game_image_inline_max_bytes` 本地图片内联总上限和 `game_image_max_items` 单条消息图片数上限。关闭任意一端的开关都只停止图片，不影响文字桥接。图片路径和 URL 不会作为普通聊天文本显示。
 
-图片偏好独立于 ChatImage 安装状态保存；实际图片发送仍需要客户端安装 ChatImage。`/mineastr-images on|off` 可直接修改当前玩家的服务端偏好。
+图片偏好独立于 ChatImage 安装状态保存；新版客户端自带内联缩略图；旧客户端仍需 ChatImage。`/mineastr-images on|off` 可直接修改当前玩家的服务端偏好。
 
 F8 页面和本地服务端子页面的文字通过 `screen.mineastr.*` 翻译键显示，包括按钮、说明、选项、数值单位和连接提示。多语言适配可在 `assets/mineastr/lang/<语言代码>.json` 新增语言文件，或用资源包覆盖同名键；现有 `zh_cn.json`、`en_us.json` 可作为模板，`%s` 参数必须保留，百分号写作 `%%`。
 
@@ -83,6 +83,6 @@ F8 页面和本地服务端子页面的文字通过 `screen.mineastr.*` 翻译�
 
 通过 MCSync 发布配置 OTA 时，优先使用精确键级补丁；Token 和私有地址必须继续由本地配置提供。
 
-强制账号绑定：AstrBot 开启 `binding_enabled`、`need_bind_to_login`，服务端开启 `loginBindingCheckEnabled` 并设 `loginCheckFailOpen=false`。0.7.23 在 NeoForge 实际执行的配置任务中异步检查，完成前不得进入世界；旧 `PlayerNegotiationEvent` 不再使用。已有 TOML 值不会自动迁移，须检查故障放行策略。白名单同步不等于白名单已启用。
+强制账号绑定：AstrBot 开启 `binding_enabled`、`need_bind_to_login`，服务端开启 `loginBindingCheckEnabled` 并设 `loginCheckFailOpen=false`。0.7.24 在 NeoForge 实际执行的配置任务中异步检查，完成前不得进入世界；旧 `PlayerNegotiationEvent` 不再使用。已有 TOML 值不会自动迁移，须检查故障放行策略。白名单同步不等于白名单已启用。
 
 翻译模型须使用提供商实际的 API Base URL。若 OpenAI 兼容网关根地址返回 HTML 而 `/v1` 提供 API，应配置以 `/v1` 结尾的地址；插件不猜测或自动修改第三方路径。日志 `no_translation` 表示本次返回没有有效译文，`translated` 表示返回了译文；按客户端偏好显示。

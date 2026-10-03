@@ -33,9 +33,10 @@ SOFTWARE.
 
 ## ChatImage
 
-MineAstr 0.6.30 and later optionally emit ChatImageCode (`CICode`) text after a verified
-Bot image has been cached on the client. No ChatImage source code, binaries, or
-assets are bundled into MineAstr. ChatImage remains an independently installed
-optional client mod.
+MineAstr's historical clients optionally emit CICode for ChatImage. Version 0.7.24 provides its own bounded inline thumbnail renderer and does not require ChatImage. No ChatImage binaries, source or assets are bundled. ChatImage remains an independent optional mod.
 
 ChatImage project: https://github.com/kitUIN/ChatImage
+
+## Platform marks
+
+The small Minecraft grass-block, Discord controller and QQ penguin bitmap marks in `assets/mineastr/textures/font/platforms.png` were drawn for this project. They identify message platforms. Platform names and recognizable brand designs belong to their respective owners; this integration is not an official partnership.

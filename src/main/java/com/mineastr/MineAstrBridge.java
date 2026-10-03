@@ -1476,6 +1476,7 @@ public final class MineAstrBridge implements WebSocket.Listener {
         boolean defaultShowOriginal = getBoolean(payload, "show_original", false);
         String finalSenderName = senderName;
         String finalContent = content;
+        String senderPlatform = normalizeChatPlatform(getString(payload, "sender_platform", "minecraft"));
         currentServer.execute(() -> {
             MineAstr.LOGGER.info(
                     "[{}] {}{}",
@@ -1485,6 +1486,19 @@ public final class MineAstrBridge implements WebSocket.Listener {
             for (ServerPlayer player : currentServer.getPlayerList().getPlayers()) {
                 boolean receivesImages = canReceiveBotImages(player);
                 boolean imageOnlyPlaceholder = finalContent.isBlank() && !images.isEmpty();
+                boolean inline = MineAstrNetwork.canSendChatPresentation(player);
+                if (inline) {
+                    List<MineAstrPayloads.ImageRef> refs = receivesImages
+                            ? images.stream().map(image -> new MineAstrPayloads.ImageRef(UUID.randomUUID().toString(), image.name)).toList()
+                            : List.of();
+                    String body = renderChatBody(player, finalContent, translations, defaultShowOriginal).getString();
+                    MineAstrNetwork.sendChatPresentation(player,
+                            new MineAstrPayloads.ChatPresentation(senderPlatform, finalSenderName, body, refs));
+                    for (int index = 0; index < refs.size(); index++) {
+                        sendBotImage(player, finalSenderName, images.get(index), refs.get(index).id());
+                    }
+                    continue;
+                }
                 if (!finalContent.isBlank() && !(receivesImages && imageOnlyPlaceholder)) {
                     player.sendSystemMessage(renderTranslatedChat(
                             player,
@@ -1599,12 +1613,15 @@ public final class MineAstrBridge implements WebSocket.Listener {
         return MineAstrConfig.ENABLE_BOT_IMAGE_MESSAGES.getAsBoolean()
                 && preference != null
                 && preference.enabled
-                && preference.chatImageAvailable
+                && (preference.chatImageAvailable || MineAstrNetwork.canSendChatPresentation(player))
                 && MineAstrNetwork.canSendBotImageChunk(player);
     }
 
     private static void sendBotImage(ServerPlayer player, String senderName, BotImage image) {
-        String messageId = UUID.randomUUID().toString();
+        sendBotImage(player, senderName, image, UUID.randomUUID().toString());
+    }
+
+    private static void sendBotImage(ServerPlayer player, String senderName, BotImage image, String messageId) {
         if (image.bytes.length == 0) {
             MineAstrNetwork.sendBotImageChunk(
                     player,
@@ -1799,22 +1816,35 @@ public final class MineAstrBridge implements WebSocket.Listener {
         return normalized.length() <= maxLength ? normalized : normalized.substring(0, maxLength);
     }
 
-    private Component renderTranslatedChat(
+    static String normalizeChatPlatform(String platform) {
+        return switch (platform == null ? "" : platform.strip().toLowerCase(Locale.ROOT)) {
+            case "discord", "dc" -> "discord";
+            case "qq", "default", "aiocqhttp", "aqqbot", "qq_official" -> "qq";
+            default -> "minecraft";
+        };
+    }
+
+    private Component renderTranslatedChat(ServerPlayer player, String senderName, String original,
+            JsonObject translations, boolean defaultShowOriginal) {
+        return Component.literal("[" + senderName + "] ").append(
+                renderChatBody(player, original, translations, defaultShowOriginal));
+    }
+
+    private Component renderChatBody(
             ServerPlayer player,
-            String senderName,
             String original,
             JsonObject translations,
             boolean defaultShowOriginal) {
         TranslationPreference preference = translationPreferences.get(player.getUUID());
         if (preference != null && !preference.translationsEnabled) {
-            return Component.literal("[" + senderName + "] " + original);
+            return Component.literal(original);
         }
         String language = player.clientInformation().language().strip().replace('-', '_').toLowerCase(Locale.ROOT);
         String translated = selectTranslation(translations, language);
         if (translated.isBlank() || sameSignText(original, translated)) {
-            return Component.literal("[" + senderName + "] " + original);
+            return Component.literal(original);
         }
-        var component = Component.literal("[" + senderName + "] " + translated);
+        var component = Component.literal(translated);
         boolean showOriginal = preference == null ? defaultShowOriginal : preference.showOriginal;
         if (showOriginal) {
             String fallback = language.startsWith("zh_") ? "[原文] " : "[Original] ";

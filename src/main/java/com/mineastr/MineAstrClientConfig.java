@@ -24,7 +24,7 @@ public final class MineAstrClientConfig {
             .comment("是否接收 AstrBot 图片消息。关闭后服务端将不再向该玩家发送图片，与是否安装 ChatImage 无关。")
             .define("receiveImageMessages", true);
     public static final ModConfigSpec.BooleanValue ACCEPT_BOT_IMAGES = BUILDER
-            .comment("是否接收 AstrBot 图片消息；仅在客户端安装 ChatImage 时生效。")
+            .comment("是否接收 AstrBot 图片消息；MineAstr 自带内联缩略图，兼容独立的 ChatImage 功能。")
             .define("acceptBotImages", true);
     public static final ModConfigSpec.BooleanValue SIGN_TRANSLATIONS_ENABLED = BUILDER
             .comment("是否显示准星所指告示牌及外部画框接口的浮选译文。")

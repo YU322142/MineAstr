@@ -30,7 +30,7 @@
   "screen.mineastr.config.mode.label": "Screenshot permission",
   "screen.mineastr.config.translation.label": "Show in-game translations",
   "screen.mineastr.config.translation_original.label": "Show original below translation",
-  "screen.mineastr.config.bot_images.label": "Receive Bot images (needs ChatImage)",
+  "screen.mineastr.config.bot_images.label": "Receive Bot images",
   "screen.mineastr.config.sign_translation.label": "Show sign/painting translation overlays",
   "screen.mineastr.config.sign_distance.label": "Maximum overlay distance",
   "screen.mineastr.config.sign_scale.label": "Overlay translation size",
@@ -75,7 +75,7 @@
   "configuration.mineastr.localWorldServerEnabled": "Enable local-world server bridge",
   "configuration.mineastr.gameTranslationsEnabled": "Show automatic in-game translations",
   "configuration.mineastr.showOriginalTranslatedMessages": "Show original below translation",
-  "configuration.mineastr.acceptBotImages": "Receive Bot image messages (requires ChatImage)",
+  "configuration.mineastr.acceptBotImages": "Receive Bot images",
   "configuration.mineastr.enableBotImageMessages": "Allow Bot image messages",
   "configuration.mineastr.signTranslationsEnabled": "Show sign/painting translation overlays",
   "configuration.mineastr.signTranslationMaxDistance": "Maximum overlay distance",
@@ -114,5 +114,13 @@
   "commands.mineastr.sign.locale_missing": "The targeted sign has no cached %s translation.",
   "commands.mineastr.sign.clear": "Cleared the targeted sign translation cache.",
   "commands.mineastr.sign.clear_locale": "Cleared the targeted sign's %s translation.",
-  "commands.mineastr.sign.clear_all": "Cleared %s sign translation cache entries from this world."
+  "commands.mineastr.sign.clear_all": "Cleared %s sign translation cache entries from this world.",
+  "message.mineastr.chat_sender": "%s · %s",
+  "message.mineastr.platform.minecraft": "Minecraft",
+  "message.mineastr.platform.discord": "Discord",
+  "message.mineastr.platform.qq": "QQ",
+  "message.mineastr.image_preview": "Image: %s",
+  "message.mineastr.image_loading": "Loading image…",
+  "message.mineastr.image_failed": "Image unavailable",
+  "message.mineastr.image_disabled": "[Image reception disabled]"
 }

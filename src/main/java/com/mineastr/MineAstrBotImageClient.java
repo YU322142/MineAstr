@@ -29,8 +29,7 @@ final class MineAstrBotImageClient {
     }
 
     static void handle(MineAstrPayloads.BotImageChunk chunk) {
-        if (!MineAstrClient.isChatImageAvailable()
-                || !MineAstrClientConfig.receivesBotImages()) {
+        if (!MineAstrClientConfig.receivesBotImages()) {
             return;
         }
         cleanupAssemblies();
@@ -41,7 +40,11 @@ final class MineAstrBotImageClient {
 
         if (chunk.totalChunks() == 0) {
             if (!sourceUrl.isBlank()) {
-                display(senderName, imageName, sourceUrl);
+                if (MineAstrChatImages.contains(messageId)) {
+                    MineAstrChatImages.receive(messageId, new byte[0], sourceUrl, () -> {});
+                } else {
+                    display(senderName, imageName, sourceUrl);
+                }
             }
             return;
         }
@@ -59,6 +62,10 @@ final class MineAstrBotImageClient {
             return;
         }
 
+        if (!ASSEMBLIES.containsKey(messageId) && ASSEMBLIES.size() >= 32) {
+            MineAstr.LOGGER.warn("MineAstr Bot 图片重组队列已满：{}", imageName);
+            return;
+        }
         Assembly assembly = ASSEMBLIES.compute(messageId, (ignored, current) -> {
             if (current == null || !current.matches(chunk, senderName, imageName, sourceUrl)) {
                 return new Assembly(chunk, senderName, imageName, sourceUrl);
@@ -83,27 +90,32 @@ final class MineAstrBotImageClient {
             MineAstr.LOGGER.warn("MineAstr 拒绝了哈希不匹配的 Bot 图片：{}", imageName);
             return;
         }
-        try {
-            Path cached = writeCache(image, actualSha, chunk.mimeType());
-            MineAstr.LOGGER.info("MineAstr 已保存 Bot 图片：sender={} name={} path={}",
-                    senderName, imageName, cached.toAbsolutePath());
-            display(senderName, imageName, cached.toUri().toASCIIString());
-        } catch (IOException exc) {
-            MineAstr.LOGGER.warn("MineAstr 写入 Bot 图片缓存失败：{}", exc.getMessage());
-        }
+        if (!MineAstrChatImages.contains(messageId)) fallbackMessage(messageId, senderName, imageName);
+        MineAstrChatImages.receive(messageId, image, "", () -> {
+            try {
+                Path cached = writeCache(image, actualSha, chunk.mimeType());
+                MineAstr.LOGGER.info("MineAstr 已保存 Bot 图片：sender={} name={} path={}", senderName, imageName, cached.toAbsolutePath());
+            } catch (IOException exc) {
+                MineAstr.LOGGER.warn("MineAstr 写入 Bot 图片缓存失败：{}", exc.getMessage());
+            }
+        });
     }
 
     static void clear() {
         ASSEMBLIES.clear();
+        MineAstrChatImages.clear();
+    }
+
+    private static void fallbackMessage(String id, String senderName, String imageName) {
+        var payload = new MineAstrPayloads.ChatPresentation("minecraft", senderName, "",
+                java.util.List.of(new MineAstrPayloads.ImageRef(id, imageName)));
+        Minecraft.getInstance().gui.getChat().addMessage(MineAstrChatLayout.message(payload));
     }
 
     private static void display(String senderName, String imageName, String url) {
-        String safeUrl = url.replace(",", "%2C").replace("[", "%5B").replace("]", "%5D");
-        String code = "[[CICode,url=" + safeUrl + ",name=" + imageName + "]]";
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.gui != null) {
-            minecraft.gui.getChat().addMessage(Component.literal("[" + senderName + "] " + code));
-        }
+        String id = java.util.UUID.randomUUID().toString();
+        fallbackMessage(id, senderName, imageName);
+        MineAstrChatImages.receive(id, new byte[0], url, () -> {});
     }
 
     private static Path writeCache(byte[] image, String sha256, String mimeType) throws IOException {

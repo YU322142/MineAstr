@@ -1,6 +1,6 @@
-# MineAstr 0.7.23
+# MineAstr 0.7.24
 
-0.7.23 修复 NeoForge 登录绑定检查未执行、空译文缓存及区域语言匹配问题。插件与模组统一版本，协议仍为 1；服务端须更新模组才能恢复进世界前的绑定校验。
+0.7.24 重写 Minecraft 聊天显示：MC / Discord / QQ 图标、发送人和正文分列，机器人回复沿用提问者的平台，图片使用有界异步内联缩略图。保留 0.7.24 的翻译、登录绑定、ZIP 异步优化及原有日志。插件与模组统一版本，Fabric 继续停止支持。
 
 [English](README.en.md) · [配置参考](docs/CONFIGURATION.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md) · [Changelog](CHANGELOG.md) · [外部翻译 API](EXTERNAL_TRANSLATION_API.md)
 
@@ -12,11 +12,11 @@ MineAstr 是面向 Minecraft 1.21.1 / NeoForge 的 AstrBot 桥接模组。它把
 - 原始上游：[Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr)。
 - 沉浸画框联动 Fork：[YU322142/ImmersivePaintings](https://github.com/YU322142/ImmersivePaintings)，对应分支为 `1.21.1-neoforge`。
 
-0.7.23 与 Immersive Paintings 0.7.15 的联动由上述两个社区 Fork 共同维护，并非两个上游项目的官方联动。相关问题请提交到对应 Fork。
+0.7.24 与 Immersive Paintings 0.7.15 的联动由上述两个社区 Fork 共同维护，并非两个上游项目的官方联动。相关问题请提交到对应 Fork。
 
 | 项目 | 要求 |
 | --- | --- |
-| MineAstr | `0.7.23` |
+| MineAstr | `0.7.24` |
 | Minecraft | `1.21.1` |
 | NeoForge | `21.1.219` 或更高 |
 | Java | `21` |
@@ -50,7 +50,7 @@ AstrBot
 
 ## 安装
 
-1. 把 `mineastr-neoforge-1.21.1-0.7.23.jar` 放入服务端 `mods/`。
+1. 把 `mineastr-neoforge-1.21.1-0.7.24.jar` 放入服务端 `mods/`。
 2. 把同一个 JAR 放入参与翻译功能的客户端 `mods/`。
 3. 首次启动后编辑服务端 `config/mineastr-common.toml`。
 4. 在 AstrBot 的 Minecraft 适配器中设置相同的 WebSocket 路径和 Token。
@@ -69,7 +69,7 @@ serverId = "minecraft"
 
 ## 翻译显示行为
 
-0.7.23 将告示牌、实体和沉浸画框统一为“当前准星目标”生命周期：
+0.7.24 将告示牌、实体和沉浸画框统一为“当前准星目标”生命周期：
 
 - 只在目标仍然有效时显示译文。
 - 移开准星、打开界面、隐藏 HUD、切换世界或目标失效时立即清理。
@@ -80,10 +80,10 @@ serverId = "minecraft"
 
 ## Bot 图片与 ChatImage 联动
 
-- 推荐服务端和客户端安装 MineAstr `0.7.23`；希望显示图片的客户端还需安装 ChatImage。
+- 推荐服务端和客户端安装 MineAstr `0.7.24`；新版客户端自带内联缩略图，ChatImage 可选。
 - AstrBot 插件的 `bridge_settings.relay_images_to_game` 是 Bot 端总开关。
-- 客户端按 F8 后可单独关闭“接收图片消息”；偏好独立于 ChatImage 保存，实际图片发送仍要求客户端具备 ChatImage 能力。兼容旧 `acceptBotImages=false` 设置。
-- Bot 本机临时图片会在限定大小内安全内联；公网 HTTP(S) 图片由 ChatImage 获取。Bot 本机路径和图片 URL 都不会作为普通聊天正文显示。
+- 客户端按 F8 后可单独关闭“接收图片消息”；偏好独立于 ChatImage 保存，实际图片发送要求客户端具备 MineAstr 内联图片或 ChatImage 能力。兼容旧 `acceptBotImages=false` 设置。
+- Bot 本机临时图片会在限定大小内安全内联；公网 HTTP(S) 图片由 MineAstr 的有界后台队列获取。Bot 本机路径和图片 URL 都不会作为普通聊天正文显示。
 - 内联图片经服务端限额、格式与 SHA-256 校验后分块下发，客户端写入 `cache/mineastr/chat-images/`，缓存默认保留 7 天。
 
 启用原生聊天翻译后，MineAstr 会用未签名消息重发译文，因此不保留完整的 Secure Chat 举报链路。如果服务器需要原版签名和过滤语义，应在 AstrBot 策略中关闭原生聊天翻译。
@@ -92,7 +92,7 @@ serverId = "minecraft"
 
 图片翻译要求：
 
-- 推荐客户端与服务端安装 MineAstr `0.7.23`；登录绑定修复需要服务端同步更新。
+- 推荐客户端与服务端安装 MineAstr `0.7.24`；登录绑定修复需要服务端同步更新。
 - 客户端与服务端均安装 Immersive Paintings `0.7.15+1.21.1`。
 - AstrBot 桥接已连接并支持图片翻译。
 - 客户端开启游戏翻译和悬浮翻译。
@@ -101,7 +101,7 @@ serverId = "minecraft"
 
 ## 常用命令
 
-0.7.23 的 F8 设置支持滚动、撤销、恢复默认、独立图片接收偏好及快捷键开关；窗口较小时底部按钮仍保持可见。所有界面文字与单位通过语言键提供，多语言可添加或覆盖 `assets/mineastr/lang/<locale>.json`，详见 [配置参考](docs/CONFIGURATION.zh-CN.md)。`/mineastr-images on|off` 可直接更改当前玩家的服务端图片偏好。
+0.7.24 的 F8 设置支持滚动、撤销、恢复默认、独立图片接收偏好及快捷键开关；窗口较小时底部按钮仍保持可见。所有界面文字与单位通过语言键提供，多语言可添加或覆盖 `assets/mineastr/lang/<locale>.json`，详见 [配置参考](docs/CONFIGURATION.zh-CN.md)。`/mineastr-images on|off` 可直接更改当前玩家的服务端图片偏好。
 
 | 命令 | 用途 |
 | --- | --- |
@@ -126,8 +126,8 @@ serverId = "minecraft"
 | --- | --- |
 | 日志显示“已被配置禁用” | 活动 `mineastr-common.toml` 的 `enabled` |
 | 一直未连接 | `websocketUrl`、AstrBot 监听地址、防火墙和 Token |
-| 告示牌正常、画作不翻译 | Immersive Paintings 0.7.15，客户端是否同样安装 MineAstr 0.7.23 |
-| Bot 图片只显示为 `[图片]` | 客户端是否安装 ChatImage、F8 图片接收是否开启、Bot 端图片转发是否开启 |
+| 告示牌正常、画作不翻译 | Immersive Paintings 0.7.15，客户端是否同样安装 MineAstr 0.7.24 |
+| Bot 图片只显示为 `[图片]` | 客户端 MineAstr 是否更新、F8 图片接收是否开启、Bot 端图片转发是否开启 |
 | 移开准星仍显示 | 客户端是否混装旧 MineAstr 或旧画框 JAR |
 | 图片请求没有结果 | AstrBot 图片能力和客户端完整图缓存 |
 | 单人世界不连接 | `localWorldServerEnabled` 是否启用 |
@@ -148,3 +148,15 @@ serverId = "minecraft"
 本 NeoForge 1.21.1 分支采用 `AGPL-3.0-or-later`，详见 [LICENSE](LICENSE)、[AUTHORS.md](AUTHORS.md) 与 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 项目使用生成式 AI 辅助设计、编码、审查、测试和文档整理；所有发布内容仍由维护者负责审核与验证。
+
+## 游戏内聊天布局（0.7.24）
+
+左列是 MC、Discord 或 QQ 平台图标和昵称，右列是消息正文；机器人回复使用提问者所在平台的图标。图片放在正文下方，保持比例并限制为小缩略图。原版输入、历史、滚动及正文链接样式继续生效。F8 的图片接收开关仍有效，新版不再要求安装 ChatImage。
+
+## ModernUI 字体兼容
+
+昵称使用粗体。正文通过 Minecraft 的 Font、StringSplitter 和 Component 样式 API 排版，沿用 ModernUI 3.13.0.1 已接管的 TrueType/OpenType、黑体/字体回退、抗锯齿与 Unicode 渲染；不覆盖玩家的字体设置。按逻辑文字和样式分段换行，保留粗体、颜色、链接、悬停、双向文字及 Emoji，避免把视觉顺序文字再次重排。ModernFix 5.27.20 继续负责性能优化和兼容性修复。
+
+[ModernUI 官方说明](https://github.com/BloCamLimb/ModernUI-MC) · [ModernFix 1.21.1 补丁说明](https://github.com/embeddedt/ModernFix/wiki/1.21.1-Summary-of-Patches)
+
+- MC 内的用户名称统一优先使用已绑定的 Minecraft 游戏名，没有绑定时使用 QQ / Discord 用户名；平台图标仍表示消息来源。普通消息、模板、引用、编辑、撤回、@ 玩家提醒与广播同步此规则；多账号时使用最早绑定的游戏名，解绑后自动切换。昵称缓存最多 512 项、30 秒到期，绑定/解绑/迁移立即失效，登录鉴权仍读取实时绑定。

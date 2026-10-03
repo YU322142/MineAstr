@@ -97,6 +97,9 @@ public final class MineAstrClient {
                 (container, parent) -> MineAstrClientConfig.isLoaded() ? new MineAstrConfigScreen(parent) : parent);
         modEventBus.addListener(MineAstrClient::registerKeyMappings);
         modEventBus.addListener(MineAstrClient::registerGuiLayers);
+        modEventBus.addListener((net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent event) ->
+                event.registerReloadListener((net.minecraft.server.packs.resources.ResourceManagerReloadListener)
+                        manager -> Minecraft.getInstance().gui.getChat().rescaleChat()));
         NeoForge.EVENT_BUS.register(MineAstrClient.class);
     }
 
@@ -930,11 +933,16 @@ public final class MineAstrClient {
         }
     }
 
+    public static void handleChatPresentation(MineAstrPayloads.ChatPresentation payload) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.gui != null) minecraft.gui.getChat().addMessage(MineAstrChatLayout.message(payload));
+    }
+
     public static void sendBotImagePreferences() {
         if (!MineAstrClientConfig.isLoaded()) {
             return;
         }
-        boolean chatImageAvailable = isChatImageAvailable();
+        boolean chatImageAvailable = true; // MineAstr provides inline thumbnails; legacy peers accept this capability.
         sendPayloadToServer(new MineAstrPayloads.BotImagePreferences(
                 MineAstrClientConfig.receivesBotImages(),
                 chatImageAvailable));
