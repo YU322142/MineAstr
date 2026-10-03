@@ -1,4 +1,4 @@
-# MineAstr 客户端聊天展示协议（0.7.25）
+# MineAstr 客户端聊天展示协议（0.7.26）
 
 完整 WebSocket 消息与绑定/翻译协议见 [AstrBot 协议](https://github.com/YU322142/MineAstr/blob/astrbot-plugin/PROTOCOL.md)。本次协议号仍为 1，旧客户端图片分片不变。
 
@@ -8,7 +8,7 @@ NeoForge 可选客户端通道 `mineastr:chat_presentation` 依次编码 platfor
 
 没有新通道的客户端继续接收旧版系统消息与分片。图片总开关、F8 接收偏好与哈希/大小验证仍然生效。旧 `chatImageAvailable` 字段在新版客户端表示已有图片渲染能力，新客户端无需额外安装 ChatImage。
 
-## 玩家主题色（0.7.25，可选 Minecraft 通道）
+## 玩家主题色（0.7.26，可选 Minecraft 通道）
 
 `mineastr:theme_preferences` 为客户端到服务端的可选 play payload：`update:boolean`、`color/second/third:int RGB24`、`count:varint (1–3)`、`period:varint (4000–20000 ms)`。只取已登录连接的 UUID 和名称，客户端不能指定被修改者。`update=false` 请求首次快照并保留已有主题；`true` 修改本人主题。每个启用颜色须相对 #303030 达到 4.5:1 对比度，非法颜色拒绝，更新限流 500 ms。
 

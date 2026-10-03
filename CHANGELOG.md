@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.26 — 2026-10-03
+
+- 修复 Showcase Item 聊天绘制注入冲突导致的客户端启动崩溃，保留原物品绘制、ModernUI 动画和主题色。
+- 实际客户端回归增加 Showcase Item；原 ZIP 异步优化与日志保留。
+
 ## 0.7.25 — 2026-10-03
 
 - Server-persisted player colors and slow two/three-color gradients for nickname and body; readable colors only, no automatic brightening, icons unchanged.

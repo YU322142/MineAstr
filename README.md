@@ -1,6 +1,6 @@
-# MineAstr 0.7.25
+# MineAstr 0.7.26
 
-0.7.25 新增整个聊天队列连续上移、ModernUI 缓动、高清平台图标和图片，以及玩家单色/双色/三色渐变主题与 F8 图片大小、聊天高度和动画设置。保留 0.7.24 的 MC 昵称优先、翻译、登录绑定、ZIP 异步优化及日志。插件与模组统一版本，Fabric 继续停止支持。
+0.7.26 修复 MineAstr 与 Showcase Item 的聊天绘制冲突及客户端启动崩溃，保留 ModernUI 动画、主题色、高清图标与图片。原 ZIP 异步优化与日志保留；插件与模组统一版本，Fabric 继续停止支持。
 
 [English](README.en.md) · [配置参考](docs/CONFIGURATION.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md) · [Changelog](CHANGELOG.md) · [外部翻译 API](EXTERNAL_TRANSLATION_API.md)
 
@@ -12,11 +12,11 @@ MineAstr 是面向 Minecraft 1.21.1 / NeoForge 的 AstrBot 桥接模组。它把
 - 原始上游：[Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr)。
 - 沉浸画框联动 Fork：[YU322142/ImmersivePaintings](https://github.com/YU322142/ImmersivePaintings)，对应分支为 `1.21.1-neoforge`。
 
-0.7.25 与 Immersive Paintings 0.7.15 的联动由上述两个社区 Fork 共同维护，并非两个上游项目的官方联动。相关问题请提交到对应 Fork。
+0.7.26 与 Immersive Paintings 0.7.15 的联动由上述两个社区 Fork 共同维护，并非两个上游项目的官方联动。相关问题请提交到对应 Fork。
 
 | 项目 | 要求 |
 | --- | --- |
-| MineAstr | `0.7.25` |
+| MineAstr | `0.7.26` |
 | Minecraft | `1.21.1` |
 | NeoForge | `21.1.219` 或更高 |
 | Java | `21` |
@@ -50,7 +50,7 @@ AstrBot
 
 ## 安装
 
-1. 把 `mineastr-neoforge-1.21.1-0.7.25.jar` 放入服务端 `mods/`。
+1. 把 `mineastr-neoforge-1.21.1-0.7.26.jar` 放入服务端 `mods/`。
 2. 把同一个 JAR 放入参与翻译功能的客户端 `mods/`。
 3. 首次启动后编辑服务端 `config/mineastr-common.toml`。
 4. 在 AstrBot 的 Minecraft 适配器中设置相同的 WebSocket 路径和 Token。
@@ -69,7 +69,7 @@ serverId = "minecraft"
 
 ## 翻译显示行为
 
-0.7.25 将告示牌、实体和沉浸画框统一为“当前准星目标”生命周期：
+0.7.26 将告示牌、实体和沉浸画框统一为“当前准星目标”生命周期：
 
 - 只在目标仍然有效时显示译文。
 - 移开准星、打开界面、隐藏 HUD、切换世界或目标失效时立即清理。
@@ -80,7 +80,7 @@ serverId = "minecraft"
 
 ## Bot 图片与 ChatImage 联动
 
-- 推荐服务端和客户端安装 MineAstr `0.7.25`；新版客户端自带内联缩略图，ChatImage 可选。
+- 推荐服务端和客户端安装 MineAstr `0.7.26`；新版客户端自带内联缩略图，ChatImage 可选。
 - AstrBot 插件的 `bridge_settings.relay_images_to_game` 是 Bot 端总开关。
 - 客户端按 F8 后可单独关闭“接收图片消息”；偏好独立于 ChatImage 保存，实际图片发送要求客户端具备 MineAstr 内联图片或 ChatImage 能力。兼容旧 `acceptBotImages=false` 设置。
 - Bot 本机临时图片会在限定大小内安全内联；公网 HTTP(S) 图片由 MineAstr 的有界后台队列获取。Bot 本机路径和图片 URL 都不会作为普通聊天正文显示。
@@ -92,7 +92,7 @@ serverId = "minecraft"
 
 图片翻译要求：
 
-- 推荐客户端与服务端安装 MineAstr `0.7.25`；登录绑定修复需要服务端同步更新。
+- 推荐客户端与服务端安装 MineAstr `0.7.26`；登录绑定修复需要服务端同步更新。
 - 客户端与服务端均安装 Immersive Paintings `0.7.15+1.21.1`。
 - AstrBot 桥接已连接并支持图片翻译。
 - 客户端开启游戏翻译和悬浮翻译。
@@ -101,7 +101,7 @@ serverId = "minecraft"
 
 ## 常用命令
 
-0.7.25 的 F8 设置支持滚动、撤销、恢复默认、独立图片接收偏好及快捷键开关；窗口较小时底部按钮仍保持可见。所有界面文字与单位通过语言键提供，多语言可添加或覆盖 `assets/mineastr/lang/<locale>.json`，详见 [配置参考](docs/CONFIGURATION.zh-CN.md)。`/mineastr-images on|off` 可直接更改当前玩家的服务端图片偏好。
+0.7.26 的 F8 设置支持滚动、撤销、恢复默认、独立图片接收偏好及快捷键开关；窗口较小时底部按钮仍保持可见。所有界面文字与单位通过语言键提供，多语言可添加或覆盖 `assets/mineastr/lang/<locale>.json`，详见 [配置参考](docs/CONFIGURATION.zh-CN.md)。`/mineastr-images on|off` 可直接更改当前玩家的服务端图片偏好。
 
 | 命令 | 用途 |
 | --- | --- |
@@ -126,7 +126,7 @@ serverId = "minecraft"
 | --- | --- |
 | 日志显示“已被配置禁用” | 活动 `mineastr-common.toml` 的 `enabled` |
 | 一直未连接 | `websocketUrl`、AstrBot 监听地址、防火墙和 Token |
-| 告示牌正常、画作不翻译 | Immersive Paintings 0.7.15，客户端是否同样安装 MineAstr 0.7.25 |
+| 告示牌正常、画作不翻译 | Immersive Paintings 0.7.15，客户端是否同样安装 MineAstr 0.7.26 |
 | Bot 图片只显示为 `[图片]` | 客户端 MineAstr 是否更新、F8 图片接收是否开启、Bot 端图片转发是否开启 |
 | 移开准星仍显示 | 客户端是否混装旧 MineAstr 或旧画框 JAR |
 | 图片请求没有结果 | AstrBot 图片能力和客户端完整图缓存 |
@@ -149,7 +149,7 @@ serverId = "minecraft"
 
 项目使用生成式 AI 辅助设计、编码、审查、测试和文档整理；所有发布内容仍由维护者负责审核与验证。
 
-## 游戏内聊天布局（0.7.25）
+## 游戏内聊天布局（0.7.26）
 
 左列是 MC、Discord 或 QQ 平台图标和昵称，右列是消息正文；机器人回复使用提问者所在平台的图标。图片放在正文下方，保持比例并限制为小缩略图。原版输入、历史、滚动及正文链接样式继续生效。F8 的图片接收开关仍有效，新版不再要求安装 ChatImage。
 
@@ -161,7 +161,7 @@ serverId = "minecraft"
 
 - MC 内的用户名称统一优先使用已绑定的 Minecraft 游戏名，没有绑定时使用 QQ / Discord 用户名；平台图标仍表示消息来源。普通消息、模板、引用、编辑、撤回、@ 玩家提醒与广播同步此规则；多账号时使用最早绑定的游戏名，解绑后自动切换。昵称缓存最多 512 项、30 秒到期，绑定/解绑/迁移立即失效，登录鉴权仍读取实时绑定。
 
-0.7.25 新增整个聊天队列的连续缓动、ModernUI 滚动插值、高分辨率平台纹理和图片；F8 可以调整图片比例、聊天最大高度、动画开关、滚动/入场时长及轻移距离。详见 [本次发布说明](RELEASE_NOTES.md)。
+0.7.26 保留整个聊天队列的连续缓动、ModernUI 滚动插值、高分辨率平台纹理和图片；F8 可以调整图片比例、聊天最大高度、动画开关、滚动/入场时长及轻移距离。详见 [本次发布说明](RELEASE_NOTES.md)。
 
 玩家主题色支持单色、双色与三色慢速渐变（4–20 秒），仅用于昵称和消息正文，平台图标及图片保留原色。F8 提供 RGB 滑块、十六进制输入和实时预览；启用颜色须相对 #303030 达到 4.5:1 对比度，过暗颜色不可保存且不会自动提亮。服务器按 UUID 验证修改者并随世界存档保存主题，离线玩家主题也会同步。渐变色表预计算，不改动 ModernUI 字体、Unicode 排版或原有点击/悬停事件。
 

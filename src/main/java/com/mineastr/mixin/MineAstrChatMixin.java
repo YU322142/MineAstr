@@ -1,5 +1,7 @@
 package com.mineastr.mixin;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mineastr.MineAstrChatEasing;
 import com.mineastr.MineAstrChatMotion;
 import com.mineastr.MineAstrChatInsertionMotion;
@@ -158,14 +160,15 @@ public abstract class MineAstrChatMixin {
         mineastr$current = null;
     }
 
-    @Redirect(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/GuiGraphics;drawString(Lnet/minecraft/client/gui/Font;Lnet/minecraft/util/FormattedCharSequence;III)I"))
-    private int mineastr$text(GuiGraphics graphics, Font font, FormattedCharSequence text, int x, int y, int color) {
+    @WrapOperation(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/GuiGraphics;drawString(Lnet/minecraft/client/gui/Font;Lnet/minecraft/util/FormattedCharSequence;III)I"))
+    private int mineastr$text(GuiGraphics graphics, Font font, FormattedCharSequence text, int x, int y, int color, Operation<Integer> original) {
         int animated = mineastr$color(color, mineastr$current);
         if ((animated >>> 24) < 4) return 0;
         graphics.pose().pushPose();
         try {
             graphics.pose().translate(0, mineastr$offset(mineastr$current), 0);
-            return graphics.drawString(font, MineAstrClientThemes.animate(text, mineastr$now), x, y, animated);
+            // Forward the existing renderer so other mods retain their item/text hooks.
+            return original.call(graphics, font, MineAstrClientThemes.animate(text, mineastr$now), x, y, animated);
         } finally { graphics.pose().popPose(); }
     }
 
