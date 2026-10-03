@@ -1,0 +1,34 @@
+services:
+  guardian:
+    build: .
+    image: mc-ipv6-guardian:local
+    container_name: mc-ipv6-guardian
+    restart: unless-stopped
+    network_mode: host
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN, NET_RAW]
+    group_add: ["1002"]
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=8m
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./secrets/cf_api_token:/run/secrets/cf_api_token:ro
+      - ./state:/state:rw
+    labels:
+      com.322142.role: "MC IPv6 自动维护：发现前缀、转发游戏流量、同步 Cloudflare DNS"
+      com.322142.managed-domain: "mc.322142.xyz"
+      com.322142.backend: "motiquies-server / 172.30.0.2:25565"
+      com.322142.permission-scope: "Host network NET_ADMIN/NET_RAW; own nft table and IPv6 address only; no Docker socket or host root mount"
+    healthcheck:
+      test: ["CMD", "python3", "/app/guardian.py", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"

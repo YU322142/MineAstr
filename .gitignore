@@ -55,3 +55,10 @@ eula.txt
 # OS
 Thumbs.db
 .DS_Store
+
+# Local workspace checkouts and diagnostic/build artifacts
+/astrbot-plugin/
+/minecraft-neoforge-1.21.1/
+/diagnostics/
+/dist/
+/WORKSPACE.md

@@ -1,0 +1,13 @@
+{
+  "interface": "eno1",
+  "gateway": "fe80::1",
+  "backend_host": "172.30.0.2",
+  "backend_port": 25565,
+  "relay_port": 25566,
+  "host_suffix": 257,
+  "domain": "mc.example.com",
+  "expected_motd": "Your server MOTD",
+  "zone_id": "YOUR_CLOUDFLARE_ZONE_ID",
+  "record_id": "YOUR_AAAA_RECORD_ID",
+  "interval": 60
+}
