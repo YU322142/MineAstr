@@ -1,8 +1,8 @@
 # MineAstr AstrBot 插件开发交接 / Developer Handoff
 
-0.7.24 重写 Minecraft 聊天显示：MC / Discord / QQ 图标、发送人和正文分列，机器人回复沿用提问者的平台，图片使用有界异步内联缩略图。保留 0.7.24 的翻译、登录绑定、ZIP 异步优化及原有日志。插件与模组统一版本，Fabric 继续停止支持。
+0.7.25 新增整个聊天队列连续上移、ModernUI 缓动、高清平台图标和图片，以及玩家单色/双色/三色渐变主题与 F8 图片大小、聊天高度和动画设置。保留 0.7.24 的 MC 昵称优先、翻译、登录绑定、ZIP 异步优化及日志。插件与模组统一版本，Fabric 继续停止支持。
 
-本文按文件说明 0.7.24 插件的职责和后续 TODO，避免接手者依赖目录猜测。
+本文按文件说明 0.7.25 插件的职责和后续 TODO，避免接手者依赖目录猜测。
 
 ## 文件职责
 
@@ -43,7 +43,7 @@
 
 `main.py` owns plugin orchestration and safe media preparation; `minecraft_adapter.py` owns WebSocket transport; `_conf_schema.json` owns the WebUI controls; packaging and tests are isolated in `scripts/` and `tests/`. Local paths are never exposed to Minecraft. The TODO list is the intended next work queue.
 
-## 0.7.24 平台显示
+## 0.7.25 平台显示
 
 `_game_chat_platform` 从通知配置的自定义平台 ID 及适配器元信息判断平台；适配器回传 `sender_platform`，机器人回复沿用事件 origin。MinecraftPlatformEvent.send 也调用既有异步媒体准备器，使纯图片回复能通过图片接收策略。166 项测试包含平台映射、译文与媒体保留、Minecraft 图片回复。
 
@@ -56,3 +56,9 @@
 [ModernUI 官方说明](https://github.com/BloCamLimb/ModernUI-MC) · [ModernFix 1.21.1 补丁说明](https://github.com/embeddedt/ModernFix/wiki/1.21.1-Summary-of-Patches)
 
 游戏昵称仅由 `_game_sender_name` / `_game_reply_context` 用 owner_key 查询绑定，不按昵称猜测账号。BindingStore.display_player_name 以最早绑定为准，最多 512 项、30 秒 TTL；冷读通过 asyncio.to_thread 和绑定写锁合并，bind/unbind/migrate 即时失效。缓存只服务显示，登录与白名单查询仍读取数据库。普通消息、引用、Discord 编辑、撤回和 /mc say 使用同一解析器，跨平台正文保持社交昵称。
+
+0.7.25 新增整个聊天队列的连续缓动、ModernUI 滚动插值、高分辨率平台纹理和图片；F8 可以调整图片比例、聊天最大高度、动画开关、滚动/入场时长及轻移距离。详见 [本次发布说明](RELEASE_NOTES.md)。
+
+玩家主题色支持单色、双色与三色慢速渐变（4–20 秒），仅用于昵称和消息正文，平台图标及图片保留原色。F8 提供 RGB 滑块、十六进制输入和实时预览；启用颜色须相对 #303030 达到 4.5:1 对比度，过暗颜色不可保存且不会自动提亮。服务器按 UUID 验证修改者并随世界存档保存主题，离线玩家主题也会同步。渐变色表预计算，不改动 ModernUI 字体、Unicode 排版或原有点击/悬停事件。
+
+同一人的 QQ / Discord 消息转发到 MC 后，通过已绑定的 MC 游戏名使用同一个主题和渐变，来源图标仍为 QQ / Discord；未绑定或未设置主题时沿用默认显示。

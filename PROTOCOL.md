@@ -2,9 +2,9 @@
 
 v0.6.30 扩展可选的聊天媒体字段：`chat` 消息可带 `media` 数组。旧版 Mod 会忽略该字段；新版 Mod 只向已声明图片渲染能力且允许接收的客户端发送图片，不会把本地路径回显到聊天。
 
-本文描述 AstrBot 插件 `v0.7.24` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。外置翻译术语库仅在 AstrBot 端读取，不增加协议字段。
+本文描述 AstrBot 插件 `v0.7.25` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。外置翻译术语库仅在 AstrBot 端读取，不增加协议字段。
 
-0.7.24 将正文和引用各自的目标语言译文组合后放入现有 `translations` 字段，不新增协议字段。混合源语言的引用消息不使用单一正文源语言过滤整条消息；旧 Mod 仍可显示原文。本次版本变化见 [发布说明](RELEASE_NOTES.md)。
+0.7.25 将正文和引用各自的目标语言译文组合后放入现有 `translations` 字段，不新增协议字段。混合源语言的引用消息不使用单一正文源语言过滤整条消息；旧 Mod 仍可显示原文。本次版本变化见 [发布说明](RELEASE_NOTES.md)。
 
 ## 连接与认证
 
@@ -23,7 +23,7 @@ Authorization: Bearer <token>
   "protocol": 1,
   "server_id": "survival",
   "server_name": "Survival Server",
-  "mod_version": "0.7.24",
+  "mod_version": "0.7.25",
   "chat_capabilities": ["native_chat_translation"]
 }
 ```
@@ -442,10 +442,16 @@ AstrBot 返回：
 - 截图继续受客户端同意、大小、格式、冷却和超时限制。
 - 所有文本进入 Minecraft 命令、JSON 组件或日志前都要按目标上下文转义；聊天文本不能当作命令执行。
 
-## 0.7.24 平台与客户端展示扩展
+## 0.7.25 平台与客户端展示扩展
 
 AstrBot → Mod 的 `chat` 可增加 `sender_platform`，有效值为 `minecraft`、`qq`、`discord`；机器人回复取请求来源平台，自定义平台 ID 在插件端映射。该字段省略或未知时回退 Minecraft；旧 Mod 会忽略它。
 
 NeoForge 可选客户端通道 `mineastr:chat_presentation` 按序编码 platform（UTF-8 上限 16）、senderName（64）、已按玩家语言选择的正文（16384）、VarInt 图片数（0–8），以及每张图片的 id（64）和 name（128）。服务器仅在连接声明该通道时使用，先发正文/图片引用，再发原有 `bot_image_chunk`，引用 ID 与分片 ID 一致。无该通道时保留旧流程，分片 CODEC 和协议号 1 不变。
 
 旧 `BotImagePreferences.chatImageAvailable` 在新版客户端表示具备图片渲染能力，包括 MineAstr 自带缩略图。实际发送仍须服务端启用图片且玩家接受；旧客户端仍依赖 ChatImage。
+
+## 玩家主题色（0.7.25，可选 Minecraft 通道）
+
+`mineastr:theme_preferences` 为客户端到服务端的可选 play payload：`update:boolean`、`color/second/third:int RGB24`、`count:varint (1–3)`、`period:varint (4000–20000 ms)`。只取已登录连接的 UUID 和名称，客户端不能指定被修改者。`update=false` 请求首次快照并保留已有主题；`true` 修改本人主题。每个启用颜色须相对 #303030 达到 4.5:1 对比度，非法颜色拒绝，更新限流 500 ms。
+
+`mineastr:theme_palette` 为服务端到客户端的可选 payload：`reset:boolean`、`count:varint (0–128)`，后跟至多 128 条 `{uuid:UUID, name:utf(64), color:int, second:int, third:int, count:varint, period:varint}`。首次连接按 128 条分批快照，首包 reset；之后发送差异。主题保存到主世界 `data/mineastr_player_themes.dat`，退出清理客户端色表。双色/三色使用线性光空间插值与 1024 阶预计算表，仅绘制昵称和正文，图标不着色。不改变既有 payload 字段或协议号 1；旧客户端不接收新通道。AstrBot 不存储主题或参与这个 Minecraft 客户端通道，已绑定平台消息通过 MC 名命中同一主题。

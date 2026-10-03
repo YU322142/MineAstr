@@ -1,6 +1,6 @@
 # MineAstr 图片翻译接口
 
-当前统一发布：**0.7.24**。安装包与自 0.6.29 以来的变化见 [发布说明](RELEASE_NOTES.md)。
+当前统一发布：**0.7.25**。安装包与自 0.6.29 以来的变化见 [发布说明](RELEASE_NOTES.md)。
 
 MineAstr `v0.6.28` 提供 `image_translate_request` WebSocket 请求。Fabric 客户端
 通过 `MineAstrClient.requestImageTranslation(...)` 发起请求，AstrBot 使用当前会话
