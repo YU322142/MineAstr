@@ -15,9 +15,6 @@ import java.time.Duration;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
@@ -44,12 +41,7 @@ public final class MineAstrChatImages {
     private static final Semaphore UPLOAD_SLOTS = new Semaphore(2);
     private static final Map<String, Entry> IMAGES = new LinkedHashMap<>(MAX_IMAGES, .75F, true);
     private static final AtomicLong GENERATION = new AtomicLong();
-    private static final ThreadPoolExecutor WORKER = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
-            new ArrayBlockingQueue<>(32), runnable -> {
-                Thread thread = new Thread(runnable, "MineAstr-ChatThumbnails");
-                thread.setDaemon(true);
-                return thread;
-            });
+    private static final MineAstrImageJobs JOBS = new MineAstrImageJobs(32, 4, 2);
     private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
             .followRedirects(HttpClient.Redirect.NORMAL).build();
 
@@ -73,20 +65,13 @@ public final class MineAstrChatImages {
         if (entry == null || entry.loading) return;
         entry.loading = true;
         long generation = GENERATION.get();
-        try {
-            WORKER.execute(() -> {
-                try {
-                    byte[] data = bytes;
-                    if (data.length == 0) {
-                        var request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(15)).GET().build();
-                        var future = HTTP.sendAsync(request, ignored -> new LimitedBody());
-                        var response = future.orTimeout(15, TimeUnit.SECONDS).join();
-                        if (response.statusCode() != 200) throw new IOException("HTTP " + response.statusCode());
-                        data = response.body();
-                    }
+        boolean remote = bytes.length == 0;
+        boolean accepted = JOBS.submit(remote, () -> remote ? download(url) : bytes, data -> {
+                    if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
                     if (data.length > downloadLimit(data)) throw new IOException("image byte limit");
                     MineAstrGif.Animation animation = MineAstrGif.matches(data) ? MineAstrGif.decode(data) : null;
                     BufferedImage image = animation == null ? decodeThumbnail(data) : animation.frames().getFirst();
+                    if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
                     cacheWrite.run();
                     if (!UPLOAD_SLOTS.tryAcquire(5, TimeUnit.SECONDS)) throw new IOException("upload queue saturated");
                     NativeImage pixels = null;
@@ -107,17 +92,30 @@ public final class MineAstrChatImages {
                         UPLOAD_SLOTS.release();
                         throw error;
                     }
-                } catch (Exception exc) {
+            }, exc -> {
                     Minecraft.getInstance().execute(() -> {
                         if (generation != GENERATION.get() || IMAGES.get(id) != entry) return;
                         entry.failed = true;
                         MineAstr.LOGGER.warn("MineAstr 聊天缩略图加载失败：name={} reason={}", entry.name, exc.getClass().getSimpleName());
                     });
-                }
-            });
-        } catch (RejectedExecutionException exc) {
+            }, timing -> MineAstr.LOGGER.info(
+                    "MineAstr image timing: remote={} download_queue_seconds={} load_seconds={} decode_queue_seconds={} prepare_seconds={}",
+                    remote, timing.downloadQueueSeconds(), timing.loadSeconds(), timing.decodeQueueSeconds(), timing.prepareSeconds()));
+        if (!accepted) {
             entry.failed = true;
             MineAstr.LOGGER.warn("MineAstr 聊天缩略图队列已满：name={}", entry.name);
+        }
+    }
+
+    private static byte[] download(String url) throws Exception {
+        var request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(15)).GET().build();
+        var future = HTTP.sendAsync(request, ignored -> new LimitedBody());
+        try {
+            var response = future.get(15, TimeUnit.SECONDS);
+            if (response.statusCode() != 200) throw new IOException("HTTP " + response.statusCode());
+            return response.body();
+        } finally {
+            if (!future.isDone()) future.cancel(true);
         }
     }
 
@@ -281,7 +279,7 @@ public final class MineAstrChatImages {
     public static void clear() {
         HITS.clear();
         GENERATION.incrementAndGet();
-        WORKER.getQueue().clear();
+        JOBS.cancelAll();
         IMAGES.values().forEach(MineAstrChatImages::release);
         IMAGES.clear();
     }

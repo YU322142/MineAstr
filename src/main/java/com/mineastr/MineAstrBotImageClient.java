@@ -130,12 +130,16 @@ final class MineAstrBotImageClient {
         if (Files.isRegularFile(target) && Files.size(target) == image.length) {
             return target;
         }
-        Path temporary = directory.resolve(sha256 + ".tmp");
-        Files.write(temporary, image);
+        Path temporary = Files.createTempFile(directory, sha256 + "-", ".tmp");
         try {
-            Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException exc) {
-            Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+            Files.write(temporary, image);
+            try {
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException exc) {
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temporary);
         }
         return target;
     }

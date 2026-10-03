@@ -64,6 +64,7 @@ final class MineAstrGif {
                 var delays = new int[count];
                 int plays = 1;
                 for (int index = 0; index < count; index++) {
+                    if (Thread.currentThread().isInterrupted()) throw new IOException("GIF decode cancelled");
                     Node metadata = tree(reader.getImageMetadata(index), "javax_imageio_gif_image_1.0");
                     if (index == 0) plays = plays(metadata);
                     Node descriptor = child(metadata, "ImageDescriptor");

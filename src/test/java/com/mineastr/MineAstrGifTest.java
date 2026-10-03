@@ -13,6 +13,12 @@ import javax.imageio.stream.MemoryCacheImageOutputStream;
 import org.junit.jupiter.api.Test;
 
 class MineAstrGifTest {
+    @Test void interruptedDecodeStopsWithoutReturningFrames() throws IOException {
+        byte[] bytes = gif("restoreToPrevious", 0);
+        Thread.currentThread().interrupt();
+        try { assertThrows(IOException.class, () -> MineAstrGif.decode(bytes)); }
+        finally { Thread.interrupted(); }
+    }
     private static final IndexColorModel PALETTE = new IndexColorModel(8, 4,
             new byte[]{0, (byte)255, 0, 0}, new byte[]{0, 0, (byte)255, 0},
             new byte[]{0, 0, 0, (byte)255}, new byte[]{0, (byte)255, (byte)255, (byte)255});
