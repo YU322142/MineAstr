@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.34 — 2026-10-05
+
+- Increase chat input padding and keep cursor, hit testing, resizing and command suggestions aligned.
+
 ## 0.7.33 — 2026-10-05
 
 - MineAstr owns the complete chat viewport, input panel rendering and mouse scroll handling while retaining native editing, IME, completion, history and message APIs.

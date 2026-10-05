@@ -8,6 +8,13 @@ import net.minecraft.client.gui.GuiGraphics;
 public final class MineAstrChatScreen extends ChatScreen {
     public MineAstrChatScreen(String initial) { super(initial); }
     private MineAstrChatAccess chat() { return (MineAstrChatAccess) minecraft.gui.getChat(); }
+    @Override protected void init() {
+        super.init();
+        // Keep text and its cursor clear of the input panel's left accent, including after resize.
+        input.setX(12);
+        input.setWidth(Math.max(1, width - 24));
+        ((MineAstrChatScreenAccessor) (Object) this).mineastr$suggestions().updateCommandInfo();
+    }
     @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         minecraft.gui.getChat().render(graphics, minecraft.gui.getGuiTicks(), mouseX, mouseY, true);
         // The MineAstr screen owns the input panel; native controls retain IME and completion semantics.
