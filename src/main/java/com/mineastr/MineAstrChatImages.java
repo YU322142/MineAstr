@@ -38,6 +38,7 @@ public final class MineAstrChatImages {
     private static long texturePixels;
     private static final java.util.ArrayList<ImageHit> HITS = new java.util.ArrayList<>();
     private static long frameTime;
+    private static long renderFrame;
     private static final Semaphore UPLOAD_SLOTS = new Semaphore(2);
     private static final Map<String, Entry> IMAGES = new LinkedHashMap<>(MAX_IMAGES, .75F, true);
     private static final AtomicLong TEXTURE_SEQUENCE = new AtomicLong();
@@ -160,7 +161,8 @@ public final class MineAstrChatImages {
             entry.texture = location;
             entry.width = width; entry.height = height;
             entry.readyAt = replacing ? firstReady : MineAstrChatEasing.now();
-            entry.animationStartedAt = MineAstrChatEasing.now();
+            entry.animationElapsed = 0;
+            entry.lastRenderedFrame = -2;
             entry.dynamicTexture = texture;
             entry.animation = frames == null ? null : animation;
             entry.frames = frames;
@@ -200,9 +202,22 @@ public final class MineAstrChatImages {
         if (frames != null) for (NativeImage frame : frames) if (frame != null) frame.close();
     }
 
+    /** Frame marker only; invisible images require no per-image work. */
+    static void beginRenderFrame() { renderFrame++; }
+
     private static void animate(Entry entry) {
         if (entry.animation == null || entry.frames == null || entry.dynamicTexture == null) return;
-        int index = entry.animation.frameAt((long) (MineAstrChatEasing.now() - entry.animationStartedAt));
+        var screen = Minecraft.getInstance().screen;
+        if (!(screen instanceof net.minecraft.client.gui.screens.ChatScreen)
+                && !(screen instanceof MineAstrImageScreen)) return;
+        if (entry.lastRenderedFrame == renderFrame) return; // Multiline rows and hover share one upload.
+        double now = MineAstrChatEasing.now();
+        if (entry.lastRenderedFrame == renderFrame - 1)
+            entry.animationElapsed += Math.max(0, now - entry.lastRenderedAt);
+        // A missing draw frame means the image was hidden: resume without counting that interval.
+        entry.lastRenderedAt = now;
+        entry.lastRenderedFrame = renderFrame;
+        int index = entry.animation.frameAt((long) entry.animationElapsed);
         if (index == entry.frameIndex) return;
         entry.dynamicTexture.getPixels().copyFrom(entry.frames[index]);
         entry.dynamicTexture.upload();
@@ -264,7 +279,6 @@ public final class MineAstrChatImages {
             }
             return;
         }
-        animate(entry);
         if(MineAstrClientConfig.chatAnimationsEnabled()) {
             int duration=MineAstrClientConfig.isLoaded()?MineAstrClientConfig.CHAT_ARRIVAL_DURATION.getAsInt():200;
             alpha *= (float)MineAstrChatEasing.gentle((MineAstrChatEasing.now()-entry.readyAt)/duration);
@@ -272,7 +286,9 @@ public final class MineAstrChatImages {
         var size = MineAstrChatGeometry.fit(entry.width, entry.height, row.width(), row.height());
         float visibleTop = Math.max(viewportTop, Math.max(top + offsetY, lineBottom - lineHeight + offsetY));
         float visibleBottom = Math.min(viewportBottom, Math.min(top + size.height() + offsetY, lineBottom + offsetY));
-        if (visibleBottom > visibleTop && alpha > .05F) HITS.add(new ImageHit(row.id(),
+        if (visibleBottom <= visibleTop || alpha <= .01F) return;
+        animate(entry);
+        if (alpha > .05F) HITS.add(new ImageHit(row.id(),
                 (row.column() + 4) * scale, visibleTop * scale,
                 (row.column() + size.width() + 4) * scale, visibleBottom * scale));
         // Scissor uses screen GUI coordinates; the enclosing pose uses vanilla chat scale/indent.
@@ -297,13 +313,16 @@ public final class MineAstrChatImages {
     }
     public static ImageView view(String id) {
         Entry entry=IMAGES.get(id);
-        if (entry != null && entry.texture != null) animate(entry);
-        return entry==null || entry.texture==null ? null : new ImageView(entry.texture,entry.width,entry.height,entry.name);
+        return entry==null || entry.texture==null ? null : new ImageView(entry.texture,entry.width,entry.height,entry.name,id);
     }
     public static void draw(GuiGraphics graphics, ImageView image, int x, int y, int width, int height, float alpha) {
+        if (width <= 0 || height <= 0 || alpha <= .01F || x >= graphics.guiWidth()
+                || y >= graphics.guiHeight() || x + width <= 0 || y + height <= 0) return;
+        Entry entry = IMAGES.get(image.id());
+        if (entry != null && entry.texture != null) animate(entry);
         MineAstrChatTextures.draw(graphics, image.texture, x, y, width, height, image.width, image.height, alpha);
     }
-    public record ImageView(ResourceLocation texture,int width,int height,String name) {}
+    public record ImageView(ResourceLocation texture,int width,int height,String name,String id) {}
     private record ImageHit(String id,float left,float top,float right,float bottom) {}
 
     public static void clear() {
@@ -328,7 +347,8 @@ public final class MineAstrChatImages {
         final String name;
         boolean loading, failed;
         int width, height;
-        double readyAt, animationStartedAt;
+        double readyAt, animationElapsed, lastRenderedAt;
+        long lastRenderedFrame = -2;
         long pixelCost;
         int frameIndex;
         NativeImage[] frames;

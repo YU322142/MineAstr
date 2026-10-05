@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.36 — 2026-10-05
+
+- Restore a text-only native editor aligned with the chat area; remove input sender decoration and scaled-coordinate adaptation.
+- Retain the original EditBox and CommandSuggestions instances, including Tab completion, argument usage and syntax-error hints.
+- Place the chat scrollbar inside the panel with a reserved gutter and fit the panel to narrow windows.
+- Advance each GIF only when actually drawn in chat or the image viewer. Freeze hidden/offscreen/closed images, resume without counting hidden time, and share one update across multiline rows and hover previews per render frame.
+
 ## 0.7.35 — 2026-10-05
 
 - Match the input row to displayed messages with MC icon + local player ID + editable body and shared header measurement.

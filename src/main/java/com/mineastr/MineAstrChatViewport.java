@@ -129,7 +129,7 @@ public final class MineAstrChatViewport {
             graphics.drawString(client.font, Component.translatable("chat.queue", queued), 0, 1, 0xFFFFFFFF);
         } finally { graphics.pose().popPose(); }
     }
-    private double barX() { return (width + 9) * scale; }
+    private double barX() { return Math.max(0, (width + 12) * scale - 8); }
     private double thumb() { return scroll.thumbSize((bottom - top) * scale, contentHeight * scale); }
     private double thumbTop() { return scroll.thumbTop(top * scale, (bottom - top) * scale, contentHeight * scale, true, now); }
     private void renderScrollbar(GuiGraphics graphics) {

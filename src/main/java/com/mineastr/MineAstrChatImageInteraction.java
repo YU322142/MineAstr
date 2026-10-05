@@ -9,6 +9,10 @@ import net.neoforged.neoforge.client.event.ScreenEvent;
 public final class MineAstrChatImageInteraction {
     private MineAstrChatImageInteraction() {}
 
+    @SubscribeEvent public static void frame(net.neoforged.neoforge.client.event.RenderFrameEvent.Pre event) {
+        MineAstrChatImages.beginRenderFrame();
+    }
+
     @SubscribeEvent public static void open(ScreenEvent.Opening event) {
         if (event.getNewScreen() != null && event.getNewScreen().getClass() == ChatScreen.class) {
             var initial = ((com.mineastr.mixin.MineAstrChatScreenAccessor) event.getNewScreen()).mineastr$initial();

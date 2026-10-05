@@ -4,6 +4,11 @@ package com.mineastr;
 public final class MineAstrChatGeometry {
     private MineAstrChatGeometry() {}
 
+    /** Physical GUI width, bounded by the visible screen; the panel adds its existing side padding. */
+    public static int panelWidth(int configuredWidth, int screenWidth, double scale) {
+        return Math.max(1, Math.min(configuredWidth, (int) Math.floor(screenWidth - 12 * Math.max(.01, scale))));
+    }
+
     public static int senderColumn(int width) {
         return Math.max(24, Math.min(96, width / 3));
     }

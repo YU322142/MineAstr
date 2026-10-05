@@ -95,7 +95,7 @@ public final class MineAstrChatLayout {
         return result;
     }
 
-    /** One prefix implementation for displayed messages and the editable local player's row. */
+    /** Measures the icon and sender prefix for displayed messages. */
     public static MutableComponent senderHeader(Component name, String platform, int width) {
         Font font = Minecraft.getInstance().font;
         String senderName = name.getString();

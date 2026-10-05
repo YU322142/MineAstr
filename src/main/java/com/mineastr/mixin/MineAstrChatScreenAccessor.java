@@ -12,5 +12,4 @@ public interface MineAstrChatScreenAccessor {
     @Accessor("initial") void mineastr$initial(String draft);
     @Accessor("initial") String mineastr$initial();
     @Accessor("commandSuggestions") CommandSuggestions mineastr$suggestions();
-    @Accessor("commandSuggestions") void mineastr$suggestions(CommandSuggestions suggestions);
 }

@@ -5,8 +5,7 @@
   "compatibilityLevel": "JAVA_21",
   "client": [
     "MineAstrChatMixin",
-    "MineAstrChatScreenAccessor",
-    "MineAstrChatSuggestionsMixin"
+    "MineAstrChatScreenAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -44,6 +44,10 @@ public abstract class MineAstrChatMixin implements MineAstrChatAccess {
     @Unique private int mineastr$width = -1, mineastr$pages, mineastr$height, mineastr$imageScale;
     @Unique private double mineastr$scale;
 
+    @Unique private int mineastr$panelWidth() {
+        return MineAstrChatGeometry.panelWidth(getWidth(), minecraft.getWindow().getGuiScaledWidth(), getScale());
+    }
+
     @Override public boolean mineastr$replaceNative(UUID id, Component content) {
         for (int index = 0; index < allMessages.size(); index++) {
             GuiMessage original = allMessages.get(index);
@@ -62,7 +66,8 @@ public abstract class MineAstrChatMixin implements MineAstrChatAccess {
 
     @Inject(method = "addMessageToDisplayQueue", at = @At("HEAD"), cancellable = true)
     private void mineastr$layout(GuiMessage message, CallbackInfo ci) {
-        int width = (int) (getWidth() / getScale());
+        // Reserve physical GUI pixels for the internal scrollbar, including at reduced chat zoom.
+        int width = Math.max(1, (int) ((mineastr$panelWidth() - 8) / getScale()));
         if (message.icon() != null) width -= message.icon().width + 6;
         Component formatted = MineAstrChatLayout.format(message.content(), width, getLineHeight(), getLinesPerPage());
         var lines = ComponentRenderUtils.wrapComponents(formatted, Math.max(1, width), minecraft.font);
@@ -105,7 +110,7 @@ public abstract class MineAstrChatMixin implements MineAstrChatAccess {
     }
     @Inject(method = "render", at = @At("HEAD"), cancellable = true)
     private void mineastr$render(GuiGraphics graphics, int tick, int mouseX, int mouseY, boolean focused, CallbackInfo ci) {
-        int width = getWidth(), pages = getLinesPerPage(), height = getLineHeight(), imageScale = MineAstrClientConfig.chatImageScale();
+        int width = mineastr$panelWidth(), pages = getLinesPerPage(), height = getLineHeight(), imageScale = MineAstrClientConfig.chatImageScale();
         double scale = getScale();
         if (mineastr$width >= 0 && (width != mineastr$width || height != mineastr$height
                 || pages != mineastr$pages || imageScale != mineastr$imageScale || scale != mineastr$scale)) refreshTrimmedMessages();
