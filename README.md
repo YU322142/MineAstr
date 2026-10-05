@@ -1,6 +1,6 @@
 # MineAstr
 
-0.7.33 接管聊天视口和输入栏，提供连续像素滚动、可拖动滑块、边缘裁剪和图标 + 玩家 ID + 正文布局。
+0.7.34 加宽底部输入框留白，包含完整聊天视口、连续滚动、可拖动滑块和图标 + 玩家 ID + 正文布局。
 
 [![AI Assisted](https://img.shields.io/badge/AI-OpenAI%20Codex%20Assisted-10A37F?style=for-the-badge&logo=openai&logoColor=white)](#ai-制作声明)
 
@@ -13,7 +13,7 @@ MineAstr 将 Minecraft NeoForge 1.21.1 服务器接入 AstrBot、QQ/OneBot 与 D
 
 - [`astrbot-plugin`](https://github.com/YU322142/MineAstr/tree/astrbot-plugin)：AstrBot 插件端；分支根目录可直接作为插件项目。
 - [`minecraft-mod`](https://github.com/YU322142/MineAstr/tree/minecraft-mod)：旧 Minecraft Fabric Mod；**已停止支持**，仅保留 0.6.28 / Minecraft 1.21.11 历史源码，不再更新、修复或保证兼容性。
-- [`minecraft-neoforge-1.21.1`](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)：Minecraft NeoForge Mod；目标为 Minecraft `1.21.1`、NeoForge `21.1.219`、Java `21`，客户端当前发布 0.7.33，包含最新 ZIP 源码、连接和 UI 修复、文档及测试。
+- [`minecraft-neoforge-1.21.1`](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)：Minecraft NeoForge Mod；目标为 Minecraft `1.21.1`、NeoForge `21.1.219`、Java `21`，客户端当前发布 0.7.34，包含最新 ZIP 源码、连接和 UI 修复、文档及测试。
 
 `main` 是项目索引；两个维护中的工程分别位于 AstrBot 和 NeoForge 分支，Fabric 分支仅作历史归档，以兼容 AstrBot 从仓库分支安装插件的目录要求。
 
@@ -21,16 +21,16 @@ MineAstr 将 Minecraft NeoForge 1.21.1 服务器接入 AstrBot、QQ/OneBot 与 D
 
 - AstrBot 插件：`0.7.32`
 - 旧 Fabric 分支：**停止支持**（历史版本 `0.6.28`）
-- MineAstr NeoForge Mod：`0.7.33`（Minecraft `1.21.1`）
+- MineAstr NeoForge Mod：`0.7.34`（Minecraft `1.21.1`）
 - 当前支持的 Minecraft：`1.21.1` / NeoForge
 - NeoForge：`21.1.219`（Minecraft `1.21.1`）
 
-客户端 0.7.33 从 [0.7.33 Release](https://github.com/YU322142/MineAstr/releases/tag/v0.7.33) 下载；本次只更新客户端，兼容服务端 0.7.31 和插件 0.7.32，后端无需重启。发布包附带原有插件 0.7.32：
+客户端 0.7.34 从 [0.7.34 Release](https://github.com/YU322142/MineAstr/releases/tag/v0.7.34) 下载；本次只更新客户端，兼容服务端 0.7.31 和插件 0.7.32，后端无需重启。发布包附带原有插件 0.7.32：
 
 - `astrbot_plugin_mineastr-v0.7.32.zip`
-- `mineastr-neoforge-1.21.1-0.7.33.jar`
-- `mineastr-neoforge-1.21.1-0.7.33-sources.jar`
-- `MineAstr-minecraft-neoforge-1.21.1-0.7.33-source.zip`
+- `mineastr-neoforge-1.21.1-0.7.34.jar`
+- `mineastr-neoforge-1.21.1-0.7.34-sources.jar`
+- `MineAstr-minecraft-neoforge-1.21.1-0.7.34-source.zip`
 - `SHA256SUMS.txt`
 
 Fabric 分支已停止支持；本次及后续维护仅针对 NeoForge 与 AstrBot，保留旧源码与历史记录，不提供 Fabric 的新发布、修复或兼容性保证。NeoForge JAR 不能安装到 Fabric。
@@ -46,9 +46,9 @@ AstrBot 端的统一文本翻译提示词和图片翻译专用提示词上限均
 
 既有翻译行为还包含两项：QQ/Discord 会先比较规范化后的原文与译文，AI 返回同文时只发送原文，不添加语言或 `[原文/Original]` 标签；Fabric 客户端只在准星指向告示牌时显示译文提示，不会进入服务器时批量刷聊天，翻译缓存继续保存在世界存档中。
 
-## 0.7.33 更新与文档
+## 0.7.34 更新与文档
 
-相对 0.7.32 的变化见 [本次发布说明](RELEASE_NOTES.md)：完整聊天视口、连续位置、拖动与边缘裁剪，统一玩家消息布局。客户端 0.7.33、插件 0.7.32 与现有服务端 0.7.31 兼容，协议仍为 1。
+本次输入框留白及已有聊天系统的说明见 [本次发布说明](RELEASE_NOTES.md)：完整聊天视口、连续位置、拖动与边缘裁剪，统一玩家消息布局。客户端 0.7.34、插件 0.7.32 与现有服务端 0.7.31 兼容，协议仍为 1。
 
 - [NeoForge 中英文安装说明](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)
 - [NeoForge 配置与多语言适配](https://github.com/YU322142/MineAstr/blob/minecraft-neoforge-1.21.1/docs/CONFIGURATION.zh-CN.md)
@@ -94,7 +94,7 @@ NeoForge 0.7.31 起周期同步本地绑定名单，已登记玩家优先使用�
 
 - AstrBot 插件 0.7.32：191 个自动化测试通过，覆盖 fail-closed/常数时间鉴权、配置迁移、AstrBot Schema 类型兼容、QQ/Discord 自动化、消息编辑与撤回去重、跨群来源隔离、缓存/截图清理、游戏与平台共用单次翻译后分发、原生聊天精确连接路由、旧 Mod 能力协商、周期与热更新策略同步、提及消息原文保留、源语言去重、中英同义文本缓存、40000 字提示词上限、自定义术语表、命令审批列表与函数工具、管理员身份过滤及实时同步、并发冷却和游戏内翻译协议。
 - 已停止支持的 Fabric Mod 0.6.28 历史验证：15 个 JUnit 测试及 Gradle `clean build` 通过；本次仅更新该分支文档，未重跑旧版构建，覆盖缓存持久化、策略迁移、人工译文优先级、管理清理、过期异步响应失效、原生聊天 locale/同文选择及 256 字符包边界。
-- NeoForge 客户端 0.7.33：89 项 JUnit 测试及 Gradle `test build` 通过，并使用原版字体和 ModernUI 3.13.0.1 实际验证连续滚动、拖动、边缘控件、链接、草稿与图片。
+- NeoForge 客户端 0.7.34：89 项 JUnit 测试及 Gradle `test build` 通过，并使用原版字体和 ModernUI 3.13.0.1 实际验证连续滚动、拖动、边缘控件、链接、草稿与图片。
 - 历史 Fabric 实机协议联调：Minecraft 1.21.11 + Fabric API 0.141.4，已验证 Mixin 加载、离线后端收到正版客户端 UUID 时改用服务端真实离线 UUID、`whitelist_verified=true`，并实际通过原版白名单登录校验；既有解绑、管理员同步、可信命令和正常关服流程保持有效。
 
 ## 许可与来源
@@ -115,7 +115,7 @@ NeoForge 0.7.31 起周期同步本地绑定名单，已登记玩家优先使用�
 
 同一人的 QQ / Discord 消息转发到 MC 后，通过已绑定的 MC 游戏名使用同一个主题和渐变，来源图标仍为 QQ / Discord；未绑定或未设置主题时沿用默认显示。
 
-MC 原生聊天在新版两端立即显示原文，后台译文就绪后原位更新。聊天图片支持悬停预览与左键点击查看，滚轮缩放、左键拖动、双击重置和 Esc 返回；图片与聊天共同滚动、淡入淡出。当前客户端 0.7.33 包含既有异步图片/GIF 加载修复，兼容当前 MC 服务端 0.7.31 和插件 0.7.32。
+MC 原生聊天在新版两端立即显示原文，后台译文就绪后原位更新。聊天图片支持悬停预览与左键点击查看，滚轮缩放、左键拖动、双击重置和 Esc 返回；图片与聊天共同滚动、淡入淡出。当前客户端 0.7.34 包含既有异步图片/GIF 加载修复，兼容当前 MC 服务端 0.7.31 和插件 0.7.32。
 
 ## IPv6 入口维护
 
