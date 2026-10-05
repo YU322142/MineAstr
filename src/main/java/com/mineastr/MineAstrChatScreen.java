@@ -6,24 +6,24 @@ import net.minecraft.client.gui.screens.ChatScreen;
 
 /** Custom chat viewport and panel; native editor, command completion and usage hints remain intact. */
 public final class MineAstrChatScreen extends ChatScreen {
-    private int panelRight;
+    private MineAstrChatGeometry.ChatPanel panel;
     public MineAstrChatScreen(String initial) { super(initial); }
     private MineAstrChatAccess chat() { return (MineAstrChatAccess) minecraft.gui.getChat(); }
     @Override protected void init() {
         super.init();
         var component = minecraft.gui.getChat();
-        panelRight = Math.min(width - 2, (int) Math.floor(MineAstrChatGeometry.panelWidth(
-                component.getWidth(), width, component.getScale()) + 12 * component.getScale()));
-        // Match the displayed message left edge; keep native editor and popup coordinates.
-        input.setX((int) Math.round(4 * component.getScale()));
-        input.setWidth(Math.max(1, panelRight - 8 - input.getX()));
+        panel = MineAstrChatGeometry.chatPanel(component.getWidth(), width, component.getScale());
+        input.setX(panel.textLeft());
+        input.setWidth(Math.max(1, panel.contentRight() - panel.textLeft()));
         // Use the original instance created by ChatScreen, with the actual screen and unscaled editor.
         ((MineAstrChatScreenAccessor) (Object) this).mineastr$suggestions().updateCommandInfo();
     }
     @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         minecraft.gui.getChat().render(graphics, minecraft.gui.getGuiTicks(), mouseX, mouseY, true);
-        graphics.fill(0, input.getY() - 4, panelRight, input.getY() + 10,
+        graphics.fill(panel.left(), input.getY() - 4, panel.right(), input.getY() + 10,
                 (int) (255 * minecraft.options.textBackgroundOpacity().get()) << 24);
+        // A fixed panel accent, separate from the native moving/blinking text caret.
+        graphics.fill(panel.left(), input.getY() - 4, panel.left() + 1, input.getY() + 10, 0xFF72E6C1);
         input.render(graphics, mouseX, mouseY, partialTick);
         for (var renderable : renderables) renderable.render(graphics, mouseX, mouseY, partialTick);
         graphics.pose().pushPose();

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.37 — 2026-10-05
+
+- Align chat/input rails and text origins in physical GUI coordinates, including reduced chat zoom.
+- Reserve an internal scrollbar gutter shared by wrapping, thumbnail layout, clipping and hit testing.
+- Retain native input/completion and render-only GIF playback; verified with the existing ModernUI and ChatImage mods.
+
 ## 0.7.36 — 2026-10-05
 
 - Restore a text-only native editor aligned with the chat area; remove input sender decoration and scaled-coordinate adaptation.

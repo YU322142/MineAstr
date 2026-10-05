@@ -9,6 +9,23 @@ public final class MineAstrChatGeometry {
         return Math.max(1, Math.min(configuredWidth, (int) Math.floor(screenWidth - 12 * Math.max(.01, scale))));
     }
 
+    /** One physical GUI layout for both panels, wrapping, clipping and mouse hit testing. */
+    public static ChatPanel chatPanel(int configuredWidth, int screenWidth, double scale) {
+        int right = Math.max(1, Math.min(screenWidth - 2,
+                configuredWidth + (int) Math.ceil(12 * Math.max(.01, scale))));
+        int left = Math.min(2, Math.max(0, right - 1));
+        int textLeft = Math.min(4, Math.max(left, right - 1));
+        int scrollbarLeft = Math.max(textLeft, right - 8);
+        int contentRight = Math.max(textLeft, scrollbarLeft - 4);
+        return new ChatPanel(left, textLeft, contentRight, scrollbarLeft, right);
+    }
+
+    public record ChatPanel(int left, int textLeft, int contentRight, int scrollbarLeft, int right) {
+        public int textWidth(double scale) {
+            return Math.max(1, (int) Math.floor((contentRight - textLeft) / Math.max(.01, scale)));
+        }
+    }
+
     public static int senderColumn(int width) {
         return Math.max(24, Math.min(96, width / 3));
     }

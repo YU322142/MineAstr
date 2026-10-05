@@ -66,8 +66,9 @@ public abstract class MineAstrChatMixin implements MineAstrChatAccess {
 
     @Inject(method = "addMessageToDisplayQueue", at = @At("HEAD"), cancellable = true)
     private void mineastr$layout(GuiMessage message, CallbackInfo ci) {
-        // Reserve physical GUI pixels for the internal scrollbar, including at reduced chat zoom.
-        int width = Math.max(1, (int) ((mineastr$panelWidth() - 8) / getScale()));
+        var panel = MineAstrChatGeometry.chatPanel(mineastr$panelWidth(),
+                minecraft.getWindow().getGuiScaledWidth(), getScale());
+        int width = panel.textWidth(getScale());
         if (message.icon() != null) width -= message.icon().width + 6;
         Component formatted = MineAstrChatLayout.format(message.content(), width, getLineHeight(), getLinesPerPage());
         var lines = ComponentRenderUtils.wrapComponents(formatted, Math.max(1, width), minecraft.font);
@@ -123,7 +124,10 @@ public abstract class MineAstrChatMixin implements MineAstrChatAccess {
         ci.cancel();
     }
     @Inject(method = "getMessageLineIndexAt", at = @At("HEAD"), cancellable = true)
-    private void mineastr$hit(double x, double y, CallbackInfoReturnable<Integer> cir) { cir.setReturnValue(mineastr$viewport.lineAt(x, y)); }
+    private void mineastr$hit(double x, double y, CallbackInfoReturnable<Integer> cir) {
+        var panel = MineAstrChatGeometry.chatPanel(mineastr$panelWidth(), minecraft.getWindow().getGuiScaledWidth(), getScale());
+        cir.setReturnValue(mineastr$viewport.lineAt(x + 4 - panel.textLeft() / getScale(), y));
+    }
     @Inject(method = "getClickedComponentStyleAt", at = @At("HEAD"), cancellable = true)
     private void mineastr$style(double x, double y, CallbackInfoReturnable<Style> cir) { cir.setReturnValue(mineastr$viewport.styleAt(trimmedMessages, x, y)); }
     @Inject(method = "getMessageTagAt", at = @At("HEAD"), cancellable = true)

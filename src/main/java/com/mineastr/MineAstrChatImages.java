@@ -38,6 +38,7 @@ public final class MineAstrChatImages {
     private static long texturePixels;
     private static final java.util.ArrayList<ImageHit> HITS = new java.util.ArrayList<>();
     private static long frameTime;
+    private static float chatLeft = 4, chatRight = Float.MAX_VALUE;
     private static long renderFrame;
     private static final Semaphore UPLOAD_SLOTS = new Semaphore(2);
     private static final Map<String, Entry> IMAGES = new LinkedHashMap<>(MAX_IMAGES, .75F, true);
@@ -286,15 +287,16 @@ public final class MineAstrChatImages {
         var size = MineAstrChatGeometry.fit(entry.width, entry.height, row.width(), row.height());
         float visibleTop = Math.max(viewportTop, Math.max(top + offsetY, lineBottom - lineHeight + offsetY));
         float visibleBottom = Math.min(viewportBottom, Math.min(top + size.height() + offsetY, lineBottom + offsetY));
-        if (visibleBottom <= visibleTop || alpha <= .01F) return;
+        if (visibleBottom <= visibleTop || alpha <= .01F
+                || chatLeft + row.column() * scale >= chatRight) return;
         animate(entry);
         if (alpha > .05F) HITS.add(new ImageHit(row.id(),
-                (row.column() + 4) * scale, visibleTop * scale,
-                (row.column() + size.width() + 4) * scale, visibleBottom * scale));
+                chatLeft + row.column() * scale, visibleTop * scale,
+                Math.min(chatRight, chatLeft + (row.column() + size.width()) * scale), visibleBottom * scale));
         // Scissor uses screen GUI coordinates; the enclosing pose uses vanilla chat scale/indent.
-        graphics.enableScissor((int) Math.floor((row.column() + 4) * scale),
+        graphics.enableScissor((int) Math.floor(chatLeft + row.column() * scale),
                 (int) Math.floor((lineBottom - lineHeight + offsetY) * scale),
-                (int) Math.ceil((row.column() + size.width() + 4) * scale),
+                (int) Math.ceil(Math.min(chatRight, chatLeft + (row.column() + size.width()) * scale)),
                 (int) Math.ceil((lineBottom + offsetY) * scale));
         try {
             MineAstrChatTextures.draw(graphics, entry.texture, row.column(), top,
@@ -302,7 +304,9 @@ public final class MineAstrChatImages {
         } finally { graphics.disableScissor(); }
     }
 
-    public static void beginFrame() { HITS.clear(); frameTime = System.nanoTime(); }
+    public static void beginFrame(double left, double right) {
+        HITS.clear(); frameTime = System.nanoTime(); chatLeft = (float) left; chatRight = (float) right;
+    }
     public static String imageAt(double x, double y) {
         if(System.nanoTime()-frameTime>250_000_000L)return null;
         for(int i=HITS.size()-1;i>=0;i--) {
