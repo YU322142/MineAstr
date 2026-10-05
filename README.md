@@ -1,6 +1,6 @@
-# MineAstr 0.7.37
+# MineAstr 0.7.38
 
-0.7.37 聊天区和输入栏的竖线、文字起点及右边界统一；滑块使用区域内部的独立留白，文字和图片不会进入滑块空间。
+0.7.38 上下竖线贴住屏幕左端，滑块贴住聊天区域右边缘，保留正文与滑块之间的独立留白。
 
 [English](README.en.md) · [配置参考](docs/CONFIGURATION.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md) · [Changelog](CHANGELOG.md) · [外部翻译 API](EXTERNAL_TRANSLATION_API.md)
 
@@ -16,7 +16,7 @@ MineAstr 是面向 Minecraft 1.21.1 / NeoForge 的 AstrBot 桥接模组。它把
 
 | 项目 | 要求 |
 | --- | --- |
-| MineAstr | `0.7.37` |
+| MineAstr | `0.7.38` |
 | Minecraft | `1.21.1` |
 | NeoForge | `21.1.219` 或更高 |
 | Java | `21` |
@@ -46,13 +46,13 @@ Minecraft 服务端
 AstrBot
 ```
 
-客户端不是普通聊天桥接的硬前提，但按玩家语言显示译文、准星目标 HUD、截图和沉浸画框图片翻译都要求客户端安装支持相应能力的 MineAstr。本次客户端 0.7.37 可连接现有服务端 0.7.31 和 AstrBot 插件 0.7.32；协议仍为 1。
+客户端不是普通聊天桥接的硬前提，但按玩家语言显示译文、准星目标 HUD、截图和沉浸画框图片翻译都要求客户端安装支持相应能力的 MineAstr。本次客户端 0.7.38 可连接现有服务端 0.7.31 和 AstrBot 插件 0.7.32；协议仍为 1。
 
 ## 安装
 
 现有服务端 0.7.31 + 插件 0.7.32 可仅替换客户端 JAR，并完全退出游戏再启动；无需为本次聊天 UI 更新重启后端。聊天系统说明见 [CHAT_SYSTEM.zh-CN.md](docs/CHAT_SYSTEM.zh-CN.md)。
 
-1. 把 `mineastr-neoforge-1.21.1-0.7.37.jar` 放入服务端 `mods/`。
+1. 把 `mineastr-neoforge-1.21.1-0.7.38.jar` 放入服务端 `mods/`。
 2. 把同一个 JAR 放入参与翻译功能的客户端 `mods/`。
 3. 首次启动后编辑服务端 `config/mineastr-common.toml`。
 4. 在 AstrBot 的 Minecraft 适配器中设置相同的 WebSocket 路径和 Token。
@@ -82,7 +82,7 @@ serverId = "minecraft"
 
 ## Bot 图片与 ChatImage 联动
 
-- 客户端推荐安装 MineAstr `0.7.37`，兼容服务端 `0.7.31`；新版客户端自带内联缩略图，ChatImage 可选。
+- 客户端推荐安装 MineAstr `0.7.38`，兼容服务端 `0.7.31`；新版客户端自带内联缩略图，ChatImage 可选。
 - AstrBot 插件的 `bridge_settings.relay_images_to_game` 是 Bot 端总开关。
 - 客户端按 F8 后可单独关闭“接收图片消息”；偏好独立于 ChatImage 保存，实际图片发送要求客户端具备 MineAstr 内联图片或 ChatImage 能力。兼容旧 `acceptBotImages=false` 设置。
 - Bot 本机临时图片会在限定大小内安全内联；公网 HTTP(S) 图片由 MineAstr 的有界后台队列获取。Bot 本机路径和图片 URL 都不会作为普通聊天正文显示。
@@ -94,7 +94,7 @@ serverId = "minecraft"
 
 图片翻译要求：
 
-- 客户端推荐安装 MineAstr `0.7.37`，兼容服务端 `0.7.31`；登录绑定修复需要服务端同步更新。
+- 客户端推荐安装 MineAstr `0.7.38`，兼容服务端 `0.7.31`；登录绑定修复需要服务端同步更新。
 - 客户端与服务端均安装 Immersive Paintings `0.7.15+1.21.1`。
 - AstrBot 桥接已连接并支持图片翻译。
 - 客户端开启游戏翻译和悬浮翻译。
@@ -169,11 +169,11 @@ serverId = "minecraft"
 
 同一人的 QQ / Discord 消息转发到 MC 后，通过已绑定的 MC 游戏名使用同一个主题和渐变，来源图标仍为 QQ / Discord；未绑定或未设置主题时沿用默认显示。
 
-MC 原生聊天在新版两端立即显示原文，后台译文就绪后原位更新。聊天图片支持悬停预览与左键点击查看，滚轮缩放、左键拖动、双击重置和 Esc 返回；图片与聊天共同滚动、淡入淡出。客户端 0.7.37 兼容当前服务端 0.7.31 和插件 0.7.32。
+MC 原生聊天在新版两端立即显示原文，后台译文就绪后原位更新。聊天图片支持悬停预览与左键点击查看，滚轮缩放、左键拖动、双击重置和 Esc 返回；图片与聊天共同滚动、淡入淡出。客户端 0.7.38 兼容当前服务端 0.7.31 和插件 0.7.32。
 
 输入栏仅显示可编辑文字，保留原版编辑框、Tab 补全、参数用法和语法错误提示。文字起点与聊天区域对齐；内部滑块有独立留白，不覆盖消息。聊天消息仍使用图标 + 玩家 ID + 正文。
 
-![输入栏实际截图（测试账号 Dev）](docs/images/chat-input-0.7.37.png)
+![输入栏实际截图（测试账号 Dev）](docs/images/chat-input-0.7.38.png)
 
 GIF 仅在实际渲染时播放，不可见时暂停播放及纹理上传，再次显示继续播放。
 

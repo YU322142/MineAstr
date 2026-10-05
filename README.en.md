@@ -1,6 +1,6 @@
-# MineAstr 0.7.37
+# MineAstr 0.7.38
 
-0.7.37 aligns the chat and input rails, text origins and content edges, and reserves an internal scrollbar gutter shared by wrapping, clipping and hit testing.
+0.7.38 places both chat rails at the left screen edge and the scrollbar at the right panel edge, retaining the separate content gutter.
 
 [中文](README.md) · [Configuration reference](docs/CONFIGURATION.en.md) · [Changelog](CHANGELOG.md) · [中文更新日志](CHANGELOG.zh-CN.md) · [External translation API](EXTERNAL_TRANSLATION_API.md)
 
@@ -16,7 +16,7 @@ The integration between MineAstr 0.7.27 and Immersive Paintings 0.7.15 is jointl
 
 | Component | Requirement |
 | --- | --- |
-| MineAstr | `0.7.37` |
+| MineAstr | `0.7.38` |
 | Minecraft | `1.21.1` |
 | NeoForge | `21.1.219` or newer |
 | Java | `21` |
@@ -46,13 +46,13 @@ Minecraft server
 AstrBot
 ```
 
-The client is not a hard requirement for ordinary chat bridging. It is required for per-player translated display, crosshair-target HUDs, screenshots, and Immersive Paintings image translation, and must support the relevant MineAstr capabilities. Client 0.7.37 is compatible with server 0.7.31 and AstrBot plugin 0.7.32; protocol remains 1.
+The client is not a hard requirement for ordinary chat bridging. It is required for per-player translated display, crosshair-target HUDs, screenshots, and Immersive Paintings image translation, and must support the relevant MineAstr capabilities. Client 0.7.38 is compatible with server 0.7.31 and AstrBot plugin 0.7.32; protocol remains 1.
 
 ## Installation
 
 Existing server 0.7.31 and plugin 0.7.32 installations only require replacing the client JAR and restarting Minecraft. No backend restart is required for this UI update.
 
-1. Put `mineastr-neoforge-1.21.1-0.7.37.jar` in the server's `mods/` directory.
+1. Put `mineastr-neoforge-1.21.1-0.7.38.jar` in the server's `mods/` directory.
 2. Put the same JAR in the `mods/` directory of every client that participates in translation features.
 3. After the first startup, edit the server's `config/mineastr-common.toml`.
 4. Configure the same WebSocket path and token in AstrBot's Minecraft adapter.
@@ -82,7 +82,7 @@ The setting that controls whether ordinary chat also displays source text is ind
 
 ## Bot Images and ChatImage Integration
 
-- MineAstr client `0.7.37` is recommended and compatible with server `0.7.31`; inline thumbnails are built in, and ChatImage is optional.
+- MineAstr client `0.7.38` is recommended and compatible with server `0.7.31`; inline thumbnails are built in, and ChatImage is optional.
 - `bridge_settings.relay_images_to_game` in the AstrBot plugin is the Bot-side master switch.
 - Each client can disable “Receive image messages” under F8. The preference is stored independently of ChatImage; actual delivery requires MineAstr inline-thumbnail or ChatImage capability. Existing `acceptBotImages=false` settings are honoured.
 - Temporary Bot-local images are safely inlined within a configured limit; public HTTP(S) images are fetched by the bounded MineAstr worker. Bot-local paths and image URLs are never printed as ordinary chat text.
@@ -94,7 +94,7 @@ When native chat translation is enabled, MineAstr republishes the translation as
 
 Image translation requires:
 
-- MineAstr client `0.7.37` and compatible server `0.7.31`.
+- MineAstr client `0.7.38` and compatible server `0.7.31`.
 - Immersive Paintings `0.7.15+1.21.1` on both client and server.
 - A connected AstrBot bridge with image-translation support.
 - Game translations and floating translations enabled on the client.
@@ -169,7 +169,7 @@ Forwarded QQ/Discord messages use the same saved MC identity and theme. The sour
 
 The editor displays only editable text. The original EditBox and CommandSuggestions retain Tab completion, argument usage, syntax error hints and native mouse coordinates. The internal scrollbar has a reserved gutter; displayed messages retain their icons and sender names.
 
-![Input row matching displayed messages (Dev test account)](docs/images/chat-input-0.7.37.png)
+![Input row matching displayed messages (Dev test account)](docs/images/chat-input-0.7.38.png)
 
 Each GIF advances only while actually drawn. Hidden GIFs pause their timeline and texture uploads and resume from the paused position.
 

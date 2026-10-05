@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.38 — 2026-10-05
+
+- Place chat/input rails at the left screen edge, preserving aligned text origins.
+- Place the scrollbar at the right chat panel edge, retaining the content gutter and rejecting clicks outside the panel.
+
 ## 0.7.37 — 2026-10-05
 
 - Align chat/input rails and text origins in physical GUI coordinates, including reduced chat zoom.

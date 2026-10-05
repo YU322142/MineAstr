@@ -23,7 +23,7 @@ public final class MineAstrChatScreen extends ChatScreen {
         graphics.fill(panel.left(), input.getY() - 4, panel.right(), input.getY() + 10,
                 (int) (255 * minecraft.options.textBackgroundOpacity().get()) << 24);
         // A fixed panel accent, separate from the native moving/blinking text caret.
-        graphics.fill(panel.left(), input.getY() - 4, panel.left() + 1, input.getY() + 10, 0xFF72E6C1);
+        graphics.fill(panel.left(), input.getY() - 4, panel.left() + MineAstrChatGeometry.RAIL_WIDTH, input.getY() + 10, 0xFF72E6C1);
         input.render(graphics, mouseX, mouseY, partialTick);
         for (var renderable : renderables) renderable.render(graphics, mouseX, mouseY, partialTick);
         graphics.pose().pushPose();

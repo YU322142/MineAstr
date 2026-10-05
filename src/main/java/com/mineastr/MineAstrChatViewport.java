@@ -98,7 +98,7 @@ public final class MineAstrChatViewport {
                     graphics.pose().scale((float) (1 / scale), 1, 1);
                     graphics.fill(panel.left() - panel.textLeft(), -height, panel.right() - panel.textLeft(), 0, background << 24);
                     int indicator = line.tag() == null ? 0xD0D0D0 : line.tag().indicatorColor();
-                    graphics.fill(panel.left() - panel.textLeft(), -height, panel.left() + 1 - panel.textLeft(), 0,
+                    graphics.fill(panel.left() - panel.textLeft(), -height, panel.left() + MineAstrChatGeometry.RAIL_WIDTH - panel.textLeft(), 0,
                             indicator | ((int) (alpha * 255) << 24));
                     graphics.pose().popPose();
                     graphics.enableScissor(panel.textLeft(), (int) Math.floor(top * scale), panel.contentRight(), (int) Math.ceil(bottom * scale));
@@ -154,7 +154,8 @@ public final class MineAstrChatViewport {
         } finally { graphics.pose().popPose(); }
     }
     public boolean click(double mouseX, double mouseY, int button) {
-        if (!focused || button != 0 || scroll.maximum() <= 0 || mouseX < barX() - 2 || mouseX > barX() + 8
+        if (!focused || panel == null || button != 0 || scroll.maximum() <= 0
+                || mouseX < barX() - 2 || mouseX >= panel.right()
                 || mouseY < top * scale || mouseY >= bottom * scale) return false;
         now = MineAstrChatEasing.now();
         scroll.beginDrag(mouseY, thumbTop(), thumb());

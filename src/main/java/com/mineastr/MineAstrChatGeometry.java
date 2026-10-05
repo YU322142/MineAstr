@@ -2,6 +2,7 @@ package com.mineastr;
 
 /** Pixel bounds shared by the layout and thumbnail renderer. No rendering or IO. */
 public final class MineAstrChatGeometry {
+    public static final int RAIL_WIDTH = 2;
     private MineAstrChatGeometry() {}
 
     /** Physical GUI width, bounded by the visible screen; the panel adds its existing side padding. */
@@ -13,10 +14,11 @@ public final class MineAstrChatGeometry {
     public static ChatPanel chatPanel(int configuredWidth, int screenWidth, double scale) {
         int right = Math.max(1, Math.min(screenWidth - 2,
                 configuredWidth + (int) Math.ceil(12 * Math.max(.01, scale))));
-        int left = Math.min(2, Math.max(0, right - 1));
+        int left = 0;
         int textLeft = Math.min(4, Math.max(left, right - 1));
-        int scrollbarLeft = Math.max(textLeft, right - 8);
-        int contentRight = Math.max(textLeft, scrollbarLeft - 4);
+        int scrollbarLeft = Math.max(textLeft, right - 6);
+        // Move the former outer margin into the gutter, preserving existing text wrapping.
+        int contentRight = Math.max(textLeft, scrollbarLeft - 6);
         return new ChatPanel(left, textLeft, contentRight, scrollbarLeft, right);
     }
 
