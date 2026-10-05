@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.35 — 2026-10-05
+
+- Match the input row to displayed messages with MC icon + local player ID + editable body and shared header measurement.
+- Match panel boundaries, opacity and zoom; correctly transform cursor, completion click and completion wheel coordinates.
+- Sender prefix remains visual and is never sent as part of text or commands.
+
 ## 0.7.34 — 2026-10-05
 
 - Increase chat input padding and keep cursor, hit testing, resizing and command suggestions aligned.

@@ -65,16 +65,7 @@ public final class MineAstrChatLayout {
         }
         Font font = Minecraft.getInstance().font;
         String senderName = name.getString();
-        name = name.copy().withStyle(style -> style.withBold(true));
-        // Per-message prefix: body follows this sender's actual name, with no shared fixed name column.
-        var clippedName = font.substrByWidth(name, Math.max(1, width - 18 - Math.min(64, width / 3)));
-        var clippedComponent = Component.empty();
-        clippedName.visit((style, textValue) -> {
-            clippedComponent.append(Component.literal(textValue).setStyle(style));
-            return java.util.Optional.empty();
-        }, Style.EMPTY);
-        var header = Component.empty().append(themeMarker(senderName)).append(icon(platform)).append(spaces(4)).append(clippedComponent);
-        header.append(spaces(4));
+        var header = senderHeader(name, platform, width);
         int column = font.width(header);
         int bodyWidth = Math.max(24, width - column - 2);
         List<MutableComponent> rows = new ArrayList<>();
@@ -102,6 +93,23 @@ public final class MineAstrChatLayout {
             result.append(Component.literal("\n")).append(themeMarker(senderName)).append(spaces(column)).append(rows.get(row));
         }
         return result;
+    }
+
+    /** One prefix implementation for displayed messages and the editable local player's row. */
+    public static MutableComponent senderHeader(Component name, String platform, int width) {
+        Font font = Minecraft.getInstance().font;
+        String senderName = name.getString();
+        name = name.copy().withStyle(style -> style.withBold(true));
+        // Per-message prefix: body follows this sender's actual name, with no shared fixed name column.
+        var clippedName = font.substrByWidth(name, Math.max(1, width - 18 - Math.min(64, width / 3)));
+        var clippedComponent = Component.empty();
+        clippedName.visit((style, textValue) -> {
+            clippedComponent.append(Component.literal(textValue).setStyle(style));
+            return java.util.Optional.empty();
+        }, Style.EMPTY);
+        var header = Component.empty().append(themeMarker(senderName)).append(icon(platform)).append(spaces(4)).append(clippedComponent);
+        header.append(spaces(4));
+        return header;
     }
 
     private static void flushText(List<MutableComponent> rows, Component text, Font font, int width) {

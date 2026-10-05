@@ -1,6 +1,6 @@
-# MineAstr 0.7.34
+# MineAstr 0.7.35
 
-0.7.34 increases chat input padding and retains the complete chat viewport, fractional scrolling, draggable scrollbar and edge clipping.
+0.7.35 matches the input row to displayed messages: MC icon + local player ID + editable body, with shared spacing, boundaries and zoom.
 
 [中文](README.md) · [Configuration reference](docs/CONFIGURATION.en.md) · [Changelog](CHANGELOG.md) · [中文更新日志](CHANGELOG.zh-CN.md) · [External translation API](EXTERNAL_TRANSLATION_API.md)
 
@@ -16,7 +16,7 @@ The integration between MineAstr 0.7.27 and Immersive Paintings 0.7.15 is jointl
 
 | Component | Requirement |
 | --- | --- |
-| MineAstr | `0.7.34` |
+| MineAstr | `0.7.35` |
 | Minecraft | `1.21.1` |
 | NeoForge | `21.1.219` or newer |
 | Java | `21` |
@@ -46,13 +46,13 @@ Minecraft server
 AstrBot
 ```
 
-The client is not a hard requirement for ordinary chat bridging. It is required for per-player translated display, crosshair-target HUDs, screenshots, and Immersive Paintings image translation, and must support the relevant MineAstr capabilities. Client 0.7.34 is compatible with server 0.7.31 and AstrBot plugin 0.7.32; protocol remains 1.
+The client is not a hard requirement for ordinary chat bridging. It is required for per-player translated display, crosshair-target HUDs, screenshots, and Immersive Paintings image translation, and must support the relevant MineAstr capabilities. Client 0.7.35 is compatible with server 0.7.31 and AstrBot plugin 0.7.32; protocol remains 1.
 
 ## Installation
 
 Existing server 0.7.31 and plugin 0.7.32 installations only require replacing the client JAR and restarting Minecraft. No backend restart is required for this UI update.
 
-1. Put `mineastr-neoforge-1.21.1-0.7.34.jar` in the server's `mods/` directory.
+1. Put `mineastr-neoforge-1.21.1-0.7.35.jar` in the server's `mods/` directory.
 2. Put the same JAR in the `mods/` directory of every client that participates in translation features.
 3. After the first startup, edit the server's `config/mineastr-common.toml`.
 4. Configure the same WebSocket path and token in AstrBot's Minecraft adapter.
@@ -82,7 +82,7 @@ The setting that controls whether ordinary chat also displays source text is ind
 
 ## Bot Images and ChatImage Integration
 
-- MineAstr client `0.7.34` is recommended and compatible with server `0.7.31`; inline thumbnails are built in, and ChatImage is optional.
+- MineAstr client `0.7.35` is recommended and compatible with server `0.7.31`; inline thumbnails are built in, and ChatImage is optional.
 - `bridge_settings.relay_images_to_game` in the AstrBot plugin is the Bot-side master switch.
 - Each client can disable “Receive image messages” under F8. The preference is stored independently of ChatImage; actual delivery requires MineAstr inline-thumbnail or ChatImage capability. Existing `acceptBotImages=false` settings are honoured.
 - Temporary Bot-local images are safely inlined within a configured limit; public HTTP(S) images are fetched by the bounded MineAstr worker. Bot-local paths and image URLs are never printed as ordinary chat text.
@@ -94,7 +94,7 @@ When native chat translation is enabled, MineAstr republishes the translation as
 
 Image translation requires:
 
-- MineAstr client `0.7.34` and compatible server `0.7.31`.
+- MineAstr client `0.7.35` and compatible server `0.7.31`.
 - Immersive Paintings `0.7.15+1.21.1` on both client and server.
 - A connected AstrBot bridge with image-translation support.
 - Game translations and floating translations enabled on the client.
@@ -166,3 +166,7 @@ In-game names prefer the oldest bound Minecraft name; otherwise they use the QQ/
 Player themes offer solid, two-color and three-color slow gradients (4–20 seconds) for nicknames and message text only. Platform icons and images retain their colors. Dark colors are rejected, never brightened; every active stop must have at least 4.5:1 contrast against #303030. RGB sliders, hex input and a live preview are in F8. Themes are authenticated and stored by UUID on the server, including offline players. Gradient lookup tables are prepared once; rendering preserves ModernUI fonts, shaping, hover and click events.
 
 Forwarded QQ/Discord messages use the same saved MC identity and theme. The source icon stays QQ/Discord.
+
+The sender prefix is visual only and never becomes part of outgoing text or commands. Cursor hit testing and completion use the editor's scaled coordinates.
+
+![Input row matching displayed messages (Dev test account)](docs/images/chat-input-0.7.35.png)
