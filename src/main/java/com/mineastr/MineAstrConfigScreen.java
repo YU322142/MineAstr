@@ -6,6 +6,7 @@ import java.util.Locale;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntConsumer;
+import java.util.function.DoubleConsumer;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -131,7 +132,8 @@ public final class MineAstrConfigScreen extends Screen {
     private int panelHeight;
     private int contentTop;
     private int contentBottom;
-    private int scrollOffset;
+    private double scrollOffset;
+    private final MineAstrScrollState contentScroll = new MineAstrScrollState();
     private final List<AbstractWidget> rowWidgets = new ArrayList<>();
     private ScrollBar scrollBar;
 
@@ -248,15 +250,16 @@ public final class MineAstrConfigScreen extends Screen {
     }
 
     private int rowY(int rowIndex) {
-        return contentTop + rowIndex * ROW_HEIGHT - scrollOffset;
+        return contentTop + rowIndex * ROW_HEIGHT - (int) Math.floor(scrollOffset);
     }
 
     private int maxScroll() {
         return Math.max(0, rowWidgets.size() * ROW_HEIGHT - (contentBottom - contentTop));
     }
 
-    private void setScrollOffset(int value) {
-        scrollOffset = Mth.clamp(value, 0, maxScroll());
+    private void setScrollOffset(double value) {
+        contentScroll.to(value, MineAstrChatEasing.now(), 0);
+        scrollOffset = Math.clamp(value, 0, maxScroll());
         repositionRows();
     }
 
@@ -264,13 +267,16 @@ public final class MineAstrConfigScreen extends Screen {
         int index = 0;
         for (AbstractWidget widget : rowWidgets) {
             widget.setY(rowY(index));
-            widget.visible = widget.getY() >= contentTop
-                    && widget.getY() + widget.getHeight() <= contentBottom;
+            widget.visible = MineAstrScrollState.intersects(widget.getY() - scrollFraction(), widget.getHeight(), contentTop, contentBottom);
             index++;
         }
-        if (scrollBar != null) {
-            scrollBar.setScroll(scrollOffset);
-        }
+    }
+
+    private double scrollFraction() { return scrollOffset - Math.floor(scrollOffset); }
+
+    private void updateScroll() {
+        scrollOffset = contentScroll.value(MineAstrChatEasing.now());
+        repositionRows();
     }
 
     @Override
@@ -448,14 +454,16 @@ public final class MineAstrConfigScreen extends Screen {
         // 滚动条
         int viewportHeight = contentBottom - contentTop;
         int contentHeight = rowIndex * ROW_HEIGHT;
-        scrollOffset = Mth.clamp(scrollOffset, 0, Math.max(0, contentHeight - viewportHeight));
+        contentScroll.bounds(contentHeight, viewportHeight, MineAstrChatEasing.now());
+        scrollOffset = Math.clamp(scrollOffset, 0, Math.max(0, contentHeight - viewportHeight));
+        contentScroll.to(scrollOffset, MineAstrChatEasing.now(), 0);
         scrollBar = new ScrollBar(
                 panelLeft + panelWidth - 10,
                 contentTop,
                 SCROLLBAR_WIDTH,
                 viewportHeight,
                 contentHeight,
-                scrollOffset,
+                contentScroll,
                 this::setScrollOffset);
         addRenderableWidget(scrollBar);
 
@@ -519,12 +527,60 @@ public final class MineAstrConfigScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
         // 鼠标滚轮仅限翻页，不分发给子控件（避免滚轮改变开关/滑块值）
-        setScrollOffset(scrollOffset - (int) Math.round(verticalAmount * ROW_HEIGHT));
+        contentScroll.wheel(-Math.clamp(verticalAmount, -8, 8) * ROW_HEIGHT * .85,
+                MineAstrChatEasing.now(), chatAnimations ? chatScrollDuration : 0);
         return true;
     }
 
     @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        updateScroll();
+        for (var child : children()) {
+            boolean row = rowWidgets.contains(child);
+            if (row && (mouseY < contentTop || mouseY >= contentBottom)) continue;
+            if (child.mouseClicked(mouseX, row ? mouseY + scrollFraction() : mouseY, button)) {
+                setFocused(child);
+                if (button == 0) setDragging(true);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dx, double dy) {
+        if (isDragging() && button == 0 && getFocused() != null && rowWidgets.contains(getFocused()))
+            return getFocused().mouseDragged(mouseX, mouseY + scrollFraction(), button, dx, dy);
+        return super.mouseDragged(mouseX, mouseY, button, dx, dy);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (getFocused() != null && rowWidgets.contains(getFocused())) {
+            setDragging(false);
+            return getFocused().mouseReleased(mouseX, mouseY + scrollFraction(), button);
+        }
+        return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean keyPressed(int key, int scan, int modifiers) {
+        // Focus navigation can reach the next offscreen control and scroll it into view.
+        if (key == 258) for (var widget : rowWidgets) widget.visible = true;
+        boolean handled = super.keyPressed(key, scan, modifiers);
+        if ((key == 258 || key == 264 || key == 265) && getFocused() instanceof AbstractWidget widget && rowWidgets.contains(widget)) {
+            double y = widget.getY() - scrollFraction();
+            if (y < contentTop) contentScroll.wheel(y - contentTop, MineAstrChatEasing.now(), 120);
+            else if (y + widget.getHeight() > contentBottom)
+                contentScroll.wheel(y + widget.getHeight() - contentBottom, MineAstrChatEasing.now(), 120);
+        }
+        repositionRows();
+        return handled;
+    }
+
+    @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        updateScroll();
         if (saveButton != null) {
             saveButton.active = themeValid();
             saveButton.setTooltip(saveButton.active ? null : Tooltip.create(Component.translatable("screen.mineastr.config.theme_invalid")));
@@ -533,12 +589,16 @@ public final class MineAstrConfigScreen extends Screen {
 
         int panelWidth = Math.min(PANEL_WIDTH, width - 24);
         graphics.enableScissor(panelLeft + 4, contentTop, panelLeft + panelWidth - 8, contentBottom);
-        for (var renderable : this.renderables) {
-            if (rowWidgets.contains(renderable)) {
-                renderable.render(graphics, mouseX, mouseY, partialTick);
+        graphics.pose().pushPose();
+        graphics.pose().translate(0, (float) -scrollFraction(), 0);
+        try {
+            for (var renderable : this.renderables) {
+                if (rowWidgets.contains(renderable)) {
+                    renderable.render(graphics, mouseX, mouseY >= contentTop && mouseY < contentBottom
+                            ? (int) Math.floor(mouseY + scrollFraction()) : Integer.MIN_VALUE / 2, partialTick);
+                }
             }
-        }
-        graphics.disableScissor();
+        } finally { graphics.pose().popPose(); graphics.disableScissor(); }
 
         for (var renderable : this.renderables) {
             if (!rowWidgets.contains(renderable)) {
@@ -594,13 +654,16 @@ public final class MineAstrConfigScreen extends Screen {
                 "screen.mineastr.config.reset_client.label"
         };
         graphics.enableScissor(left + 4, contentTop, left + panelWidth - 8, contentBottom);
-        for (int i = 0; i < labels.length; i++) {
-            int labelY = rowY(i) + 5;
-            if (labelY + 9 >= contentTop && labelY <= contentBottom) {
-                graphics.drawString(font, Component.translatable(labels[i]), left + 16, labelY, TEXT, false);
+        graphics.pose().pushPose();
+        graphics.pose().translate(0, (float) -scrollFraction(), 0);
+        try {
+            for (int i = 0; i < labels.length; i++) {
+                int labelY = rowY(i) + 5;
+                if (labelY + 9 >= contentTop && labelY <= contentBottom) {
+                    graphics.drawString(font, Component.translatable(labels[i]), left + 16, labelY, TEXT, false);
+                }
             }
-        }
-        graphics.disableScissor();
+        } finally { graphics.pose().popPose(); graphics.disableScissor(); }
     }
 
     @Override
@@ -761,9 +824,8 @@ public final class MineAstrConfigScreen extends Screen {
     private static final class ScrollBar extends AbstractWidget {
         private final int viewportHeight;
         private final int contentHeight;
-        private int scroll;
-        private final IntConsumer onScroll;
-        private boolean dragging;
+        private final MineAstrScrollState scroll;
+        private final DoubleConsumer onScroll;
 
         private ScrollBar(
                 int x,
@@ -771,12 +833,12 @@ public final class MineAstrConfigScreen extends Screen {
                 int width,
                 int viewportHeight,
                 int contentHeight,
-                int scroll,
-                IntConsumer onScroll) {
+                MineAstrScrollState scroll,
+                DoubleConsumer onScroll) {
             super(x, y, width, viewportHeight, Component.empty());
             this.viewportHeight = viewportHeight;
             this.contentHeight = contentHeight;
-            this.scroll = Mth.clamp(scroll, 0, Math.max(0, contentHeight - viewportHeight));
+            this.scroll = scroll;
             this.onScroll = onScroll;
         }
 
@@ -784,48 +846,28 @@ public final class MineAstrConfigScreen extends Screen {
             return Math.max(0, contentHeight - viewportHeight);
         }
 
-        private int thumbHeight() {
-            if (contentHeight <= viewportHeight) {
-                return viewportHeight;
-            }
-            return Math.max(16, Math.round(viewportHeight * (viewportHeight / (float) contentHeight)));
+        private double thumbHeight() {
+            return scroll.thumbSize(viewportHeight, contentHeight);
         }
 
-        private int thumbY() {
-            int max = maxScroll();
-            if (max <= 0) {
-                return getY();
-            }
-            return getY() + Math.round(scroll / (float) max * (viewportHeight - thumbHeight()));
-        }
-
-        void setScroll(int scroll) {
-            this.scroll = Mth.clamp(scroll, 0, maxScroll());
+        private double thumbY() {
+            return scroll.thumbTop(getY(), viewportHeight, contentHeight, false, MineAstrChatEasing.now());
         }
 
         private void updateScrollFromMouse(double mouseY) {
-            int max = maxScroll();
-            if (max <= 0) {
-                return;
-            }
-            int track = viewportHeight - thumbHeight();
-            if (track <= 0) {
-                return;
-            }
-            int target = Math.round((float) ((mouseY - getY() - thumbHeight() / 2.0) / track) * max);
-            scroll = Mth.clamp(target, 0, max);
-            onScroll.accept(scroll);
+            scroll.drag(mouseY, getY(), viewportHeight, contentHeight, false, MineAstrChatEasing.now());
+            onScroll.accept(scroll.target());
         }
 
         @Override
         public void onClick(double mouseX, double mouseY) {
+            scroll.beginDrag(mouseY, thumbY(), thumbHeight());
             updateScrollFromMouse(mouseY);
-            dragging = true;
         }
 
         @Override
         public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-            if (!dragging) {
+            if (!scroll.dragging() || button != 0) {
                 return false;
             }
             updateScrollFromMouse(mouseY);
@@ -834,18 +876,21 @@ public final class MineAstrConfigScreen extends Screen {
 
         @Override
         public boolean mouseReleased(double mouseX, double mouseY, int button) {
-            dragging = false;
+            if (button == 0) scroll.endDrag();
             return super.mouseReleased(mouseX, mouseY, button);
         }
 
         @Override
         protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
             graphics.fill(getX(), getY(), getRight(), getBottom(), 0x66202A3A);
-            int thumbColor = (dragging || isHoveredOrFocused()) ? 0xFF72E6C1 : 0xFF52657C;
-            int ty = thumbY();
-            int th = thumbHeight();
-            graphics.fill(getX(), ty, getRight(), ty + th, thumbColor);
-            graphics.fill(getX(), ty, getX() + 1, ty + th, 0x33FFFFFF);
+            int thumbColor = (scroll.dragging() || isHoveredOrFocused()) ? 0xFF72E6C1 : 0xFF52657C;
+            graphics.pose().pushPose();
+            try {
+                graphics.pose().translate(0, (float) thumbY(), 0);
+                int th = (int) Math.ceil(thumbHeight());
+                graphics.fill(getX(), 0, getRight(), th, thumbColor);
+                graphics.fill(getX(), 0, getX() + 1, th, 0x33FFFFFF);
+            } finally { graphics.pose().popPose(); }
         }
 
         @Override

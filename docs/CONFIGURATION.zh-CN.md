@@ -1,4 +1,4 @@
-# MineAstr 0.7.27 配置参考
+# MineAstr 0.7.33 配置参考
 
 本文只描述当前配置。历史字段变化见 [`CHANGELOG.md`](../CHANGELOG.md)。
 
@@ -117,3 +117,7 @@ F8 可以通过 RGB 滑块与 #RRGGBB 输入修改每个启用的颜色并预览
 ## 0.7.31 登录本地名单
 
 保持 `enableBindingSync=true`、`bindingSyncWhitelist=true`、`loginBindingCheckEnabled=true`、`loginUseLocalBindings=true`、`loginCheckFailOpen=false`。AstrBot 开启 `binding_enabled`、`need_bind_to_login`、`sync_binding_to_server`，`binding_sync_interval_seconds` 默认 60（30–3600）。MC 世界 data/mineastr_binding_whitelist.json 为最近成功同步的授权缓存，不要提交 Git；断线保留名单，未知玩家仍实时校验。
+
+## 聊天视口 0.7.33
+
+聊天与 F8 设置使用连续像素滚动、可拖动滑块和边缘裁剪。正文紧跟每条玩家 ID。配置键不变；详见 [聊天系统](CHAT_SYSTEM.zh-CN.md)。

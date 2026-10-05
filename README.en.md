@@ -1,6 +1,6 @@
-# MineAstr 0.7.32
+# MineAstr 0.7.33
 
-0.7.32 fixes large GIF delivery with independent first-frame requests and bounded animation normalization.
+0.7.33 owns the chat viewport and input panel, with fractional scrolling, a draggable scrollbar, edge clipping and icon + player ID + body layout.
 
 [中文](README.md) · [Configuration reference](docs/CONFIGURATION.en.md) · [Changelog](CHANGELOG.md) · [中文更新日志](CHANGELOG.zh-CN.md) · [External translation API](EXTERNAL_TRANSLATION_API.md)
 
@@ -16,7 +16,7 @@ The integration between MineAstr 0.7.27 and Immersive Paintings 0.7.15 is jointl
 
 | Component | Requirement |
 | --- | --- |
-| MineAstr | `0.7.27` |
+| MineAstr | `0.7.33` |
 | Minecraft | `1.21.1` |
 | NeoForge | `21.1.219` or newer |
 | Java | `21` |
@@ -46,11 +46,13 @@ Minecraft server
 AstrBot
 ```
 
-The client is not a hard requirement for ordinary chat bridging. It is required for per-player translated display, crosshair-target HUDs, screenshots, and Immersive Paintings image translation, and must run the same MineAstr version.
+The client is not a hard requirement for ordinary chat bridging. It is required for per-player translated display, crosshair-target HUDs, screenshots, and Immersive Paintings image translation, and must support the relevant MineAstr capabilities. Client 0.7.33 is compatible with server 0.7.31 and AstrBot plugin 0.7.32; protocol remains 1.
 
 ## Installation
 
-1. Put `mineastr-neoforge-1.21.1-0.7.27.jar` in the server's `mods/` directory.
+Existing server 0.7.31 and plugin 0.7.32 installations only require replacing the client JAR and restarting Minecraft. No backend restart is required for this UI update.
+
+1. Put `mineastr-neoforge-1.21.1-0.7.33.jar` in the server's `mods/` directory.
 2. Put the same JAR in the `mods/` directory of every client that participates in translation features.
 3. After the first startup, edit the server's `config/mineastr-common.toml`.
 4. Configure the same WebSocket path and token in AstrBot's Minecraft adapter.
@@ -80,7 +82,7 @@ The setting that controls whether ordinary chat also displays source text is ind
 
 ## Bot Images and ChatImage Integration
 
-- MineAstr `0.7.27` is recommended on both server and client; inline thumbnails are built in, and ChatImage is optional.
+- MineAstr client `0.7.33` is recommended and compatible with server `0.7.31`; inline thumbnails are built in, and ChatImage is optional.
 - `bridge_settings.relay_images_to_game` in the AstrBot plugin is the Bot-side master switch.
 - Each client can disable “Receive image messages” under F8. The preference is stored independently of ChatImage; actual delivery requires MineAstr inline-thumbnail or ChatImage capability. Existing `acceptBotImages=false` settings are honoured.
 - Temporary Bot-local images are safely inlined within a configured limit; public HTTP(S) images are fetched by the bounded MineAstr worker. Bot-local paths and image URLs are never printed as ordinary chat text.
@@ -92,7 +94,7 @@ When native chat translation is enabled, MineAstr republishes the translation as
 
 Image translation requires:
 
-- MineAstr `0.7.27` on both client and server.
+- MineAstr client `0.7.33` and compatible server `0.7.31`.
 - Immersive Paintings `0.7.15+1.21.1` on both client and server.
 - A connected AstrBot bridge with image-translation support.
 - Game translations and floating translations enabled on the client.
@@ -149,9 +151,9 @@ This NeoForge 1.21.1 branch is licensed under `AGPL-3.0-or-later`. See [LICENSE]
 
 Generative AI was used to assist design, coding, review, testing, and documentation work. Maintainers remain responsible for reviewing and validating all published content.
 
-## In-game chat layout (0.7.27)
+## In-game chat layout (0.7.33)
 
-Platform icons (Minecraft, Discord, QQ) and names occupy the left column; text and proportionally sized thumbnails occupy the right. Bot replies retain the recipient platform. Vanilla input, history, scrolling and body link styles are retained. Inline thumbnails work without ChatImage and respect the F8 reception setting.
+Messages use platform icon (Minecraft, Discord, QQ) + player ID + body. Each body immediately follows its own ID; continuation lines and images retain that message's body indent. Bot replies retain the recipient platform. MineAstr owns the viewport and input panel rendering while retaining native editing, history and body link interfaces. Inline thumbnails work without ChatImage and respect the F8 reception setting.
 
 ## ModernUI font compatibility
 

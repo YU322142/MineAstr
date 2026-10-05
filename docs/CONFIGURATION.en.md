@@ -1,4 +1,4 @@
-# MineAstr 0.7.27 Configuration Reference
+# MineAstr 0.7.33 Configuration Reference
 
 This document describes the current configuration only. See [`CHANGELOG.md`](../CHANGELOG.md) for historical field changes.
 
@@ -113,3 +113,7 @@ The height cap accounts for GUI/chat scaling and retains at least one line. Imag
 F8 provides RGB sliders, #RRGGBB input and an animated preview for each active stop. Dark or incomplete input disables Save and is never brightened. Only nickname/message text is colored; platform icons and pictures stay unchanged. The server stores UUID-owned themes with the world and synchronizes existing themes, including offline users. Reconnection restores that server’s saved theme. Contrast uses the dark chat background reference; color alone cannot guarantee contrast against every world scene with a fully transparent background.
 
 Image interactions: hover for a cursor-side preview; left-click opens the in-game viewer. Use the wheel to zoom around the cursor, drag with the left button, double-click to reset and Esc to return. F8 image scale changes only the chat thumbnail. The viewer uses the existing bounded texture cache. Native MC chat appears immediately on updated clients and is replaced in place after translation; update both the server and client to 0.7.27.
+
+## Chat viewport 0.7.33
+
+Chat and F8 settings use continuous pixel scrolling, draggable scrollbars and partial viewport clipping. Each message body follows its own player ID. Configuration keys are unchanged.

@@ -9,6 +9,13 @@ import net.neoforged.neoforge.client.event.ScreenEvent;
 public final class MineAstrChatImageInteraction {
     private MineAstrChatImageInteraction() {}
 
+    @SubscribeEvent public static void open(ScreenEvent.Opening event) {
+        if (event.getNewScreen() != null && event.getNewScreen().getClass() == ChatScreen.class) {
+            var initial = ((com.mineastr.mixin.MineAstrChatScreenAccessor) event.getNewScreen()).mineastr$initial();
+            event.setNewScreen(new MineAstrChatScreen(initial));
+        }
+    }
+
     @SubscribeEvent public static void hover(ScreenEvent.Render.Post event) {
         if (!(event.getScreen() instanceof ChatScreen)) return;
         String id = MineAstrChatImages.imageAt(event.getMouseX(), event.getMouseY());

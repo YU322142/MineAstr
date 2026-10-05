@@ -66,16 +66,17 @@ public final class MineAstrChatLayout {
         Font font = Minecraft.getInstance().font;
         String senderName = name.getString();
         name = name.copy().withStyle(style -> style.withBold(true));
-        int column = MineAstrChatGeometry.senderColumn(width);
-        int bodyWidth = Math.max(24, width - column - 2);
-        var clippedName = font.substrByWidth(name, Math.max(1, column - 18));
+        // Per-message prefix: body follows this sender's actual name, with no shared fixed name column.
+        var clippedName = font.substrByWidth(name, Math.max(1, width - 18 - Math.min(64, width / 3)));
         var clippedComponent = Component.empty();
         clippedName.visit((style, textValue) -> {
             clippedComponent.append(Component.literal(textValue).setStyle(style));
             return java.util.Optional.empty();
         }, Style.EMPTY);
         var header = Component.empty().append(themeMarker(senderName)).append(icon(platform)).append(spaces(4)).append(clippedComponent);
-        header.append(spaces(Math.max(1, column - font.width(header))));
+        header.append(spaces(4));
+        int column = font.width(header);
+        int bodyWidth = Math.max(24, width - column - 2);
         List<MutableComponent> rows = new ArrayList<>();
         MutableComponent text = Component.empty();
         // Image anchors remain separate siblings and are never parsed as text or links.

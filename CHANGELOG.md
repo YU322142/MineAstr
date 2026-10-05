@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.33 — 2026-10-05
+
+- MineAstr owns the complete chat viewport, input panel rendering and mouse scroll handling while retaining native editing, IME, completion, history and message APIs.
+- Chat and F8 settings retain fractional pixel positions after scrolling; Shift + wheel enables finer chat scrolling.
+- Draggable chat scrollbar with proportional thumb, track clicks, grab offset and clamped bounds.
+- Partially visible text, images, buttons and sliders are clipped rather than hidden; clipped settings controls cannot intercept outside clicks.
+- Native and QQ/Discord messages use icon + player ID + body; each body follows its own ID and continuation lines retain that message's indent.
+- Logs renderer activation. Compatible with server 0.7.31 and plugin 0.7.32; protocol remains 1.
+- 89 JUnit checks and build passed; isolated client checks cover default fonts and ModernUI 3.13.0.1.
+
 ## 0.7.32 — 2026-10-03
 
 - 大 GIF 同时按字节、帧数与像素预算处理，超过 256 帧时保留总时长采样。
