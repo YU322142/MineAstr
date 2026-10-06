@@ -1,6 +1,6 @@
 # MineAstr
 
-0.7.38 上下竖线贴住屏幕左端，滑块贴住聊天区域右边缘，正文保持独立留白，避免遮挡。
+0.7.39 修复 QQ 图片地址失效时 MC 的缩略图加载失败，异步使用 NapCat 缓存原图；客户端继续使用 0.7.38。
 
 [![AI Assisted](https://img.shields.io/badge/AI-OpenAI%20Codex%20Assisted-10A37F?style=for-the-badge&logo=openai&logoColor=white)](#ai-制作声明)
 
@@ -19,19 +19,18 @@ MineAstr 将 Minecraft NeoForge 1.21.1 服务器接入 AstrBot、QQ/OneBot 与 D
 
 ## 当前版本
 
-- AstrBot 插件：`0.7.32`
+- AstrBot 插件：`0.7.39`
 - 旧 Fabric 分支：**停止支持**（历史版本 `0.6.28`）
 - MineAstr NeoForge Mod：`0.7.38`（Minecraft `1.21.1`）
 - 当前支持的 Minecraft：`1.21.1` / NeoForge
 - NeoForge：`21.1.219`（Minecraft `1.21.1`）
 
-客户端 0.7.38 从 [0.7.38 Release](https://github.com/YU322142/MineAstr/releases/tag/v0.7.38) 下载；本次只更新客户端，兼容服务端 0.7.31 和插件 0.7.32，后端无需重启。发布包附带原有插件 0.7.32：
+AstrBot 插件 0.7.39 从 [0.7.39 Release](https://github.com/YU322142/MineAstr/releases/tag/v0.7.39) 下载，本次修复 QQ 图片传入 MC 时的缩略图加载失败：
 
-- `astrbot_plugin_mineastr-v0.7.32.zip`
-- `mineastr-neoforge-1.21.1-0.7.38.jar`
-- `mineastr-neoforge-1.21.1-0.7.38-sources.jar`
-- `MineAstr-minecraft-neoforge-1.21.1-0.7.38-source.zip`
+- `astrbot_plugin_mineastr-v0.7.39.zip`
 - `SHA256SUMS.txt`
+
+客户端继续使用 [0.7.38 Release](https://github.com/YU322142/MineAstr/releases/tag/v0.7.38) 中的 NeoForge JAR；插件 0.7.39 兼容现有服务端及客户端，无需更换模组。图片文件查询只在异步 HTTP 请求阶段运行，不阻塞聊天消息。
 
 Fabric 分支已停止支持；本次及后续维护仅针对 NeoForge 与 AstrBot，保留旧源码与历史记录，不提供 Fabric 的新发布、修复或兼容性保证。NeoForge JAR 不能安装到 Fabric。
 
@@ -46,9 +45,9 @@ AstrBot 端的统一文本翻译提示词和图片翻译专用提示词上限均
 
 既有翻译行为还包含两项：QQ/Discord 会先比较规范化后的原文与译文，AI 返回同文时只发送原文，不添加语言或 `[原文/Original]` 标签；Fabric 客户端只在准星指向告示牌时显示译文提示，不会进入服务器时批量刷聊天，翻译缓存继续保存在世界存档中。
 
-## 0.7.38 更新与文档
+## 0.7.39 更新与文档
 
-本次输入栏排版及已有聊天系统的说明见 [本次发布说明](RELEASE_NOTES.md)：完整聊天视口、连续位置、拖动与边缘裁剪，统一玩家消息布局。客户端 0.7.38、插件 0.7.32 与现有服务端 0.7.31 兼容，协议仍为 1。
+本次 QQ 图片缓存传输的说明见 [本次发布说明](RELEASE_NOTES.md)。保留 0.7.38 的完整聊天视口、连续滚动、滑块拖动和边缘裁剪；插件 0.7.39 与现有服务端及客户端 0.7.38 兼容，协议仍为 1。
 
 - [NeoForge 中英文安装说明](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)
 - [NeoForge 配置与多语言适配](https://github.com/YU322142/MineAstr/blob/minecraft-neoforge-1.21.1/docs/CONFIGURATION.zh-CN.md)
