@@ -51,7 +51,7 @@ from .aqqbot_compat import (
     trim_message,
 )
 from .mineastr_glossary import GlossaryProvider, append_glossary_instructions
-from .mineastr_media import discord_media, qq_market_faces, unique_media
+from .mineastr_media import QQImageSource, discord_media, qq_images, qq_market_faces, unique_media
 
 try:
     from mcp.types import CallToolResult, ImageContent, TextContent
@@ -475,7 +475,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.7.32",
+    "0.7.39",
 )
 class MineAstrPlugin(Star):
     def __init__(self, context: Context, config: Any | None = None):
@@ -2414,6 +2414,7 @@ class MineAstrPlugin(Star):
         raw = getattr(getattr(event, "message_obj", None), "raw_message", None)
         return unique_media(
             cls._chain_media(cls._event_chain(event))
+            + qq_images(raw)
             + qq_market_faces(raw)
             + discord_media(raw)
         )
@@ -2484,7 +2485,7 @@ class MineAstrPlugin(Star):
         return (data, mime) if mime else None
 
     async def _game_media_payloads(
-        self, media: list[dict[str, Any]] | None
+        self, media: list[dict[str, Any]] | None, *, qq_bot: Any = None
     ) -> list[dict[str, Any]]:
         """Convert AstrBot image components to the path-free MineAstr media protocol."""
         if not self._cfg_bool("relay_images_to_game"):
@@ -2504,6 +2505,8 @@ class MineAstrPlugin(Star):
             name = str(item.get("name") or "image").strip()[:96] or "image"
             public_url = self._safe_public_image_url(reference)
             optimizer = getattr(self, "_image_optimizer", None)
+            if optimizer is not None and qq_bot is not None and item.get("qq_file"):
+                optimizer = QQImageSource(optimizer, qq_bot, str(item["qq_file"]), reference)
             base_url = str(self._cfg("game_image_public_base_url") or "").strip()
             adapter = self._minecraft_adapter() if optimizer is not None else None
             if public_url and optimizer is not None and base_url and adapter is not None and hasattr(adapter, "image_source_url"):
@@ -4604,7 +4607,7 @@ class MineAstrPlugin(Star):
                 reply_context, identity["platform_id"]
             )
             reply_prefix = self._reply_prefix(game_reply)
-            game_media = await self._game_media_payloads(media)
+            game_media = await self._game_media_payloads(media, qq_bot=getattr(event, "bot", None))
             media_marker = (
                 "\n[图片]"
                 if game_media and filtered

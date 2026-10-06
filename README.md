@@ -1,6 +1,6 @@
 # MineAstr AstrBot 插件
 
-0.7.29 修复大 GIF 下载、QQ/Discord 动图提取及慢平台事件阻塞 WebSocket 心跳的问题。
+0.7.39 修复 QQ 图片公开地址失效时的 MC 缩略图加载失败；异步使用 NapCat 缓存原图，GIF 首帧与完整动画共用查询。
 
 [![AI Assisted](https://img.shields.io/badge/AI-OpenAI%20Codex%20Assisted-10A37F?style=for-the-badge&logo=openai&logoColor=white)](#ai-制作声明)
 [![Plugin tests](https://github.com/YU322142/MineAstr/actions/workflows/test.yml/badge.svg?branch=astrbot-plugin)](https://github.com/YU322142/MineAstr/actions/workflows/test.yml)
@@ -8,9 +8,9 @@
 > [!IMPORTANT]
 > **AI 制作声明：本插件采用生成式 AI 参与协议设计、编码、文档编写与测试。** AI 生成或修改的内容由项目维护者审阅、验证并承担最终维护责任。
 
-MineAstr 0.7.27 为 AstrBot 提供一个 `minecraft` 平台适配器，当前支持 NeoForge 1.21.1 模组的主动 WebSocket 连接。统一发布包为 AstrBot 插件与 NeoForge 模组 0.7.27。旧 Fabric 分支已停止支持，仅保留 0.6.28 历史源码，不再提供更新、修复或兼容性保证。
+MineAstr 插件 0.7.39 为 AstrBot 提供一个 `minecraft` 平台适配器，当前支持 NeoForge 1.21.1 模组的主动 WebSocket 连接。本次仅更新 AstrBot 插件，NeoForge 客户端继续使用 0.7.38。旧 Fabric 分支已停止支持，仅保留 0.6.28 历史源码，不再提供更新、修复或兼容性保证。
 
-[下载统一 0.7.27 Release](https://github.com/YU322142/MineAstr/releases/tag/v0.7.27) · [本次相对 0.7.24 的变化](RELEASE_NOTES.md)
+[下载 0.7.39 插件](https://github.com/YU322142/MineAstr/releases/tag/v0.7.39) · [本次修复说明](RELEASE_NOTES.md)
 
 Minecraft 玩家聊天会被转换为 AstrBot 中的同一个群聊会话：
 
