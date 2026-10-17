@@ -688,7 +688,12 @@ public final class MineAstrBridge implements WebSocket.Listener, MineAstrBridgeC
                     images.isEmpty() ? "" : " [图片×" + images.size() + "]");
             for (ServerPlayer player : currentServer.getPlayerList().getPlayers()) {
                 boolean receivesImages = canReceiveBotImages(player);
-                boolean imageOnlyPlaceholder = finalContent.isBlank() && !images.isEmpty();
+                // 拒收纯图片时整条跳过；兼容插件附带的旧版文字占位符。
+                // Skip image-only messages for opt-outs, including the plugin's legacy text marker.
+                if (!receivesImages && !images.isEmpty()
+                        && (finalContent.isBlank() || "[图片]".equals(finalContent.strip()))) {
+                    continue;
+                }
                 boolean inline = MineAstrNetwork.canSendChatPresentation(player);
                 if (inline) {
                     List<MineAstrPayloads.ImageRef> refs = receivesImages
@@ -702,7 +707,7 @@ public final class MineAstrBridge implements WebSocket.Listener, MineAstrBridgeC
                     }
                     continue;
                 }
-                if (!finalContent.isBlank() && !(receivesImages && imageOnlyPlaceholder)) {
+                if (!finalContent.isBlank()) {
                     player.sendSystemMessage(renderTranslatedChat(
                             player,
                             finalSenderName,
@@ -712,8 +717,6 @@ public final class MineAstrBridge implements WebSocket.Listener, MineAstrBridgeC
                 }
                 if (receivesImages) {
                     images.forEach(image -> sendBotImage(player, finalSenderName, image));
-                } else if (imageOnlyPlaceholder) {
-                    player.sendSystemMessage(Component.literal("[" + finalSenderName + "] [图片]"));
                 }
             }
         });

@@ -67,6 +67,8 @@ The Bot side also provides the `bridge_settings.relay_images_to_game` master swi
 
 The image preference is stored independently of ChatImage availability; new clients provide built-in thumbnails; legacy clients still require ChatImage. `/mineastr-images on|off` changes the current player's server-side preference.
 
+When image reception is disabled, image-only messages are hidden entirely, including the disabled-image notice, empty sender rows and legacy image-only markers. Mixed messages retain their text; the client also filters image packets already in flight. Previously received images and cached files are retained.
+
 F8 and its local-server subpage use `screen.mineastr.*` translation keys for labels, buttons, descriptions, options, numeric units and connection hints. Add `assets/mineastr/lang/<locale>.json`, or override the same keys in a resource pack. Use `en_us.json` and `zh_cn.json` as templates; retain `%s` arguments and escape a literal percentage sign as `%%`.
 
 ## Screenshots

@@ -35,8 +35,7 @@ public final class MineAstrChatLayout {
         var hover = Component.translatable(CHAT_KEY, Component.literal(payload.platform()), Component.literal(payload.senderName()));
         var result = Component.literal("[" + payload.senderName() + "] ")
                 .withStyle(style -> style.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, hover)))
-                .append(payload.content().isBlank() && payload.images().isEmpty()
-                        ? Component.translatable("message.mineastr.image_disabled") : Component.literal(payload.content()));
+                .append(Component.literal(payload.content()));
         for (var image : payload.images()) {
             MineAstrChatImages.reserve(image.id(), image.name());
             result.append(Component.literal("\n"));

@@ -959,6 +959,18 @@ public final class MineAstrClient {
     public static void handleNativeChat(MineAstrPayloads.NativeChat payload) { MineAstrNativeChatClient.receive(payload); }
 
     public static void handleChatPresentation(MineAstrPayloads.ChatPresentation payload) {
+        // 偏好切换时旧数据包可能仍在途；在写入聊天历史前再次过滤。
+        // Recheck preferences before inserting packets already in flight into chat history.
+        if (!MineAstrClientConfig.receivesBotImages() && !payload.images().isEmpty()) {
+            if (payload.content().isBlank() || "[图片]".equals(payload.content().strip())) {
+                return;
+            }
+            payload = new MineAstrPayloads.ChatPresentation(
+                    payload.platform(), payload.senderName(), payload.content(), List.of());
+        }
+        if (payload.content().isBlank() && payload.images().isEmpty()) {
+            return;
+        }
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.gui != null) minecraft.gui.getChat().addMessage(MineAstrChatLayout.message(payload));
     }

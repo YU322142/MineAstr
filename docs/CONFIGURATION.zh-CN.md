@@ -67,6 +67,8 @@ Bot 端另有 `bridge_settings.relay_images_to_game` 总开关、`game_image_inl
 
 图片偏好独立于 ChatImage 安装状态保存；新版客户端自带内联缩略图；旧客户端仍需 ChatImage。`/mineastr-images on|off` 可直接修改当前玩家的服务端偏好。
 
+关闭接收后，纯图片消息整条隐藏，不显示“图片接收已关闭”、发送者空行或旧版纯图片占位符。图文消息保留文字；已在途的图片包也会按客户端当前偏好过滤。已接收的历史图片与缓存不会因此清空。
+
 F8 页面和本地服务端子页面的文字通过 `screen.mineastr.*` 翻译键显示，包括按钮、说明、选项、数值单位和连接提示。多语言适配可在 `assets/mineastr/lang/<语言代码>.json` 新增语言文件，或用资源包覆盖同名键；现有 `zh_cn.json`、`en_us.json` 可作为模板，`%s` 参数必须保留，百分号写作 `%%`。
 
 ## 截图
