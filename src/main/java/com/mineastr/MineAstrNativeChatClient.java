@@ -6,6 +6,10 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.contents.TranslatableContents;
 
+/**
+ * <p>原生聊天预览与最终替换的客户端入口；通过历史访问接口更新已有消息。<br>
+ * Handle native-chat previews and replacements through the existing-history access interface.</p>
+ */
 public final class MineAstrNativeChatClient {
     private static final String KEY = "message.mineastr.native_chat_id";
     private MineAstrNativeChatClient() {}

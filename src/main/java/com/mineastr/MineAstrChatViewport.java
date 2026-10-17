@@ -11,7 +11,11 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 
-/** Owns the complete chat viewport: drawing, fractional scroll, scrollbar and hit testing. */
+/**
+ * Owns the complete chat viewport: drawing, fractional scroll, scrollbar and hit testing.
+ * <p>聊天视口绘制、滚动条及命中测试；布局和点击统一使用同一坐标系。<br>
+ * Draw the chat viewport and handle scrolling and hit tests in a shared coordinate system.</p>
+ */
 public final class MineAstrChatViewport {
     private final MineAstrScrollState scroll = new MineAstrScrollState();
     private final MineAstrChatInsertionMotion insertion = new MineAstrChatInsertionMotion();

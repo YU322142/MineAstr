@@ -1,4 +1,4 @@
-# MineAstr 客户端聊天展示协议（0.7.27）
+# MineAstr 客户端聊天展示协议（0.8）
 
 完整 WebSocket 消息与绑定/翻译协议见 [AstrBot 协议](https://github.com/YU322142/MineAstr/blob/astrbot-plugin/PROTOCOL.md)。本次协议号仍为 1，旧客户端图片分片不变。
 
@@ -17,3 +17,7 @@ NeoForge 可选客户端通道 `mineastr:chat_presentation` 依次编码 platfor
 ## 即时原生聊天（0.7.27，可选 Minecraft 通道）
 
 `mineastr:native_chat` 为服务端到客户端 play payload：`id:UUID`、`senderUuid:UUID`、`sender:utf(64)`、`content:utf(4096)`、`update:boolean`。同一消息使用相同 ID；首次 `update=false` 立即显示原文，之后 `true` 原位替换译文。服务器仅向声明该通道的客户端发送，仍以服务器登录 UUID/名称为准；没有客户端到服务端写入接口。客户端按发送者 UUID 遵循屏蔽、隐藏玩家及聊天可见性/仅安全聊天设置。更新保留原消息时间和顺序，只搜索原版有界历史，不新增重复消息，不复活清空或淘汰的历史。协议号仍为 1；旧客户端继续在既有按序完成队列中收取最终结果。
+
+## 0.8 服务端调度
+
+协议号仍为 1，客户端 payload 字段不变。绑定同步与区域查询的有界调度、错误码及线程边界见 [维护说明](docs/MAINTENANCE.md)；WebSocket 查询错误沿用既有 query_result 结构。

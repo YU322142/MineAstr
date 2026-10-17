@@ -8,6 +8,10 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 
+/**
+ * <p>截图请求的用户同意界面；接受与拒绝均回传对应请求标识。<br>
+ * Ask for screenshot consent; acceptance and rejection retain the matching request identifier.</p>
+ */
 public final class MineAstrScreenshotConsentScreen extends Screen {
     private static final long DECISION_TIMEOUT_MS = 25_000L;
     private static final int PANEL_WIDTH = 420;

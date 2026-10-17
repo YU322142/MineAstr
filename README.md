@@ -1,6 +1,6 @@
-# MineAstr 0.7.38
+# MineAstr 0.8
 
-0.7.38 上下竖线贴住屏幕左端，滑块贴住聊天区域右边缘，保留正文与滑块之间的独立留白。
+0.8 修复绑定同步重复写盘、正版身份查询阻塞及区域扫描长任务，并提取独立维护模块。此为本地验证版本，尚未发布或部署；详见 [维护说明](docs/MAINTENANCE.md) 与 [本次说明](RELEASE_NOTES.md)。
 
 [English](README.en.md) · [配置参考](docs/CONFIGURATION.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md) · [Changelog](CHANGELOG.md) · [外部翻译 API](EXTERNAL_TRANSLATION_API.md)
 
@@ -16,7 +16,7 @@ MineAstr 是面向 Minecraft 1.21.1 / NeoForge 的 AstrBot 桥接模组。它把
 
 | 项目 | 要求 |
 | --- | --- |
-| MineAstr | `0.7.38` |
+| MineAstr | `0.8` |
 | Minecraft | `1.21.1` |
 | NeoForge | `21.1.219` 或更高 |
 | Java | `21` |

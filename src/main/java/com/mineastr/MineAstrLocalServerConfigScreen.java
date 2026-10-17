@@ -13,6 +13,10 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.util.FormattedCharSequence;
 
+/**
+ * <p>本地服务器配置页面；校验输入后保存与重新连接。<br>
+ * Edit local server settings, validate input, then save and reconnect.</p>
+ */
 public final class MineAstrLocalServerConfigScreen extends Screen {
     private static final int PANEL_WIDTH = 460;
     private static final int PANEL_HEIGHT = 236;

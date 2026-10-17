@@ -7,7 +7,11 @@ import java.util.UUID;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.FormattedCharSequence;
 
-/** Main-thread palette. Gradients are precomputed once, never in the glyph loop. */
+/**
+ * Main-thread palette. Gradients are precomputed once, never in the glyph loop.
+ * <p>客户端主题调色板；渐变预先计算，避免逐字形重复计算。<br>
+ * Own the client palette and precompute gradients outside glyph rendering.</p>
+ */
 public final class MineAstrClientThemes {
     private static final Map<UUID, MineAstrPayloads.PlayerTheme> PROFILES = new HashMap<>();
     private static final Map<String, Theme> THEMES = new HashMap<>();

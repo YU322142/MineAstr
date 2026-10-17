@@ -2,6 +2,10 @@ package com.mineastr;
 
 import net.neoforged.neoforge.common.ModConfigSpec;
 
+/**
+ * <p>客户端显示与隐私偏好；保持默认值、设置页面和同步载荷一致。<br>
+ * Define client display and privacy preferences; align defaults, settings screens and payloads.</p>
+ */
 public final class MineAstrClientConfig {
     public enum ScreenshotMode {
         ASK,

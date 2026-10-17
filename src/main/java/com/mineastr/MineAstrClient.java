@@ -59,6 +59,10 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
 
+/**
+ * <p>客户端事件和网络结果的协调入口；截图编码在线程池执行，显示回到客户端线程。<br>
+ * Coordinate client events and network results; encode screenshots in workers and publish on the client thread.</p>
+ */
 public final class MineAstrClient {
     private static final String MIME_TYPE = "image/jpeg";
     private static final int MAX_SCREENSHOT_CHUNKS = 64;

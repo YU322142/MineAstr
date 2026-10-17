@@ -5,7 +5,11 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
-/** Reuses the chat texture; zoom and drag never decode, download or allocate another texture. */
+/**
+ * Reuses the chat texture; zoom and drag never decode, download or allocate another texture.
+ * <p>大图浏览界面复用聊天纹理；缩放拖拽不重新下载或分配图片纹理。<br>
+ * Reuse chat textures for image viewing; zoom and drag require no new download or image texture.</p>
+ */
 public final class MineAstrImageScreen extends Screen {
     private final Screen parent;
     private final String imageId;

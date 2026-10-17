@@ -4,7 +4,11 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 
-/** Uses ModernUI's actual cubic deceleration interpolator when installed. */
+/**
+ * Uses ModernUI's actual cubic deceleration interpolator when installed.
+ * <p>可选 ModernUI 缓动适配；缺少依赖时保留本地插值回退。<br>
+ * Adapt optional ModernUI easing with a local interpolation fallback.</p>
+ */
 public final class MineAstrChatEasing {
     private static MethodHandle modernCurve = load();
 

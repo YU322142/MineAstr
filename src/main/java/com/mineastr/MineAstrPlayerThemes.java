@@ -12,7 +12,11 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.saveddata.SavedData;
 
-/** Server-owned themes. Only the authenticated player can update their own UUID. */
+/**
+ * Server-owned themes. Only the authenticated player can update their own UUID.
+ * <p>服务端持久化玩家主题；只允许已认证玩家修改自己的 UUID。<br>
+ * Persist server-owned player themes; authenticated players may update only their own UUID.</p>
+ */
 public final class MineAstrPlayerThemes extends SavedData {
     private static final String FILE = "mineastr_player_themes";
     private static final Factory<MineAstrPlayerThemes> FACTORY = new Factory<>(MineAstrPlayerThemes::new, MineAstrPlayerThemes::load);

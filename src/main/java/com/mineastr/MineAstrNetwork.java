@@ -9,6 +9,10 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
+/**
+ * <p>载荷注册与游戏线程切换边界；客户端处理器延迟反射加载。<br>
+ * Register payloads and enqueue game-thread work; resolve client handlers lazily.</p>
+ */
 public final class MineAstrNetwork {
     private MineAstrNetwork() {
     }

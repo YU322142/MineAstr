@@ -6,7 +6,11 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.resources.ResourceLocation;
 
-/** Vector-authored 256px platform marks, drawn independently of the glyph atlas. */
+/**
+ * Vector-authored 256px platform marks, drawn independently of the glyph atlas.
+ * <p>平台图标的独立纹理绘制；与字体图集分离。<br>
+ * Draw platform marks from dedicated textures independently of the font atlas.</p>
+ */
 public final class MineAstrChatIcons {
     private static final Set<ResourceLocation> FILTERED = new HashSet<>();
     private MineAstrChatIcons() {}

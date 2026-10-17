@@ -1,6 +1,10 @@
 package com.mineastr;
 
-/** Analytic critical damping: arriving rows preserve both position and velocity. */
+/**
+ * Analytic critical damping: arriving rows preserve both position and velocity.
+ * <p>新消息插入的临界阻尼动画；重新定位时保持位置和速度连续。<br>
+ * Animate inserted rows with critical damping and continuous position and velocity.</p>
+ */
 public final class MineAstrChatInsertionMotion {
     private double rows, speed, startedAt, rate = .03;
 

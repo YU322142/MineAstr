@@ -1,6 +1,10 @@
 package com.mineastr;
 
-/** Cursor-anchored zoom and constrained panning; contains no rendering or image IO. */
+/**
+ * Cursor-anchored zoom and constrained panning; contains no rendering or image IO.
+ * <p>图片缩放与拖拽的纯几何状态；不下载、不解码图片。<br>
+ * Keep zoom and constrained panning as geometry without downloading or decoding images.</p>
+ */
 public final class MineAstrImageViewport {
     private double zoom = 1, panX, panY;
     public double zoom() { return zoom; }

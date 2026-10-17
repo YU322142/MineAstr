@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8 — 2026-10-17 (local build)
+
+- Index whitelist names once per sync, skip unchanged writes, and atomically persist real bulk changes once while preserving manual entries.
+- Use asynchronous authenticated-profile lookup with session/revision checks; process loaded-chunk region scans through a bounded shared tick queue.
+- Split bridge domains into binding, command, screenshot, sign and native-chat services with explicit state ownership; extract stateless protocol/text/target helpers.
+- Document all 56 Java runtime types in Chinese and English and add a source responsibility index.
+- Align runtime handshake and artifact versions. 101 Java tests and Gradle build passed; this local build is not deployed.
+
 ## 0.7.38 — 2026-10-05
 
 - Place chat/input rails at the left screen edge, preserving aligned text origins.

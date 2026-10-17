@@ -15,7 +15,11 @@ import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FormattedCharSequence;
 
-/** Reflows the display copy only; vanilla retains the original message/history. */
+/**
+ * Reflows the display copy only; vanilla retains the original message/history.
+ * <p>聊天显示副本的换行排版；原版消息和历史记录保持原有归属。<br>
+ * Reflow the display copy while vanilla continues to own original messages and history.</p>
+ */
 public final class MineAstrChatLayout {
     private static final ResourceLocation ICON_FONT = ResourceLocation.fromNamespaceAndPath("mineastr", "platforms");
     private static final ResourceLocation SPACE_FONT = ResourceLocation.fromNamespaceAndPath("mineastr", "spacing");

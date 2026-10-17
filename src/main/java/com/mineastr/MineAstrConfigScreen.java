@@ -19,6 +19,10 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
 
+/**
+ * <p>客户端设置控件及滚动页面；配置持久化与应用保持在既有客户端流程中。<br>
+ * Build client settings and scrolling controls; preserve the client save/apply flow.</p>
+ */
 public final class MineAstrConfigScreen extends Screen {
     private static final int PANEL_WIDTH = 380;
     private static final int PANEL_HEIGHT = 340;

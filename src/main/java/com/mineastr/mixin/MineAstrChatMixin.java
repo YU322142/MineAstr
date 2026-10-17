@@ -23,7 +23,11 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** Keeps vanilla's message/signature/history APIs; MineAstr owns layout, viewport and input geometry. */
+/**
+ * Keeps vanilla's message/signature/history APIs; MineAstr owns layout, viewport and input geometry.
+ * <p>聊天组件注入与历史替换实现；升级 Minecraft 时检查注入点和字段映射。<br>
+ * Inject chat behavior and history replacement; recheck injection targets and field mappings on Minecraft upgrades.</p>
+ */
 @Mixin(net.minecraft.client.gui.components.ChatComponent.class)
 public abstract class MineAstrChatMixin implements MineAstrChatAccess {
     @Shadow @Final private Minecraft minecraft;

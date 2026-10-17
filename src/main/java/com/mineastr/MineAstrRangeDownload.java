@@ -15,7 +15,11 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
-/** Four ranges per large GIF, eight extra range connections globally, verified before assembly. */
+/**
+ * Four ranges per large GIF, eight extra range connections globally, verified before assembly.
+ * <p>HTTP 分段下载的纯校验；检测范围、响应长度和资源验证标识是否一致。<br>
+ * Validate HTTP ranges, body lengths and resource validators consistently.</p>
+ */
 final class MineAstrRangeDownload {
     private static final int FIRST_BYTES = 262144;
     private static final Semaphore CONNECTIONS = new Semaphore(8, true);

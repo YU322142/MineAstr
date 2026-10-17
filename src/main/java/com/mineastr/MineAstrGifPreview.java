@@ -2,7 +2,11 @@ package com.mineastr;
 
 import java.util.Arrays;
 
-/** Recognizes a complete first image without trying to decode partial LZW data. */
+/**
+ * Recognizes a complete first image without trying to decode partial LZW data.
+ * <p>检测可独立解码的首张 GIF 图像；不得尝试解码不完整 LZW 数据。<br>
+ * Find a complete standalone first GIF image without decoding truncated LZW data.</p>
+ */
 final class MineAstrGifPreview {
     static byte[] firstFrame(byte[] bytes, int length) {
         if (length < 13 || !MineAstrGif.matches(bytes)) return null;

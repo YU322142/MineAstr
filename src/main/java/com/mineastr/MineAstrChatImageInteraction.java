@@ -6,6 +6,10 @@ import net.minecraft.network.chat.Component;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 
+/**
+ * <p>聊天图片的鼠标交互入口；命中区域由绘制时记录的数据决定。<br>
+ * Handle chat-image mouse interaction using hit regions recorded during drawing.</p>
+ */
 public final class MineAstrChatImageInteraction {
     private MineAstrChatImageInteraction() {}
 

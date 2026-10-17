@@ -4,7 +4,11 @@ import com.mineastr.mixin.MineAstrChatScreenAccessor;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.ChatScreen;
 
-/** Custom chat viewport and panel; native editor, command completion and usage hints remain intact. */
+/**
+ * Custom chat viewport and panel; native editor, command completion and usage hints remain intact.
+ * <p>自定义聊天面板入口；沿用原版输入框、命令补全和提示。<br>
+ * Host the custom panel while retaining vanilla editing, completion and usage hints.</p>
+ */
 public final class MineAstrChatScreen extends ChatScreen {
     private MineAstrChatGeometry.ChatPanel panel;
     public MineAstrChatScreen(String initial) { super(initial); }

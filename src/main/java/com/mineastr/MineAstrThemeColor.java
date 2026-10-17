@@ -1,6 +1,10 @@
 package com.mineastr;
 
-/** Readable sRGB colors against the chat's dark background reference (#303030). */
+/**
+ * Readable sRGB colors against the chat's dark background reference (#303030).
+ * <p>主题颜色解析和插值；输入校验与显示复用相同规则。<br>
+ * Parse and interpolate theme colors using shared validation and display rules.</p>
+ */
 public final class MineAstrThemeColor {
     public static final int DEFAULT = 0xFFFFFF;
     private static final double MIN_LUMINANCE = 4.5 * (luminance(0x303030) + .05) - .05;

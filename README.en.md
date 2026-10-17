@@ -1,6 +1,6 @@
-# MineAstr 0.7.38
+# MineAstr 0.8
 
-0.7.38 places both chat rails at the left screen edge and the scrollbar at the right panel edge, retaining the separate content gutter.
+0.8 removes redundant whitelist writes, makes authenticated profile lookup asynchronous, and spreads region scans across ticks. This is a locally verified, undeployed build; see [maintenance notes](docs/MAINTENANCE.md) and [release notes](RELEASE_NOTES.md).
 
 [中文](README.md) · [Configuration reference](docs/CONFIGURATION.en.md) · [Changelog](CHANGELOG.md) · [中文更新日志](CHANGELOG.zh-CN.md) · [External translation API](EXTERNAL_TRANSLATION_API.md)
 
@@ -16,7 +16,7 @@ The integration between MineAstr 0.7.27 and Immersive Paintings 0.7.15 is jointl
 
 | Component | Requirement |
 | --- | --- |
-| MineAstr | `0.7.38` |
+| MineAstr | `0.8` |
 | Minecraft | `1.21.1` |
 | NeoForge | `21.1.219` or newer |
 | Java | `21` |

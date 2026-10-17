@@ -14,6 +14,22 @@ class BindingWhitelistStoreTest {
     private BindingWhitelistStore.Entry entry(String name) {
         return new BindingWhitelistStore.Entry(name, "discord:42", "Owner", UUID.randomUUID());
     }
+    @Test void unchangedSnapshotDoesNotTouchDiskButDeletedFileIsRepaired() throws IOException {
+        Path file = directory.resolve("bindings.json");
+        var store = new BindingWhitelistStore(file, "scope");
+        var records = List.of(entry("Steve"), entry("Alex"));
+        store.replace(records);
+        var sentinel = java.nio.file.attribute.FileTime.fromMillis(1_600_000_000_000L);
+        Files.setLastModifiedTime(file, sentinel);
+        store.replace(List.of(records.get(1), records.get(0)));
+        assertEquals(sentinel, Files.getLastModifiedTime(file));
+        Files.delete(file);
+        store.replace(records);
+        var restarted = new BindingWhitelistStore(file, "scope");
+        restarted.load();
+        assertTrue(restarted.allows("Steve"));
+        assertTrue(restarted.allows("Alex"));
+    }
     @Test void persistedBindingsAllowOfflineLoginAfterRestartAndRevokeOnReplacement() throws IOException {
         Path file = directory.resolve("bindings.json");
         var original = new BindingWhitelistStore(file, "server-token-scope");

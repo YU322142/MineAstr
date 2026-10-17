@@ -1,6 +1,10 @@
 package com.mineastr;
 
-/** Continuous pixel scrolling shared by chat and settings; no row quantization. */
+/**
+ * Continuous pixel scrolling shared by chat and settings; no row quantization.
+ * <p>聊天和配置页共用的连续像素滚动状态；不按行量化。<br>
+ * Share continuous pixel scrolling between chat and settings without row quantization.</p>
+ */
 public final class MineAstrScrollState {
     private final MineAstrChatMotion motion = new MineAstrChatMotion(MineAstrChatEasing::gentle);
     private double target, maximum;

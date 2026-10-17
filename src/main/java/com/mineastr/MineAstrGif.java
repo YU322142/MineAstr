@@ -15,7 +15,11 @@ import javax.imageio.metadata.IIOMetadataNode;
 import javax.imageio.stream.MemoryCacheImageInputStream;
 import org.w3c.dom.Node;
 
-/** Decodes bounded GIF timelines off the render thread, including disposal and loop metadata. */
+/**
+ * Decodes bounded GIF timelines off the render thread, including disposal and loop metadata.
+ * <p>后台解码有界 GIF 时间轴；处理帧处置、循环和像素上限。<br>
+ * Decode bounded GIF timelines off-thread, including disposal, looping and pixel limits.</p>
+ */
 final class MineAstrGif {
     static final int MAX_FRAMES = 256;
     static final int MAX_DOWNLOAD_BYTES = 16 * 1024 * 1024;

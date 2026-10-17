@@ -12,7 +12,11 @@ import net.minecraft.network.protocol.configuration.ServerConfigurationPacketLis
 import net.minecraft.server.network.ConfigurationTask;
 import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 
-/** Holds world entry until the asynchronous binding decision is complete. */
+/**
+ * Holds world entry until the asynchronous binding decision is complete.
+ * <p>绑定决策完成前阻止进入世界；异步结果只完成当前登录任务。<br>
+ * Hold world entry until binding is decided; complete only the current login task.</p>
+ */
 final class MineAstrLoginTask implements ConfigurationTask {
     static final Type TYPE = new Type("mineastr:binding_login_check");
     private final Runnable prepare;

@@ -19,6 +19,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
+/**
+ * <p>接收机器人图片分片、校验完整性并写入缓存；断连清空未完成拼装。<br>
+ * Assemble bot-image chunks, validate integrity and cache files; discard unfinished assemblies on disconnect.</p>
+ */
 final class MineAstrBotImageClient {
     private static final Map<String, Assembly> ASSEMBLIES = new ConcurrentHashMap<>();
     private static final Duration ASSEMBLY_TIMEOUT = Duration.ofMinutes(1);

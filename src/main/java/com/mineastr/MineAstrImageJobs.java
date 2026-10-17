@@ -10,7 +10,11 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.function.Consumer;
 
-/** Each image owns a virtual thread; network waits never hold decoding permits. */
+/**
+ * Each image owns a virtual thread; network waits never hold decoding permits.
+ * <p>有界图片任务与虚拟线程；网络等待不占解码许可，下载体保留受并发上限约束。<br>
+ * Bound virtual-thread image jobs; network waits hold no decode permit and retained bodies remain concurrency-limited.</p>
+ */
 final class MineAstrImageJobs implements AutoCloseable {
     @FunctionalInterface interface Loader { byte[] load() throws Exception; }
     @FunctionalInterface interface Processor { void process(byte[] bytes) throws Exception; }

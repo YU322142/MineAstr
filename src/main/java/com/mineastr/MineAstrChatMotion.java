@@ -2,7 +2,11 @@ package com.mineastr;
 
 import java.util.function.DoubleUnaryOperator;
 
-/** Frame-rate independent, retargetable animation; no Minecraft or UI dependency. */
+/**
+ * Frame-rate independent, retargetable animation; no Minecraft or UI dependency.
+ * <p>与帧率无关的动画状态；可重新指定目标，不依赖游戏对象。<br>
+ * Maintain retargetable, frame-rate independent animation without game dependencies.</p>
+ */
 public final class MineAstrChatMotion {
     private final DoubleUnaryOperator curve;
     private double start, target, startedAt, duration;

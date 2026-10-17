@@ -1,6 +1,10 @@
 package com.mineastr;
 
-/** Pixel bounds shared by the layout and thumbnail renderer. No rendering or IO. */
+/**
+ * Pixel bounds shared by the layout and thumbnail renderer. No rendering or IO.
+ * <p>布局与缩略图共用的像素几何；纯计算，不访问渲染器或文件。<br>
+ * Share pixel geometry between layout and thumbnails; keep calculations independent of rendering and I/O.</p>
+ */
 public final class MineAstrChatGeometry {
     public static final int RAIL_WIDTH = 2;
     private MineAstrChatGeometry() {}

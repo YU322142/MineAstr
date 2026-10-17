@@ -3,6 +3,10 @@ package com.mineastr;
 import java.util.List;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
+/**
+ * <p>服务端配置定义；连接参数、命令权限及登录策略从这里读取。<br>
+ * Define server configuration for connectivity, command permissions and login policy.</p>
+ */
 public final class MineAstrConfig {
     public static final String DEFAULT_LOGIN_CODE_MESSAGE =
             "\n绑定验证码：{code}\n请在 QQ/Discord 使用 /mc bind {code}";

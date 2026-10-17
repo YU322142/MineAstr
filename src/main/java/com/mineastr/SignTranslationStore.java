@@ -24,6 +24,8 @@ import net.minecraft.nbt.Tag;
  * causes a fresh translation request. Automatic entries are also scoped to a
  * translation policy version, while explicit administrator overrides survive
  * policy changes.</p>
+ * <p>告示牌翻译及人工覆盖的持久化；指纹和策略版本控制缓存命中。<br>
+ * Persist sign translations and manual overrides; fingerprints and policy versions govern cache hits.</p>
  */
 public final class SignTranslationStore {
     private static final int FORMAT_VERSION = 2;

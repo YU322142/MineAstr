@@ -10,6 +10,10 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
+/**
+ * <p>双端共用的载荷类型与编解码上限；修改字段须同步发送端和接收端。<br>
+ * Shared payload types and codec bounds; update both endpoints when changing fields.</p>
+ */
 public final class MineAstrPayloads {
     public static final int MAX_REASON_LENGTH = 512;
     public static final int MAX_ERROR_LENGTH = 512;

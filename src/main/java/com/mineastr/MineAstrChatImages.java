@@ -31,7 +31,11 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.ResourceLocation;
 
-/** Bounded, asynchronous thumbnail decoding. Only texture upload/rendering uses the client thread. */
+/**
+ * Bounded, asynchronous thumbnail decoding. Only texture upload/rendering uses the client thread.
+ * <p>有界图片缓存与异步准备；纹理上传、释放及绘制使用客户端线程。<br>
+ * Own bounded image caching and asynchronous preparation; upload, release and draw textures on the client thread.</p>
+ */
 public final class MineAstrChatImages {
     private static final int MAX_IMAGES = 128;
     private static final long MAX_TEXTURE_PIXELS = 16_777_216L;

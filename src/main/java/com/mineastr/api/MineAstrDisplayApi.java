@@ -31,6 +31,8 @@ import net.neoforged.neoforge.common.NeoForge;
  * world-space rendering. Entries are intentionally keyed by a caller-owned
  * id so a painting or other mod can update/remove its display without
  * touching MineAstr's renderer.</p>
+ * <p>供其他模组调用的客户端显示接口；扩展时保持消息标识和替换语义兼容。<br>
+ * Expose client display integration to other mods; preserve message identifiers and replacement semantics.</p>
  */
 @OnlyIn(Dist.CLIENT)
 public final class MineAstrDisplayApi {

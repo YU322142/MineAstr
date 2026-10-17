@@ -10,6 +10,10 @@ import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 
+/**
+ * <p>游戏内命令树及反馈格式；业务操作交给桥接服务。<br>
+ * Register in-game command trees and feedback; delegate operations to bridge services.</p>
+ */
 public final class MineAstrCommands {
     private MineAstrCommands() {
     }

@@ -9,7 +9,11 @@ import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL30;
 
-/** Generate mipmaps once on upload/reload, avoiding aliasing of high-resolution art. */
+/**
+ * Generate mipmaps once on upload/reload, avoiding aliasing of high-resolution art.
+ * <p>纹理上传及资源重载时构建 mipmap；避免每帧重复生成。<br>
+ * Build mipmaps on upload and resource reload rather than every frame.</p>
+ */
 public final class MineAstrChatTextures {
     private static BlendScope activeBlend;
     private MineAstrChatTextures() {}
