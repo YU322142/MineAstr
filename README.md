@@ -1,6 +1,6 @@
 # MineAstr 0.8
 
-0.8 修复绑定同步重复写盘、正版身份查询阻塞及区域扫描长任务，并提取独立维护模块。源码已推送 GitHub；本机整合包客户端/服务端实测记录见[主分支验证报告](https://github.com/YU322142/MineAstr/blob/main/docs/VALIDATION_0.8.md)。发行包尚未发布，未进行生产部署；详见 [维护说明](docs/MAINTENANCE.md) 与 [本次说明](RELEASE_NOTES.md)。
+0.8 修复绑定同步重复写盘、正版身份查询阻塞及区域扫描长任务，并提取独立维护模块。[0.8 正式发行包](https://github.com/YU322142/MineAstr/releases/tag/v0.8)已发布；本机整合包客户端/服务端实测及生产 MC 部署记录见[主分支验证报告](https://github.com/YU322142/MineAstr/blob/main/docs/VALIDATION_0.8.md)，维护入口见 [维护说明](docs/MAINTENANCE.md) 与 [本次说明](RELEASE_NOTES.md)。
 
 [English](README.en.md) · [配置参考](docs/CONFIGURATION.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md) · [Changelog](CHANGELOG.md) · [外部翻译 API](EXTERNAL_TRANSLATION_API.md)
 

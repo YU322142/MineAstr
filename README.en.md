@@ -1,6 +1,6 @@
 # MineAstr 0.8
 
-0.8 removes redundant whitelist writes, makes authenticated profile lookup asynchronous, and spreads region scans across ticks. This is a locally verified, undeployed build; see [maintenance notes](docs/MAINTENANCE.md) and [release notes](RELEASE_NOTES.md).
+0.8 removes redundant whitelist writes, makes authenticated profile lookup asynchronous, and spreads region scans across ticks. [Download the 0.8 release](https://github.com/YU322142/MineAstr/releases/tag/v0.8). The mod was tested with the full client/server pack and installed on the production Minecraft server; see [validation](https://github.com/YU322142/MineAstr/blob/main/docs/VALIDATION_0.8.md), [maintenance notes](docs/MAINTENANCE.md) and [release notes](RELEASE_NOTES.md).
 
 [中文](README.md) · [Configuration reference](docs/CONFIGURATION.en.md) · [Changelog](CHANGELOG.md) · [中文更新日志](CHANGELOG.zh-CN.md) · [External translation API](EXTERNAL_TRANSLATION_API.md)
 
