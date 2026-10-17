@@ -1,6 +1,6 @@
 # MineAstr
 
-0.8 为本地验证的维护版本：拆分服务端桥接和插件业务职责，补充中英注释，修复绑定同步重复写盘、正版身份查询阻塞和区域扫描长任务。尚未发布或部署。历史日志显示磁盘耗尽及 CoreProtectNeo 数据库错误循环；清理空间、重启后用户反馈暂未复发，不能将此次事故直接归因于 MineAstr。
+0.8 拆分服务端桥接和插件业务职责，补充中英注释，修复绑定同步重复写盘、正版身份查询阻塞和区域扫描长任务。源码已推送，并完成 [本机整合包客户端/服务端实测](docs/VALIDATION_0.8.md)；发行包尚未发布，未进行生产部署。历史日志显示磁盘耗尽及 CoreProtectNeo 数据库错误循环；清理空间、重启后用户反馈暂未复发，不能将此次事故直接归因于 MineAstr。
 
 [![AI Assisted](https://img.shields.io/badge/AI-OpenAI%20Codex%20Assisted-10A37F?style=for-the-badge&logo=openai&logoColor=white)](#ai-制作声明)
 
@@ -19,9 +19,9 @@ MineAstr 将 Minecraft NeoForge 1.21.1 服务器接入 AstrBot、QQ/OneBot 与 D
 
 ## 当前版本
 
-- AstrBot 插件：`0.8`（本地构建）
+- AstrBot 插件：`0.8`（源码已推送；发行包待发布）
 - 旧 Fabric 分支：**停止支持**（历史版本 `0.6.28`）
-- MineAstr NeoForge Mod：`0.8`（本地构建）（Minecraft `1.21.1`）
+- MineAstr NeoForge Mod：`0.8`（整合包实测通过；发行包待发布）（Minecraft `1.21.1`）
 - 当前支持的 Minecraft：`1.21.1` / NeoForge
 - NeoForge：`21.1.219`（Minecraft `1.21.1`）
 
