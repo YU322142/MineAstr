@@ -1,3 +1,8 @@
+"""运维回滚入口；执行脚本即修改本工具管理的地址、规则和 DNS。
+Operational rollback: executing this script changes managed addresses, rules and DNS.
+备份记录身份校验后才恢复 DNS / Validate the backup record identity before DNS restoration.
+"""
+
 import ipaddress,json,pathlib,subprocess
 from guardian import Cloudflare,TABLE
 

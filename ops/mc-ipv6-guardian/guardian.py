@@ -1,3 +1,9 @@
+"""IPv6 前缀、专用转发规则与 DNS 的运行维护入口。
+Maintain router prefixes, dedicated forwarding rules and the configured DNS record.
+状态只记录本工具拥有的地址；日志不得包含 Cloudflare 令牌。
+Track only addresses owned by this tool and never log the Cloudflare token.
+"""
+
 import asyncio
 import contextlib
 import http.client
@@ -31,6 +37,9 @@ def run(*args, input_text=None, timeout=12):
 
 
 def parse_ra(text, gateway):
+    """只信任配置网关发布的有效公网 /64。
+    Accept only preferred public /64 prefixes advertised by the configured gateway.
+    """
     sources = re.findall(r'^\s*from\s+(\S+)', text, re.M)
     if not sources or ipaddress.IPv6Address(sources[-1].split('%')[0]) != ipaddress.IPv6Address(gateway):
         raise RuntimeError('Router advertisement source does not match configured gateway')
@@ -99,6 +108,10 @@ def backend_status(config):
 
 
 class Cloudflare:
+    """操作配置指定的单个记录；更新前后核对记录身份及结果。
+    Operate on one configured DNS record and verify its identity and update result.
+    """
+
     def __init__(self, config):
         self.config = config
         self.token = pathlib.Path('/run/secrets/cf_api_token').read_text().strip()
@@ -138,6 +151,9 @@ class Cloudflare:
 
 
 def firewall(addresses, port):
+    """仅替换本工具的表；先语法检查，再原子提交规则集。
+    Replace only this tool's table after validation, then apply the ruleset atomically.
+    """
     exists = subprocess.run(['nft', 'list', 'table', 'ip6', TABLE], capture_output=True).returncode == 0
     text = (f'delete table ip6 {TABLE}\n' if exists else '')
     text += f'table ip6 {TABLE} {{\n'
@@ -156,6 +172,10 @@ def firewall(addresses, port):
 
 
 class Guardian:
+    """拥有监听器、地址和连接状态；临时文件替换发布持久化状态。
+    Own listeners, addresses and connection state; publish saved state via file replacement.
+    """
+
     def __init__(self, config):
         self.config = config
         self.cf = Cloudflare(config)
