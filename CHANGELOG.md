@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8 — 2026-10-17（本地构建 / local build）
+
+- 提取 `mineastr_bindings.py`，集中完整快照、周期同步与后台任务调度，并补充中英职责说明。
+- 插件入口由 6098 行整理为约 1700 行；拆出配置、文本/图片翻译、转发、投递、消息索引、QQ/Discord、通知、命令、工具、截图和清理服务，各自拥有状态。
+- 修复打包脚本遗漏图片模块，增加归档内相对导入依赖校验，版本测试支持 0.8。
+- Extract binding scheduling without changing lifecycle ownership; include image runtime dependencies in installation archives.
+- 220 tests and 112 subtests passed; Ruff checks passed. Not deployed; server-side performance fixes are in NeoForge 0.8.
+
 ## 0.7.39 — 2026-10-06
 
 - 修复 QQ 图片公开地址返回 400 时 MC 缩略图加载失败，异步解析 OneBot 文件标识并优先使用 NapCat 缓存原图。

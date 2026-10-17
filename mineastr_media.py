@@ -1,4 +1,8 @@
-"""Recover image media omitted by platform component adapters, without downloading it."""
+"""Recover image media omitted by platform component adapters, without downloading it.
+
+提取平台遗漏的图片和表情元数据；不在这里下载或解码媒体。
+Recover omitted image and sticker metadata; leave downloading and decoding to media workers.
+"""
 
 import asyncio
 import logging

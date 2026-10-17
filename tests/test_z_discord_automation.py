@@ -1963,7 +1963,7 @@ class CacheCleanupTests(unittest.IsolatedAsyncioTestCase):
     async def test_relay_record_capacity_is_enforced_on_every_write(self):
         plugin = self._plugin()
         with (
-            patch.object(MAIN, "RELAY_MESSAGE_RECORD_LIMIT", 2),
+            patch(f"{MAIN.RelayRecords.__module__}.RELAY_MESSAGE_RECORD_LIMIT", 2),
             patch.object(MAIN.time, "time", side_effect=[1.0, 2.0, 3.0]),
         ):
             for index in range(3):

@@ -1,3 +1,7 @@
+"""Minecraft 传输与协议适配；收包循环不等待模型翻译或平台事件，断连要回收关联任务。
+Adapt Minecraft transport and protocol; receiving must not wait for model translation or platform events, and disconnect must reclaim owned tasks.
+"""
+
 import asyncio
 import hmac
 import hashlib
@@ -257,6 +261,10 @@ def _query_error_message(exc: BaseException) -> str:
 
 
 class MinecraftConnectionManager:
+    """连接与查询 Future 的唯一所有者；只接受原请求连接的响应。
+    Own connections and query futures; accept replies only from the requesting socket.
+    """
+
     def __init__(self, bot_display_name: str, outbound_max_message_length: int):
         self._bot_display_name = bot_display_name
         self._outbound_max_message_length = max(1, outbound_max_message_length)

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Build paired English/Chinese glossaries from an extracted language catalog.
 
+从语言目录构建中英术语表；翻译键作为身份，避免不同模组的同文词条互相覆盖。
+Use translation keys as identity so identical labels across mods remain distinct.
+
 The translation key remains the primary identity.  Human-readable English text
 is not unique across mods, so it must not be used as the sole dictionary key.
 """

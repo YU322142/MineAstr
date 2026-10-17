@@ -2,7 +2,7 @@
 
 v0.6.30 扩展可选的聊天媒体字段：`chat` 消息可带 `media` 数组。旧版 Mod 会忽略该字段；新版 Mod 只向已声明图片渲染能力且允许接收的客户端发送图片，不会把本地路径回显到聊天。
 
-本文描述 AstrBot 插件 `v0.7.27` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。外置翻译术语库仅在 AstrBot 端读取，不增加协议字段。
+本文描述 AstrBot 插件 `v0.8` 接受的协议。协议号仍为 `1`：新增消息均为可选扩展，旧版 Mod 的 `hello`、`chat`、`ping`、`query` 和 `query_result` 不受影响。外置翻译术语库仅在 AstrBot 端读取，不增加协议字段。
 
 0.7.27 将正文和引用各自的目标语言译文组合后放入现有 `translations` 字段，不新增协议字段。混合源语言的引用消息不使用单一正文源语言过滤整条消息；旧 Mod 仍可显示原文。本次版本变化见 [发布说明](RELEASE_NOTES.md)。
 
@@ -467,3 +467,11 @@ NeoForge 可选客户端通道 `mineastr:chat_presentation` 按序编码 platfor
 ## 0.7.32 独立首帧
 
 同一已签名 `/mineastr/media/{sha256}.source` 地址增加 `&preview=1` 获取单帧 GIF，不改变资源身份或降低签名校验要求。非 GIF 返回 HTTP 204；GIF 首帧不等待完整转换。原地址返回完整图片缓存，继续支持 Range / If-Range。客户端首帧由原图片任务并发启动，额外连接至多 2 条，不额外占用图片下载队列；完整图片失败不移除成功首帧。不改变 Minecraft 载荷结构或协议号，服务端 0.7.31 兼容。
+
+## 0.8 调度与错误 / Scheduling and errors
+
+协议号仍为 1，不新增 Minecraft payload 字段。`binding` 的 `replace/reset` 在完整提交后回复现有 `query_result`；整批同步保留非 MineAstr 手工条目，未变名单不写盘。重叠的绑定修改可能返回 `binding_sync_busy`，身份查询并发满时返回 `binding_identity_lookup_busy`，异步身份返回前名单已变更时返回 `binding_state_changed`。调用方应重新读取当前名单后再同步，不能重放过期的授权结果。
+
+`region_features` 使用最多 8 个排队任务，每 Tick 共用 2 ms / 256 步的协作预算；队列满返回 `server_work_queue_full`，8 秒内无法完成返回 `region_scan_timeout`。卸载的区块计入既有 `skipped_unloaded_blocks`。统计是跨 Tick 观测，不保证瞬时快照；客户端原始查询超时仍独立生效。
+
+All errors use the existing query-result envelope. Binding results are sent after complete commit; overlapping/stale operations can fail explicitly. Region requests are bounded, expire after eight seconds, and observe loaded chunks incrementally. Protocol version and payload layouts remain unchanged.

@@ -2,6 +2,9 @@
 
 This module deliberately has no AstrBot imports so its persistence and filtering
 behaviour can be tested without starting AstrBot.
+
+独立于 AstrBot 的绑定数据库、迁移和过滤工具；SQLite 操作在线程中执行并由异步锁串行化。
+Keep binding persistence, migration and filtering independent of AstrBot; execute SQLite work in threads under the async lock.
 """
 
 from __future__ import annotations
@@ -80,7 +83,10 @@ class DiscordNicknameState:
 
 
 class BindingStore:
-    """Small SQLite binding store with atomic uniqueness and quota checks."""
+    """SQLite 绑定持久化；唯一性与配额在同一事务检查。
+    Keep uniqueness and quota checks atomic in the SQLite binding store.
+    展示缓存不参与授权决策 / Display caches never authorize login.
+    """
 
     def __init__(self, database_path: str | Path = DEFAULT_BINDING_DATABASE):
         self.path = Path(database_path).expanduser()

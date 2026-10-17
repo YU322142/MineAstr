@@ -46,13 +46,13 @@ class ConfigSchemaTests(unittest.TestCase):
         metadata_path = Path(__file__).resolve().parents[1] / "metadata.yaml"
         metadata = metadata_path.read_text(encoding="utf-8")
         self.assertIn("author: YU322142", metadata)
-        self.assertRegex(metadata, r"(?m)^version: v0\.7\.\d+$")
+        self.assertRegex(metadata, r"(?m)^version: v\d+\.\d+(?:\.\d+)?$")
         self.assertIn(
             'repo: "https://github.com/YU322142/MineAstr/tree/astrbot-plugin"',
             metadata,
         )
         main = (metadata_path.parent / "main.py").read_text(encoding="utf-8")
-        version = re.search(r"(?m)^version: v(\d+\.\d+\.\d+)$", metadata).group(1)
+        version = re.search(r"(?m)^version: v(\d+\.\d+(?:\.\d+)?)$", metadata).group(1)
         self.assertIn(f'    "{version}",\n)', main)
 
     def test_newline_delimited_fields_use_astrbot_textarea_type(self):

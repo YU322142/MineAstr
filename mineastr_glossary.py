@@ -4,6 +4,9 @@ This module is intentionally independent of AstrBot and MineAstr protocol code.
 It can be copied into the AstrBot plugin root and imported by ``main.py``.
 The complete catalog stays on the bot; only query-relevant entries are added to
 an individual model prompt.
+
+独立术语索引和热重载；仅把当前请求相关词条加入提示词，并限制条目数和字符数。
+Index and reload external glossaries; include only relevant entries in prompts with entry and character limits.
 """
 from __future__ import annotations
 
@@ -284,7 +287,9 @@ class GlossaryIndex:
         return "\n".join(lines)
 
 class GlossaryProvider:
-    """Reload-on-change provider with safe fallback to an empty glossary."""
+    """文件变化时重载；失败回退空术语表，线程锁保护索引发布。
+    Reload on change, fall back to an empty glossary and guard publication with a lock.
+    """
 
     def __init__(
         self,

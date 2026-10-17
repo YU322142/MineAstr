@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Build a cross-platform AstrBot plugin archive.
 
+构建跨平台安装包；显式清单必须包含全部本地运行依赖。
+The explicit manifest must include every local runtime dependency.
+
 AstrBot 4.23.6 assumes that the first ZIP member is the plugin's top-level
 directory. Some Windows archive tools omit directory members, which makes the
 legacy installer treat the first Python file as a directory. This packager
@@ -21,6 +24,26 @@ PACKAGE_FILES = (
     "aqqbot_compat.py",
     "main.py",
     "mineastr_glossary.py",
+    "mineastr_bindings.py",
+    "mineastr_cache.py",
+    "mineastr_commands.py",
+    "mineastr_components.py",
+    "mineastr_defaults.py",
+    "mineastr_discord.py",
+    "mineastr_notifications.py",
+    "mineastr_plugin_media.py",
+    "mineastr_plugin_runtime.py",
+    "mineastr_plugin_tools.py",
+    "mineastr_qq.py",
+    "mineastr_relay.py",
+    "mineastr_screenshots.py",
+    "mineastr_settings.py",
+    "mineastr_translation.py",
+    "mineastr_image_translation.py",
+    "mineastr_relay_records.py",
+    "mineastr_fanout.py",
+    "mineastr_media.py",
+    "mineastr_image_optimizer.py",
     "metadata.yaml",
     "minecraft_adapter.py",
     "requirements.txt",
@@ -80,7 +103,7 @@ def main() -> None:
         "output",
         nargs="?",
         type=Path,
-        default=Path("dist") / "astrbot_plugin_mineastr-v0.7.27.zip",
+        default=Path("dist") / "astrbot_plugin_mineastr-v0.8.zip",
     )
     args = parser.parse_args()
     repo_root = Path(__file__).resolve().parents[1]

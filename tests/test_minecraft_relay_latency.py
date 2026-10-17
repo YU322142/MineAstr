@@ -176,7 +176,7 @@ class MinecraftRelayLatencyTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.wait_for(both_started.wait(), 1)
             self.assertCountEqual(started, ["你好", "过滤后的你好"])
 
-        with patch.object(MAIN, "apply_aqqbot_filters", return_value="过滤后的你好"):
+        with patch(f"{MAIN.RelayService.__module__}.apply_aqqbot_filters", return_value="过滤后的你好"):
             await self.run_gated(event, plugin, check, release)
         plugin._send_to_relay_session.assert_any_await(QQ, "[MC/Survival] Steve: 过滤后的你好")
         plugin._send_to_relay_session.assert_any_await(DISCORD, "[MC/Survival] Steve: Filtered hello")
@@ -184,7 +184,7 @@ class MinecraftRelayLatencyTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_dropped_platform_message_still_completes_native_chat(self):
         plugin, adapter, event = self.make_plugin()
-        with patch.object(MAIN, "apply_aqqbot_filters", return_value=None):
+        with patch(f"{MAIN.RelayService.__module__}.apply_aqqbot_filters", return_value=None):
             await plugin.mineastr_relay_message(event)
         plugin._send_to_relay_session.assert_not_awaited()
         adapter.complete_native_chat.assert_awaited_once()

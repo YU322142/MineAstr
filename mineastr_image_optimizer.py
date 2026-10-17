@@ -1,4 +1,8 @@
-"""Inspect image headers quickly; downscale oversized media before outbound transport."""
+"""Inspect image headers quickly; downscale oversized media before outbound transport.
+
+异步图片准备与有界缓存；下载、Pillow 解码及磁盘写入不得阻塞事件循环。
+Prepare images asynchronously with bounded caches; keep downloads, Pillow decoding and disk writes off the event loop.
+"""
 
 import asyncio
 import base64
@@ -143,6 +147,10 @@ def compress(data: bytes) -> tuple[bytes, str] | None:
 
 
 class ImageOptimizer:
+    """拥有下载去重、并发许可和预览缓存；close 回收所有在途任务。
+    Own download deduplication, permits and preview caches; close reclaims inflight tasks.
+    """
+
     @staticmethod
     def _finish(mapping, reference, done):
         mapping.pop(reference, None)
