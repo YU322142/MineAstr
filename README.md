@@ -1,6 +1,6 @@
 # MineAstr AstrBot 插件
 
-0.8 拆分插件业务职责并修复安装包依赖遗漏，配合 NeoForge 0.8 处理服务端主线程卡顿路径。[0.8 正式发行包](https://github.com/YU322142/MineAstr/releases/tag/v0.8)已发布；实机与生产部署范围见[主分支验证报告](https://github.com/YU322142/MineAstr/blob/main/docs/VALIDATION_0.8.md)。
+0.8.1 修复同一消息的图片因链接别名或相同缓存内容被重复附加的问题；保留 GIF 动画、文字优先投递及独立消息重复发图。配套 NeoForge 模组仍为 0.8。[0.8 正式发行包](https://github.com/YU322142/MineAstr/releases/tag/v0.8)和[验证报告](https://github.com/YU322142/MineAstr/blob/main/docs/VALIDATION_0.8.md)保留此前客户端/服务端联调记录；本次插件补丁详情见 `RELEASE_NOTES.md`。
 
 [![AI Assisted](https://img.shields.io/badge/AI-OpenAI%20Codex%20Assisted-10A37F?style=for-the-badge&logo=openai&logoColor=white)](#ai-制作声明)
 [![Plugin tests](https://github.com/YU322142/MineAstr/actions/workflows/test.yml/badge.svg?branch=astrbot-plugin)](https://github.com/YU322142/MineAstr/actions/workflows/test.yml)
@@ -8,7 +8,7 @@
 > [!IMPORTANT]
 > **AI 制作声明：本插件采用生成式 AI 参与协议设计、编码、文档编写与测试。** AI 生成或修改的内容由项目维护者审阅、验证并承担最终维护责任。
 
-MineAstr 插件 0.8 为 AstrBot 提供一个 `minecraft` 平台适配器，当前支持 NeoForge 1.21.1 模组的主动 WebSocket 连接。配套模组版本为 0.8，协议号仍为 1。旧 Fabric 分支已停止支持，仅保留 0.6.28 历史源码，不再提供更新、修复或兼容性保证。
+MineAstr 插件 0.8.1 为 AstrBot 提供一个 `minecraft` 平台适配器，当前支持 NeoForge 1.21.1 模组的主动 WebSocket 连接。配套模组版本为 0.8，协议号仍为 1。旧 Fabric 分支已停止支持，仅保留 0.6.28 历史源码，不再提供更新、修复或兼容性保证。
 
 [上一正式版 0.7.39 插件](https://github.com/YU322142/MineAstr/releases/tag/v0.7.39) · [本次修复说明](RELEASE_NOTES.md)
 

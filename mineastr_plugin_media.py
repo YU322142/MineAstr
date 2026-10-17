@@ -270,7 +270,7 @@ class PluginMedia:
                         or "image",
                     }
                 )
-        return media[:8]
+        return unique_media(media)
 
     @classmethod
     def _event_reply_context(cls, event: AstrMessageEvent) -> dict[str, str]:

@@ -121,7 +121,7 @@ class MineAstrRelayFilter(filter.CustomFilter):
     "astrbot_plugin_mineastr",
     "MineAstr",
     "将 Minecraft 与 AstrBot 的 QQ/Discord 群聊互联，并提供账号绑定、通知、状态查询、受控命令与 LLM 工具。",
-    "0.8",
+    "0.8.1",
 )
 class MineAstrPlugin(Star):
     """AstrBot 生命周期和注册门面 / Lifecycle and registered-entry facade.

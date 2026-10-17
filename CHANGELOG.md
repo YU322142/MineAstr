@@ -1,12 +1,20 @@
 # Changelog
 
-## 0.8 — 2026-10-17（本地构建 / local build）
+## 0.8.1 — 2026-10-17
+
+- 修复同一条消息中的图片重复附加：合并 Discord CDN/代理/签名链接、QQ 文件标识及 NTQQ 临时链接指向的相同附件。
+- 平台投递前再次去重；不同来源转换为同一缓存图片时只附加一次，保留 GIF 动画。
+- 去重仅限当前消息，独立消息仍可重复发图；慢图片处理期间文字继续先发送。
+- Deduplicate attachment aliases and identical optimized cache files within each message; preserve animation, early text delivery and intentional repeats in later messages.
+- 231 tests and 112 subtests passed, including real HTTP/GIF processing with captured platform sends; Ruff critical checks passed. Compatible with NeoForge mod 0.8, protocol 1.
+
+## 0.8 — 2026-10-17
 
 - 提取 `mineastr_bindings.py`，集中完整快照、周期同步与后台任务调度，并补充中英职责说明。
 - 插件入口由 6098 行整理为约 1700 行；拆出配置、文本/图片翻译、转发、投递、消息索引、QQ/Discord、通知、命令、工具、截图和清理服务，各自拥有状态。
 - 修复打包脚本遗漏图片模块，增加归档内相对导入依赖校验，版本测试支持 0.8。
 - Extract binding scheduling without changing lifecycle ownership; include image runtime dependencies in installation archives.
-- 220 tests and 112 subtests passed; Ruff checks passed. Not deployed; server-side performance fixes are in NeoForge 0.8.
+- 220 tests and 112 subtests passed; Ruff checks passed. Published as v0.8; server-side performance fixes are in NeoForge 0.8.
 
 ## 0.7.39 — 2026-10-06
 

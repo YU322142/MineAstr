@@ -13,6 +13,7 @@ from .mineastr_plugin_runtime import (
     parse_items,
     time,
     trim_message,
+    unique_media,
 )
 
 from .mineastr_defaults import (
@@ -392,7 +393,9 @@ class PlatformFanout:
                 return None
 
         results = await asyncio.gather(*(prepare(item) for item in media[:8]))
-        return [item for item in results if item is not None]
+        # 不同下载地址可能归一化为同一缓存文件，投递前再去重一次。
+        # Distinct source URLs can normalize to the same cached image; attach that file once.
+        return unique_media([item for item in results if item is not None])
 
     async def _send_to_relay_session(
         self,
@@ -403,6 +406,7 @@ class PlatformFanout:
         reply_context: dict[str, str] | None = None,
     ) -> None:
         message = trim_message(content, self.plugin._cfg_int("max_relay_length"))
+        media = unique_media(media or [])
         if media and getattr(self.plugin, "_image_optimizer", None) is not None:
             # Start normalization concurrently, deliver text first, then attach the completed media.
             task = asyncio.create_task(

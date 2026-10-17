@@ -1,6 +1,6 @@
-# MineAstr 0.8 插件开发说明 / Developer guide
+# MineAstr 0.8.1 插件开发说明 / Developer guide
 
-目标为 AstrBot >=4.16,<5，WebSocket 协议号为 1。`metadata.yaml` 与 `main.py` 注册版本保持 0.8。
+目标为 AstrBot >=4.16,<5，WebSocket 协议号为 1。`metadata.yaml` 与 `main.py` 注册版本保持 0.8.1，配套 MC 模组仍为 0.8。
 
 ## 从哪里开始 / Reading map
 
@@ -31,7 +31,7 @@ The facade preserves framework registration and owns lifecycle coordination. Dom
 | `mineastr_screenshots.py` | 截图请求、并发冷却及后台保存 / requests, cooldowns and worker persistence |
 | `mineastr_cache.py` | 清理任务、跨所有者缓存维护与截图文件保留 / maintenance task, cache pruning and screenshot retention |
 | `mineastr_plugin_media.py` | 消息链、引用和游戏图片载荷 / message chains, replies and game media payloads |
-| `mineastr_media.py` | QQ/Discord 原始图片元数据；不下载媒体 / raw image metadata without downloads |
+| `mineastr_media.py` | QQ/Discord 原始图片元数据和消息内附件去重；不下载媒体 / raw image metadata and per-message attachment identity without downloads |
 | `mineastr_image_optimizer.py` | 下载去重、预览、压缩和后台缓存 / download deduplication, previews, compression and worker caches |
 | `minecraft_adapter.py` | 连接与查询管理、协议接收、签名图片 HTTP / connections, query futures, protocol receiving and signed media |
 | `__init__.py` | 插件包标识 / package identity |
@@ -66,13 +66,14 @@ Cross-component calls use explicit facade methods. Services mutate their own sta
 3. 绑定快照在锁内读取当前数据库，远端成功后才视为同步成功；同一服务器的重复调度复用任务。授权不读取展示名称缓存。
 4. 缓存和冷却使用各自既有的时间基准；图片翻译的首次请求及修正共享总截止时间，不因模型回退重置预算。
 5. `terminate` 取消并等待清理、绑定及 Discord 重试任务，再移除平台监听器及适配器回调。新增任务必须加入已有的生命周期回收路径。
+6. 图片只在当前消息内按已知附件标识、URL 和最终缓存路径去重，不跨消息吞掉重复图片。任意站点的查询参数仍保留语义；Discord 原始附件优先于缩放代理。下载优化后再次去重，文字投递不等待图片。
 
 Keep receiving, original delivery and translation independent. Read current binding snapshots under the synchronization lock. Preserve deadline and clock semantics. Cancel and await owned tasks before detaching callbacks during unload.
 
 ## 验证与打包 / Validation and packaging
 
-- `python -m pytest -q`：220 项测试、112 项子测试通过，包含实例隔离、跨组件清理、异步生成器和卸载回收。
+- `python -m pytest -q`：231 项测试、112 项子测试通过，包含消息内图片去重、HTTP/GIF 动画处理、实例隔离、跨组件清理、异步生成器和卸载回收。平台发送由测试捕获，不向真实 QQ/Discord 群发图。
 - `python -m ruff check --select E9,F63,F7,F82 .`：关键错误检查通过。
 - `python scripts/package_plugin.py <output.zip>`：生成完整安装包。新增运行模块时更新 `PACKAGE_FILES`；归档测试检查包括函数内延迟导入在内的依赖。
 
-本次拆分迁移的 182 个业务方法经过 AST 对照，除组件访问路径和文档外，方法体保持等价。单元测试与本地构建不等于生产 TPS 验证。NeoForge 的线程及性能约束见配套工程的 `docs/MAINTENANCE.md`。
+0.8 拆分迁移的 182 个业务方法经过 AST 对照，除组件访问路径和文档外，方法体保持等价；0.8.1 另行修复图片去重行为。单元测试与本地构建不等于生产 TPS 验证。NeoForge 的线程及性能约束见配套工程的 `docs/MAINTENANCE.md`。

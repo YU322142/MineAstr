@@ -8,7 +8,7 @@ import asyncio
 import logging
 from pathlib import Path, PurePosixPath
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 
 def _value(value: Any, key: str, default: Any = None) -> Any:
@@ -124,13 +124,64 @@ class QQImageSource:
         return await self.optimizer.prepare_preview(await self._resolve())
 
 
+def _media_identity_keys(item: dict[str, str]) -> set[tuple[str, ...]]:
+    """同一附件可有签名链接或代理地址；只识别已知平台的稳定标识。
+    Match known platform asset identities without stripping arbitrary URL parameters.
+    """
+    reference = str(item.get("url") or "").strip()
+    keys = {("reference", reference)}
+    handle = str(item.get("qq_file") or "").strip()
+    if handle:
+        keys.add(("qq_file", handle))
+    try:
+        parsed = urlparse(reference)
+        if parsed.scheme not in {"http", "https"}:
+            return keys
+        parts = parsed.path.split("/")
+        if parsed.hostname in {"cdn.discordapp.com", "media.discordapp.net"}:
+            if len(parts) >= 5 and parts[1] == "attachments" and all(part.isdigit() for part in parts[2:4]):
+                keys.add(("discord_attachment", parts[2], parts[3]))
+        elif parsed.hostname == "multimedia.nt.qq.com.cn" and parsed.path == "/download":
+            query = parse_qs(parsed.query)
+            if len(query.get("fileid", ())) == 1 and len(query.get("appid", ())) == 1:
+                keys.add(("qq_download", query["appid"][0], query["fileid"][0], query.get("spec", [""])[0]))
+    except ValueError:
+        pass
+    return keys
+
+
+def _merge_media(target: dict[str, str], item: dict[str, str]) -> None:
+    if item.get("qq_file"):
+        target.setdefault("qq_file", item["qq_file"])
+    # 保留原始附件，避免用缩放代理或静态预览替代 GIF。
+    # Prefer the original Discord attachment over a resized proxy or static preview.
+    try:
+        if urlparse(target["url"]).hostname == "media.discordapp.net" and urlparse(item["url"]).hostname == "cdn.discordapp.com":
+            target["url"] = item["url"]
+    except (KeyError, ValueError):
+        pass
+
+
 def unique_media(media: list[dict[str, str]]) -> list[dict[str, str]]:
-    unique: dict[str, dict[str, str]] = {}
+    """只在一条消息内去重；独立消息仍可重复发送同一张图。
+    Deduplicate within one message, never suppress a later independent message.
+    """
+    unique: list[dict[str, str]] = []
+    identities: list[set[tuple[str, ...]]] = []
     for item in media:
         reference = str(item.get("url") or "").strip()
-        if reference in unique:
-            if item.get("qq_file"):
-                unique[reference].setdefault("qq_file", item["qq_file"])
-        elif reference and len(unique) < 8:
-            unique[reference] = dict(item)
-    return list(unique.values())
+        if not reference:
+            continue
+        keys = _media_identity_keys(item)
+        matches = [index for index, known in enumerate(identities) if not keys.isdisjoint(known)]
+        if matches:
+            first = matches[0]
+            for index in reversed(matches[1:]):
+                _merge_media(unique[first], unique.pop(index))
+                identities[first].update(identities.pop(index))
+            _merge_media(unique[first], item)
+            identities[first].update(keys)
+        elif len(unique) < 8:
+            unique.append(dict(item))
+            identities.append(keys)
+    return unique
