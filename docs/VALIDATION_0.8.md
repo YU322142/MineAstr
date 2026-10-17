@@ -47,6 +47,12 @@
 
 本次使用本机 WebSocket 协议探针提供可控登录、翻译与查询响应，**未启动真实 AstrBot 框架，未连接 QQ、Discord 或模型服务**。插件此前的 220 项测试和 112 项子测试、NeoForge 101 项测试、5 项运维测试仍是独立证据。本次单玩家、新世界、新数据库的短时测试不能覆盖生产存档、25 GB 数据库、长期运行或多人负载；也未通过制造磁盘耗尽复现历史事故。
 
+## 同日补充：图片拒收显示调整
+
+在完成上述基线测试后，按维护要求修改图片拒收行为。补充测试的 JAR SHA-256 为 `9afc77d550f31f99a7513a57777fb8623f29c4c4f9015496e2aa439e4aff08ec`，与前文基线性能测试使用的 JAR 分开记录。
+
+使用相同独立整合包再次启动真实客户端和服务端，客户端关闭图片接收：纯图片（空正文和旧 `[图片]` 占位两种）均不产生聊天记录，不显示禁收提示或发送者空行；图文消息和普通文字消息正常显示，图片缓存的文件大小与修改时间不变。随后通过玩家命令仅打开服务端发送偏好、保持客户端关闭，验证客户端能再次过滤收到的图片消息和图片数据，文字仍正常显示。101 项 Java 测试及 Gradle `test build` 通过。
+
 ## English
 
 The website archive was downloaded and verified against its published SHA-256; every one of the 241 manifest files passed SHA-512 validation. The active server's mods and runtime files were copied read-only, excluding production worlds and databases. Both real game processes ran the identical 0.8 release jar with NeoForge 21.1.241 in independent local directories.
@@ -54,3 +60,5 @@ The website archive was downloaded and verified against its published SHA-256; e
 Login, bidirectional chat, inline images, notifications, native-chat/sign translations, screenshot round-trip, queries, command approval, reconnect, and unchanged binding persistence passed. Manual whitelist entries survived bulk reconciliation. In each 64-request region burst, 8 scans completed and 56 were promptly rejected by the queue limit. With one player online, sampled MSPT was 8.35–9.17 ms; a later Spark sample reported one-minute TPS 20.0 and ten-second tick P95 18.4 ms. Startup spikes, shader compatibility notices and a caught ChatImage warning are recorded above.
 
 Controlled protocol responses were used; no real AstrBot, QQ, Discord or model service was exercised. This short local run does not establish production-scale performance or reproduce the historical disk-full incident.
+
+A same-day image opt-out follow-up used the separate jar hash recorded above. Both real processes were restarted: image-only messages produced no chat entries or disabled notices, mixed messages retained their text, and the image cache stayed unchanged. Forcing the server-side image preference on while keeping the local client preference off also verified client-side filtering of packets in flight. The 101 Java tests and Gradle build passed again.

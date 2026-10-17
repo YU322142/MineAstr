@@ -15,6 +15,7 @@
 - 正版身份查询使用异步 API，回调检查服务器、连接和绑定修订，避免主线程等待 Mojang 及旧响应覆盖新授权。
 - 区域分析逐列推进，只访问已加载区块。最多 8 个任务，每 Tick 共用 2 ms / 256 步协作预算；区域请求 8 秒后停止。单次原子保存仍不能被预算中断。
 - 插件安装 ZIP 包含全部运行模块，归档测试验证包括延迟导入在内的本地依赖。
+- 客户端关闭图片接收后，纯图片消息整条隐藏，不显示发送者空行或“图片接收已关闭”；兼容插件的旧 `[图片]` 占位文本。混合消息保留文字，客户端再次过滤在途图片包。
 
 ## 验证与范围
 
@@ -33,3 +34,5 @@
 0.8 source is published on GitHub; release assets are not published and production is not upgraded. Five server domain services own binding, command, screenshot, sign and native-chat state. The plugin uses per-instance composition while retaining framework entry signatures and lifecycle coordination. Bilingual responsibility and maintenance comments cover 85 source files. Whitelist reconciliation avoids unchanged writes, authenticated profile lookup is asynchronous, and loaded-chunk region scans share a bounded cooperative tick budget.
 
 Validation: 101 Java tests; 220 Python tests and 112 subtests; 5 operations unit tests; Gradle build and Ruff checks passed. A verified website Motiquies 3.2.0 client and a read-only snapshot of the active server mods ran independently with the 0.8 release jar, NeoForge 21.1.241, new world/databases and loopback ports. Real client chat, images, translations, notifications, screenshots, queries, whitelist reconciliation, command approvals and reconnect passed. With one player online, 64 simultaneous region requests completed 8 scans and rejected 56 at the queue limit; sampled MSPT was 8.35–9.17 ms. Spark later reported 20.0 TPS over the previous minute and a 10-second tick P95 of 18.4 ms. Controlled protocol responses replaced live AstrBot/platform/model services. This is not a production-scale or long-duration benchmark; historical disk-full recovery does not establish MineAstr as the incident's cause.
+
+Image opt-out now hides image-only messages entirely instead of inserting a disabled-image notice or empty sender row. Mixed text is retained, and the client filters packets already in flight. A separate real modpack client/server follow-up verified both server-side suppression and client-side filtering with unchanged image caches; see the validation report for each tested jar hash.
