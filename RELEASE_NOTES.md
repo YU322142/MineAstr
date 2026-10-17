@@ -1,6 +1,6 @@
 # MineAstr 0.8 — 职责拆分、中英注释与服务端性能维护
 
-0.8 源码已推送 GitHub，并完成本机独立整合包客户端/服务端联调；发行包尚未发布，未进行生产部署。构建目标仍为 Minecraft 1.21.1、NeoForge 21.1.219、Java 21；AstrBot >=4.16,<5，WebSocket 协议号为 1。实机整合包使用 NeoForge 21.1.241。
+0.8 已正式发布，并完成本机独立整合包客户端/服务端联调；生产 MC 服务端已从 0.6.32 更新到 0.8。本次生产操作仅更新 MC 模组，AstrBot 插件未升级。构建目标仍为 Minecraft 1.21.1、NeoForge 21.1.219、Java 21；AstrBot >=4.16,<5，WebSocket 协议号为 1。实机整合包使用 NeoForge 21.1.241。
 
 ## 结构与可读性
 
@@ -27,11 +27,11 @@
 - 实机重复同步：20 次单人绑定及 30 次完整绑定快照均不重写白名单和绑定文件，手工白名单条目保留。
 - 玩家在线时同时提交 64 个区域扫描请求，8 个完成、56 个返回队列已满，期间 MSPT 采样为 8.35–9.17 ms。之后 Spark 最近 10 秒 Tick 时长中位数 9.7 ms、P95 18.4 ms、最大 22.0 ms；最近 1 分钟 TPS 20.0。测试范围和兼容提示见项目主分支 `docs/VALIDATION_0.8.md`。
 
-历史日志已复核：磁盘耗尽及 CoreProtectNeo 数据库错误循环是本次事故最有证据支持的故障链。用户已清理空间并重启，反馈暂未复发；不能直接归因于 MineAstr。本机联调使用协议探针提供可控响应，未连接真实 AstrBot、QQ/Discord 或模型服务，也不代表生产存档、数据库规模或长期多人负载验证。
+历史日志已复核：磁盘耗尽及 CoreProtectNeo 数据库错误循环是本次事故最有证据支持的故障链。用户已清理空间并重启，反馈暂未复发；不能直接归因于 MineAstr。本机联调使用协议探针提供可控响应；随后生产部署确认了真实 AstrBot 桥接连接，但未进行 QQ/Discord 或模型服务端到端测试，也不代表生产数据库规模或长期多人负载验证。更新前通过 RCON 保存世界、正常停服并备份旧 JAR、配置及 MineAstr 数据；重启后 RCON 和桥接正常，原有配置值保留。
 
 ## English
 
-0.8 source is published on GitHub; release assets are not published and production is not upgraded. Five server domain services own binding, command, screenshot, sign and native-chat state. The plugin uses per-instance composition while retaining framework entry signatures and lifecycle coordination. Bilingual responsibility and maintenance comments cover 85 source files. Whitelist reconciliation avoids unchanged writes, authenticated profile lookup is asynchronous, and loaded-chunk region scans share a bounded cooperative tick budget.
+0.8 source and release assets are published on GitHub. The production Minecraft mod was upgraded from 0.6.32 to 0.8 after a confirmed world save, normal shutdown and backups. RCON and the real AstrBot bridge connection were verified; the AstrBot plugin itself was not upgraded. Five server domain services own binding, command, screenshot, sign and native-chat state. The plugin uses per-instance composition while retaining framework entry signatures and lifecycle coordination. Bilingual responsibility and maintenance comments cover 85 source files. Whitelist reconciliation avoids unchanged writes, authenticated profile lookup is asynchronous, and loaded-chunk region scans share a bounded cooperative tick budget.
 
 Validation: 101 Java tests; 220 Python tests and 112 subtests; 5 operations unit tests; Gradle build and Ruff checks passed. A verified website Motiquies 3.2.0 client and a read-only snapshot of the active server mods ran independently with the 0.8 release jar, NeoForge 21.1.241, new world/databases and loopback ports. Real client chat, images, translations, notifications, screenshots, queries, whitelist reconciliation, command approvals and reconnect passed. With one player online, 64 simultaneous region requests completed 8 scans and rejected 56 at the queue limit; sampled MSPT was 8.35–9.17 ms. Spark later reported 20.0 TPS over the previous minute and a 10-second tick P95 of 18.4 ms. Controlled protocol responses replaced live AstrBot/platform/model services. This is not a production-scale or long-duration benchmark; historical disk-full recovery does not establish MineAstr as the incident's cause.
 

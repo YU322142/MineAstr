@@ -1,6 +1,6 @@
 # MineAstr AstrBot 插件
 
-0.8 提取绑定同步模块并修复安装包依赖遗漏，配合 NeoForge 0.8 处理服务端主线程卡顿路径。源码已推送 GitHub；本机整合包客户端/服务端实测记录见[主分支验证报告](https://github.com/YU322142/MineAstr/blob/main/docs/VALIDATION_0.8.md)。发行包尚未发布，未进行生产部署。
+0.8 拆分插件业务职责并修复安装包依赖遗漏，配合 NeoForge 0.8 处理服务端主线程卡顿路径。[0.8 正式发行包](https://github.com/YU322142/MineAstr/releases/tag/v0.8)已发布；实机与生产部署范围见[主分支验证报告](https://github.com/YU322142/MineAstr/blob/main/docs/VALIDATION_0.8.md)。
 
 [![AI Assisted](https://img.shields.io/badge/AI-OpenAI%20Codex%20Assisted-10A37F?style=for-the-badge&logo=openai&logoColor=white)](#ai-制作声明)
 [![Plugin tests](https://github.com/YU322142/MineAstr/actions/workflows/test.yml/badge.svg?branch=astrbot-plugin)](https://github.com/YU322142/MineAstr/actions/workflows/test.yml)
