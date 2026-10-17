@@ -1,6 +1,6 @@
 # MineAstr 0.8 本机整合包实测 / Local modpack validation
 
-日期：2026-10-17。先推送源码，再执行本机客户端/专用服务端实测；没有更新生产服务端。
+日期：2026-10-17。先推送源码，再执行本机客户端/专用服务端实测；本机实测阶段不修改生产服，随后按用户要求部署，见下文生产更新记录。
 
 ## 来源与隔离
 
@@ -53,6 +53,14 @@
 
 使用相同独立整合包再次启动真实客户端和服务端，客户端关闭图片接收：纯图片（空正文和旧 `[图片]` 占位两种）均不产生聊天记录，不显示禁收提示或发送者空行；图文消息和普通文字消息正常显示，图片缓存的文件大小与修改时间不变。随后通过玩家命令仅打开服务端发送偏好、保持客户端关闭，验证客户端能再次过滤收到的图片消息和图片数据，文字仍正常显示。101 项 Java 测试及 Gradle `test build` 通过。
 
+## 同日生产 MC 服务端更新
+
+按维护者要求，将生产 MC 服务端的 MineAstr 从 0.6.32 更新至上述图片拒收修复后的 0.8 JAR，安装文件 SHA-256 为 `9afc77d550f31f99a7513a57777fb8623f29c4c4f9015496e2aa439e4aff08ec`。NeoForge 21.1.241 和其他模组保留，AstrBot 插件未升级。
+
+更新前确认没有玩家在线，校验待安装文件，并备份旧 JAR、配置、白名单和 MineAstr 数据。RCON `save-all flush` 确认保存后执行正常 `stop`，进程以退出码 0 结束，再替换 JAR、恢复原容器重启策略并启动。18:13:17（北京时间）启动的新进程完成加载，RCON 响应正常，`mineastr status` 确认连接到真实 AstrBot。初步稳定窗口的 `tick query` 平均 Tick 耗时约 26 ms；这是短时上线检查，不是多人负载测试。
+
+原有 TOML 配置的全部既有值保留，仅补充 `loginUseLocalBindings` 默认项。旧版备份 SHA-256 校验通过，可供回滚。本次确认真实桥接连接，没有主动发送 QQ/Discord 测试消息或执行模型服务端到端测试。
+
 ## English
 
 The website archive was downloaded and verified against its published SHA-256; every one of the 241 manifest files passed SHA-512 validation. The active server's mods and runtime files were copied read-only, excluding production worlds and databases. Both real game processes ran the identical 0.8 release jar with NeoForge 21.1.241 in independent local directories.
@@ -62,3 +70,5 @@ Login, bidirectional chat, inline images, notifications, native-chat/sign transl
 Controlled protocol responses were used; no real AstrBot, QQ, Discord or model service was exercised. This short local run does not establish production-scale performance or reproduce the historical disk-full incident.
 
 A same-day image opt-out follow-up used the separate jar hash recorded above. Both real processes were restarted: image-only messages produced no chat entries or disabled notices, mixed messages retained their text, and the image cache stayed unchanged. Forcing the server-side image preference on while keeping the local client preference off also verified client-side filtering of packets in flight. The 101 Java tests and Gradle build passed again.
+
+The production Minecraft mod was subsequently upgraded from 0.6.32 to this verified 0.8 jar, with confirmed world save, normal exit code 0, and old jar/configuration/state backups. Startup, RCON and the real AstrBot bridge connection passed. Existing configuration values were retained, with one new default added. The AstrBot plugin was not upgraded; platform messaging and model services were not tested end to end in production.

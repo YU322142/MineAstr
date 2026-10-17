@@ -1,6 +1,6 @@
 # MineAstr
 
-0.8 拆分服务端桥接和插件业务职责，补充中英注释，修复绑定同步重复写盘、正版身份查询阻塞和区域扫描长任务。源码已推送，并完成 [本机整合包客户端/服务端实测](docs/VALIDATION_0.8.md)；发行包尚未发布，未进行生产部署。历史日志显示磁盘耗尽及 CoreProtectNeo 数据库错误循环；清理空间、重启后用户反馈暂未复发，不能将此次事故直接归因于 MineAstr。
+0.8 拆分服务端桥接和插件业务职责，补充中英注释，修复绑定同步重复写盘、正版身份查询阻塞和区域扫描长任务。[0.8 正式发行包](https://github.com/YU322142/MineAstr/releases/tag/v0.8)已发布，本机整合包实测及生产 MC 服务端更新已完成，详见 [验证与部署记录](docs/VALIDATION_0.8.md)；生产 AstrBot 插件未升级。历史日志显示磁盘耗尽及 CoreProtectNeo 数据库错误循环；清理空间、重启后用户反馈暂未复发，不能将此次事故直接归因于 MineAstr。
 
 [![AI Assisted](https://img.shields.io/badge/AI-OpenAI%20Codex%20Assisted-10A37F?style=for-the-badge&logo=openai&logoColor=white)](#ai-制作声明)
 
@@ -13,17 +13,28 @@ MineAstr 将 Minecraft NeoForge 1.21.1 服务器接入 AstrBot、QQ/OneBot 与 D
 
 - [`astrbot-plugin`](https://github.com/YU322142/MineAstr/tree/astrbot-plugin)：AstrBot 插件端；分支根目录可直接作为插件项目。
 - [`minecraft-mod`](https://github.com/YU322142/MineAstr/tree/minecraft-mod)：旧 Minecraft Fabric Mod；**已停止支持**，仅保留 0.6.28 / Minecraft 1.21.11 历史源码，不再更新、修复或保证兼容性。
-- [`minecraft-neoforge-1.21.1`](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)：Minecraft NeoForge Mod；目标为 Minecraft `1.21.1`、NeoForge `21.1.219`、Java `21`，客户端当前发布 0.7.38，包含最新 ZIP 源码、连接和 UI 修复、文档及测试。
+- [`minecraft-neoforge-1.21.1`](https://github.com/YU322142/MineAstr/tree/minecraft-neoforge-1.21.1)：Minecraft NeoForge Mod；目标为 Minecraft `1.21.1`、NeoForge `21.1.219`、Java `21`，当前发布 0.8，包含完整 ZIP 源码、连接和 UI 修复、文档及测试。
 
 `main` 是项目索引；两个维护中的工程分别位于 AstrBot 和 NeoForge 分支，Fabric 分支仅作历史归档，以兼容 AstrBot 从仓库分支安装插件的目录要求。
 
 ## 当前版本
 
-- AstrBot 插件：`0.8`（源码已推送；发行包待发布）
+- AstrBot 插件：`0.8`
 - 旧 Fabric 分支：**停止支持**（历史版本 `0.6.28`）
-- MineAstr NeoForge Mod：`0.8`（整合包实测通过；发行包待发布）（Minecraft `1.21.1`）
+- MineAstr NeoForge Mod：`0.8`（Minecraft `1.21.1`；另已实测 NeoForge `21.1.241`）
 - 当前支持的 Minecraft：`1.21.1` / NeoForge
 - NeoForge：`21.1.219`（Minecraft `1.21.1`）
+
+## 下载 0.8 / Download 0.8
+
+从 [0.8 Release](https://github.com/YU322142/MineAstr/releases/tag/v0.8) 下载：
+
+- `mineastr-neoforge-1.21.1-0.8.jar`：NeoForge 客户端/服务端使用的模组，安装时替换旧版 MineAstr JAR。
+- `astrbot_plugin_mineastr-v0.8.zip`：在 AstrBot 中导入的插件安装包。
+- `MineAstr-minecraft-neoforge-1.21.1-0.8-source.zip`：完整可构建的模组源码；`-sources.jar` 供源码查看，不作为运行模组安装。
+- `SHA256SUMS.txt`、`verification.json`：文件校验及验证记录。
+
+GitHub 自动生成的 Source code ZIP 对应 `main` 项目索引；构建模组请使用上面的完整源码 ZIP 或 NeoForge 分支。
 
 ## 上一正式发布 / Previous release
 
@@ -32,7 +43,7 @@ AstrBot 插件 0.7.39 从 [0.7.39 Release](https://github.com/YU322142/MineAstr/
 - `astrbot_plugin_mineastr-v0.7.39.zip`
 - `SHA256SUMS.txt`
 
-客户端继续使用 [0.7.38 Release](https://github.com/YU322142/MineAstr/releases/tag/v0.7.38) 中的 NeoForge JAR；插件 0.7.39 兼容现有服务端及客户端，无需更换模组。图片文件查询只在异步 HTTP 请求阶段运行，不阻塞聊天消息。
+该旧版插件对应 [0.7.38 Release](https://github.com/YU322142/MineAstr/releases/tag/v0.7.38) 中的 NeoForge JAR；0.8 请使用本版 JAR。插件 0.7.39 的图片文件查询只在异步 HTTP 请求阶段运行，不阻塞聊天消息。
 
 Fabric 分支已停止支持；本次及后续维护仅针对 NeoForge 与 AstrBot，保留旧源码与历史记录，不提供 Fabric 的新发布、修复或兼容性保证。NeoForge JAR 不能安装到 Fabric。
 
