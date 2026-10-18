@@ -96,6 +96,20 @@ class PlatformImageDedupTests(unittest.IsolatedAsyncioTestCase):
             await task
         self.assertEqual([len(images) for _, images in self.sent_images(plugin)], [0, 1])
 
+    async def test_reply_with_media_stays_one_platform_message(self):
+        plugin = self.make_plugin()
+        plugin._image_optimizer = NS(prepare=AsyncMock(return_value=(Path("cache/one.png"), "image/png")))
+        await plugin._send_to_relay_session(
+            "discord:GroupMessage:2",
+            "answer",
+            media=[{"url": "https://example.com/one.png", "name": "one.png"}],
+            reply_context={"sender": "Alice", "text": "quoted image"},
+        )
+        sends = self.sent_images(plugin)
+        self.assertEqual(len(sends), 1)
+        self.assertEqual(len(sends[0][1]), 1)
+        self.assertIn("quoted image", plugin.context.send_message.await_args.args[1].chain[0].text)
+
     async def test_real_http_gif_aliases_share_one_animated_outbound_attachment(self):
         plugin = self.make_plugin()
         encoded = io.BytesIO()

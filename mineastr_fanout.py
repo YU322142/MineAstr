@@ -414,7 +414,12 @@ class PlatformFanout:
                 name="mineastr-platform-media",
             )
             try:
-                if message or reply_context:
+                # A Discord reply preview is itself visual content. Sending a
+                # quote-only message first would make the referenced image
+                # appear separately from the attachment. Keep replies and
+                # their media in one platform message; ordinary media-only
+                # messages still retain early text delivery.
+                if (message or reply_context) and not reply_context:
                     await self.plugin._send_to_relay_session(
                         session, content, reply_context=reply_context
                     )

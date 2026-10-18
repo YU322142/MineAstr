@@ -136,7 +136,23 @@ class PluginMedia:
         inline_limit = self.plugin._bounded_cfg_int(
             "game_image_inline_max_bytes", 65_536, MAX_GAME_IMAGE_INLINE_BYTES
         )
+        # Callers other than the event relay can provide raw media directly;
+        # normalize that boundary here as well so the game never receives two
+        # references for one attachment.
+        media = unique_media(media or [])
         prepared: list[dict[str, Any]] = []
+        prepared_keys: set[tuple[str, str]] = set()
+
+        def append_prepared(item: dict[str, Any]) -> None:
+            """Append one protocol item, suppressing duplicate final refs."""
+            if item.get("data_base64"):
+                key = ("sha256", str(item.get("sha256") or ""))
+            else:
+                key = ("url", str(item.get("url") or ""))
+            if not key[1] or key in prepared_keys:
+                return
+            prepared_keys.add(key)
+            prepared.append(item)
         inline_bytes = 0
         for item in media or ():
             if len(prepared) >= max_items or not isinstance(item, dict):
@@ -164,7 +180,7 @@ class PluginMedia:
             ):
                 # Forward a signed reference immediately; expensive normalization runs on HTTP fetch,
                 # keeping the original chat row and text independent of download/encoding time.
-                prepared.append(
+                append_prepared(
                     {
                         "type": "image",
                         "url": adapter.image_source_url(reference, base_url, optimizer),
@@ -173,7 +189,7 @@ class PluginMedia:
                 )
                 continue
             if public_url:
-                prepared.append({"type": "image", "url": public_url, "name": name})
+                append_prepared({"type": "image", "url": public_url, "name": name})
                 continue
             if (
                 optimizer is not None
@@ -182,7 +198,7 @@ class PluginMedia:
                 and hasattr(adapter, "image_source_url")
             ):
                 # Local/base64 GIFs also use HTTP; never place large animations in the WS inline budget.
-                prepared.append(
+                append_prepared(
                     {
                         "type": "image",
                         "url": adapter.image_source_url(reference, base_url, optimizer),
@@ -200,7 +216,7 @@ class PluginMedia:
                             and adapter is not None
                             and hasattr(adapter, "image_source_url")
                         ):
-                            prepared.append(
+                            append_prepared(
                                 {
                                     "type": "image",
                                     "url": adapter.image_source_url(
@@ -228,7 +244,7 @@ class PluginMedia:
                 logger.warning("MineAstr 跳过超过内联上限的图片：%s", name)
                 continue
             inline_bytes += len(data)
-            prepared.append(
+            append_prepared(
                 {
                     "type": "image",
                     "data_base64": base64.b64encode(data).decode("ascii"),
