@@ -75,6 +75,12 @@ class AnimatedMediaTests(unittest.TestCase):
         different = {"url": "https://multimedia.nt.qq.com.cn/download?appid=1&fileid=two&spec=0&rkey=new"}
         self.assertEqual(MEDIA.unique_media([first, second, different]), [first, different])
 
+    def test_legacy_qq_image_paths_ignore_expiring_query_tokens(self):
+        first = {"url": "https://gchat.qpic.cn/gchatpic_new/1/2/3/0?term=old"}
+        second = {"url": "https://gchat.qpic.cn/gchatpic_new/1/2/3/0?term=new"}
+        different = {"url": "https://gchat.qpic.cn/gchatpic_new/1/2/4/0?term=new"}
+        self.assertEqual(MEDIA.unique_media([first, second, different]), [first, different])
+
 
 if __name__ == "__main__":
     unittest.main()

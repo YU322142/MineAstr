@@ -151,6 +151,15 @@ def _media_identity_keys(item: dict[str, str]) -> set[tuple[str, ...]]:
             query = parse_qs(parsed.query)
             if len(query.get("fileid", ())) == 1 and len(query.get("appid", ())) == 1:
                 keys.add(("qq_download", query["appid"][0], query["fileid"][0], query.get("spec", [""])[0]))
+        elif parsed.hostname in {
+            "gchat.qpic.cn",
+            "c2cpicdw.qpic.cn",
+            "c2cpicdw.qpic.cn",
+            "qpic.cn",
+        }:
+            # Legacy QQ image URLs carry expiring `term`/token query values;
+            # the path contains the stable image object identity.
+            keys.add(("qq_image_path", parsed.hostname, parsed.path))
     except ValueError:
         pass
     return keys
