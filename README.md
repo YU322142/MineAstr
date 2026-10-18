@@ -1,6 +1,6 @@
-# MineAstr 0.8
+# MineAstr 0.8.1
 
-0.8 修复绑定同步重复写盘、正版身份查询阻塞及区域扫描长任务，并提取独立维护模块。[0.8 正式发行包](https://github.com/YU322142/MineAstr/releases/tag/v0.8)已发布；本机整合包客户端/服务端实测及生产 MC 部署记录见[主分支验证报告](https://github.com/YU322142/MineAstr/blob/main/docs/VALIDATION_0.8.md)，维护入口见 [维护说明](docs/MAINTENANCE.md) 与 [本次说明](RELEASE_NOTES.md)。
+0.8.1 修复 Bot 图片 payload 在服务端最终解析阶段重复显示的问题；0.8 的绑定同步、身份查询和区域扫描维护改进继续保留。[补丁发行包](https://github.com/YU322142/MineAstr/releases/tag/v0.8.1)发布后，本机整合包客户端/服务端实测及生产 MC 部署记录见[主分支验证报告](https://github.com/YU322142/MineAstr/blob/main/docs/VALIDATION_0.8.md)，维护入口见 [维护说明](docs/MAINTENANCE.md) 与 [本次说明](RELEASE_NOTES.md)。
 
 [English](README.en.md) · [配置参考](docs/CONFIGURATION.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md) · [Changelog](CHANGELOG.md) · [外部翻译 API](EXTERNAL_TRANSLATION_API.md)
 
@@ -16,7 +16,7 @@ MineAstr 是面向 Minecraft 1.21.1 / NeoForge 的 AstrBot 桥接模组。它把
 
 | 项目 | 要求 |
 | --- | --- |
-| MineAstr | `0.8` |
+| MineAstr | `0.8.1` |
 | Minecraft | `1.21.1` |
 | NeoForge | `21.1.219` 或更高 |
 | Java | `21` |

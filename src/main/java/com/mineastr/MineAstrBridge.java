@@ -15,9 +15,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -729,6 +731,7 @@ public final class MineAstrBridge implements WebSocket.Listener, MineAstrBridgeC
             return List.of();
         }
         List<BotImage> images = new ArrayList<>();
+        Set<String> seenImageKeys = new HashSet<>();
         for (JsonElement item : payload.getAsJsonArray("media")) {
             if (images.size() >= 8) {
                 break;
@@ -789,9 +792,13 @@ public final class MineAstrBridge implements WebSocket.Listener, MineAstrBridgeC
                     MineAstr.LOGGER.warn("MineAstr 忽略哈希不匹配的 Bot 图片：{}", name);
                     continue;
                 }
-                images.add(new BotImage(name, mimeType, sourceUrl, actualSha, bytes));
+                if (seenImageKeys.add("sha256:" + actualSha)) {
+                    images.add(new BotImage(name, mimeType, sourceUrl, actualSha, bytes));
+                }
             } else if (!sourceUrl.isBlank()) {
-                images.add(new BotImage(name, mimeType, sourceUrl, "", bytes));
+                if (seenImageKeys.add("url:" + sourceUrl)) {
+                    images.add(new BotImage(name, mimeType, sourceUrl, "", bytes));
+                }
             }
         }
         return List.copyOf(images);

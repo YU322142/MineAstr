@@ -1,4 +1,8 @@
-# MineAstr 0.8 — 职责拆分、中英注释与服务端性能维护
+# MineAstr 0.8.1 — 图片重复显示修复
+
+0.8.1 是与 AstrBot 插件 0.8.1 配套的补丁模组。它在服务端解析 Bot 图片 payload 时按内联图片 SHA-256 或远程 URL 去重，避免同一聊天消息在 Minecraft 显示两张相同图片。协议号保持 1，配置和世界数据无需迁移。
+
+MineAstr 0.8.1 pairs with AstrBot plugin 0.8.1. Bot image payloads are deduplicated by inline SHA-256 or remote URL before chat presentation creation. Protocol 1 and existing worlds/configuration remain compatible.
 
 0.8 已正式发布，并完成本机独立整合包客户端/服务端联调；生产 MC 服务端已从 0.6.32 更新到 0.8。本次生产操作仅更新 MC 模组，AstrBot 插件未升级。构建目标仍为 Minecraft 1.21.1、NeoForge 21.1.219、Java 21；AstrBot >=4.16,<5，WebSocket 协议号为 1。实机整合包使用 NeoForge 21.1.241。
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1 — 2026-10-18
+
+- 对来自 AstrBot 的 Bot 图片按内联内容 SHA-256 或远程 URL 去重，防止同一消息的图片在 Minecraft 客户端显示两次。
+- Deduplicate parsed Bot image payloads by inline content hash or remote URL before creating chat presentation references.
+- 101 Java tests passed; this patch remains protocol-compatible with plugin 0.8.1.
+
 ## 0.8 — 2026-10-17 (local build)
 
 - Index whitelist names once per sync, skip unchanged writes, and atomically persist real bulk changes once while preserving manual entries.
