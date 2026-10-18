@@ -56,7 +56,7 @@ class PlatformImageDedupTests(unittest.IsolatedAsyncioTestCase):
             {"url": "https://example.net/mirror.gif", "name": "two.gif"},
         ])
         sends = self.sent_images(plugin)
-        self.assertEqual([len(images) for _, images in sends], [0, 1])
+        self.assertEqual([len(images) for _, images in sends], [1])
         self.assertEqual(Path(sends[-1][1][0].file), Path("cache/same-content.gif"))
 
     async def test_discord_component_proxy_and_raw_attachment_form_one_outbound_image(self):
@@ -89,12 +89,12 @@ class PlatformImageDedupTests(unittest.IsolatedAsyncioTestCase):
         task = asyncio.create_task(plugin._send_to_relay_session("discord:GroupMessage:2", "caption", media=[{"url": "https://example.com/one.png"}]))
         try:
             await asyncio.wait_for(entered.wait(), 1)
-            self.assertEqual([len(images) for _, images in self.sent_images(plugin)], [0])
-            self.assertEqual(plugin.context.send_message.await_args.args[1].chain[0].text, "caption")
+            self.assertEqual(plugin.context.send_message.await_count, 0)
         finally:
             release.set()
             await task
-        self.assertEqual([len(images) for _, images in self.sent_images(plugin)], [0, 1])
+        self.assertEqual([len(images) for _, images in self.sent_images(plugin)], [1])
+        self.assertEqual(plugin.context.send_message.await_args.args[1].chain[0].text, "caption")
 
     async def test_reply_with_media_stays_one_platform_message(self):
         plugin = self.make_plugin()

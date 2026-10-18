@@ -4,8 +4,8 @@
 
 - 修复同一条消息中的图片重复附加：合并 Discord CDN/代理/签名链接、QQ 文件标识及 NTQQ 临时链接指向的相同附件。
 - 平台投递前再次去重；不同来源转换为同一缓存图片时只附加一次，保留 GIF 动画。
-- 去重仅限当前消息，独立消息仍可重复发图；慢图片处理期间文字继续先发送。
-- Deduplicate attachment aliases and identical optimized cache files within each message; preserve animation, early text delivery and intentional repeats in later messages.
+- 去重仅限当前消息，独立消息仍可重复发图；图片准备完成后与文字合并为一条平台消息，避免文字消息和图片消息被客户端显示成两张图。
+- Deduplicate attachment aliases and identical optimized cache files within each message; keep text and media in one platform message while preserving animation and intentional repeats in later messages.
 - 231 tests and 112 subtests passed, including real HTTP/GIF processing with captured platform sends; Ruff critical checks passed. Compatible with NeoForge mod 0.8, protocol 1.
 
 ## 0.8 — 2026-10-17

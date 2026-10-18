@@ -1,6 +1,6 @@
 # MineAstr AstrBot 插件
 
-0.8.1 修复同一消息的图片因链接别名或相同缓存内容被重复附加的问题；保留 GIF 动画、文字优先投递及独立消息重复发图。配套 NeoForge 模组仍为 0.8。[0.8 正式发行包](https://github.com/YU322142/MineAstr/releases/tag/v0.8)和[验证报告](https://github.com/YU322142/MineAstr/blob/main/docs/VALIDATION_0.8.md)保留此前客户端/服务端联调记录；本次插件补丁详情见 `RELEASE_NOTES.md`。
+0.8.1 修复同一消息的图片因链接别名、引用预览或相同缓存内容被重复发送；图片和文字合并为一条平台消息，保留 GIF 动画及独立消息重复发图。配套 NeoForge 模组仍为 0.8。[0.8 正式发行包](https://github.com/YU322142/MineAstr/releases/tag/v0.8)和[验证报告](https://github.com/YU322142/MineAstr/blob/main/docs/VALIDATION_0.8.md)保留此前客户端/服务端联调记录；本次插件补丁详情见 `RELEASE_NOTES.md`。
 
 [![AI Assisted](https://img.shields.io/badge/AI-OpenAI%20Codex%20Assisted-10A37F?style=for-the-badge&logo=openai&logoColor=white)](#ai-制作声明)
 [![Plugin tests](https://github.com/YU322142/MineAstr/actions/workflows/test.yml/badge.svg?branch=astrbot-plugin)](https://github.com/YU322142/MineAstr/actions/workflows/test.yml)

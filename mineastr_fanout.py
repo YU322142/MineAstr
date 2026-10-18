@@ -408,23 +408,14 @@ class PlatformFanout:
         message = trim_message(content, self.plugin._cfg_int("max_relay_length"))
         media = unique_media(media or [])
         if media and getattr(self.plugin, "_image_optimizer", None) is not None:
-            # Start normalization concurrently, deliver text first, then attach the completed media.
+            # Prepare media before sending so one logical image message produces
+            # one platform message. Sending text first creates a second Discord
+            # message, which renders as a duplicate/quote image to users.
             task = asyncio.create_task(
                 self.plugin._optimized_platform_media(media),
                 name="mineastr-platform-media",
             )
             try:
-                # A Discord reply preview is itself visual content. Sending a
-                # quote-only message first would make the referenced image
-                # appear separately from the attachment. Keep replies and
-                # their media in one platform message; ordinary media-only
-                # messages still retain early text delivery.
-                if (message or reply_context) and not reply_context:
-                    await self.plugin._send_to_relay_session(
-                        session, content, reply_context=reply_context
-                    )
-                    message = ""
-                    reply_context = None
                 media = await task
             finally:
                 if not task.done():

@@ -41,26 +41,28 @@ class SignedImageMediaTests(unittest.IsolatedAsyncioTestCase):
                     release.set()
                     (await full).release()
 
-    async def test_platform_text_is_sent_while_media_preparation_is_blocked(self):
+    async def test_platform_text_waits_for_media_so_one_message_is_sent(self):
         plugin = MAIN.MineAstrPlugin.__new__(MAIN.MineAstrPlugin)
         plugin.config = {}
         release = asyncio.Event()
-        text_sent = asyncio.Event()
+        sent = asyncio.Event()
         async def prepare(reference):
             await release.wait()
             return None
         async def send(session, chain):
-            text_sent.set()
+            sent.set()
             return False
         plugin._image_optimizer = SimpleNamespace(prepare=prepare)
         plugin.context = SimpleNamespace(send_message=send)
         task = asyncio.create_task(plugin._send_to_relay_session("qq:GroupMessage:42", "Hello", media=[{"url": "https://example.invalid/image.gif"}]))
         try:
-            await asyncio.wait_for(text_sent.wait(), 1)
+            await asyncio.sleep(0.05)
+            self.assertFalse(sent.is_set())
             self.assertFalse(task.done())
         finally:
             release.set()
             await asyncio.wait_for(task, 1)
+        self.assertTrue(sent.is_set())
 
     async def test_signed_media_supports_ranges_and_rejects_modified_authorization(self):
         with tempfile.TemporaryDirectory() as temporary:
