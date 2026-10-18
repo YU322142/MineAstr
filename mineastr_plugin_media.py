@@ -54,11 +54,20 @@ class PluginMedia:
     @classmethod
     def _event_media(cls, event: AstrMessageEvent) -> list[dict[str, str]]:
         raw = getattr(getattr(event, "message_obj", None), "raw_message", None)
+        chain_media = cls._chain_media(cls._event_chain(event))
+        raw_qq_media = qq_images(raw)
+        raw_discord_media = discord_media(raw)
+        # QQ/Discord adapters expose the same attachment twice: once in the
+        # normalized AstrBot chain and once in raw platform data. Raw platform
+        # media is authoritative because it retains file handles and originals;
+        # do not merge a second adapter copy into it when either source exists.
+        if raw_qq_media or raw_discord_media:
+            chain_media = []
         return unique_media(
-            cls._chain_media(cls._event_chain(event))
-            + qq_images(raw)
+            chain_media
+            + raw_qq_media
             + qq_market_faces(raw)
-            + discord_media(raw)
+            + raw_discord_media
         )
 
     @staticmethod

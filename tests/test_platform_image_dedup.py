@@ -71,6 +71,19 @@ class PlatformImageDedupTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(images), 1)
         self.assertEqual(images[0].url, original)
 
+    def test_raw_qq_attachment_replaces_duplicate_normalized_chain_copy(self):
+        plugin = self.make_plugin()
+        component = Image(file="file:///tmp/adapter-copy.png", filename="image.png")
+        event = NS(message_obj=NS(message=[component], raw_message={
+            "message": [{"type": "image", "data": {
+                "url": "https://multimedia.nt.qq.com.cn/download?appid=1&fileid=one&spec=0&rkey=x",
+                "file": "qq-handle",
+            }}]
+        }))
+        media = plugin._event_media(event)
+        self.assertEqual(len(media), 1)
+        self.assertEqual(media[0]["qq_file"], "qq-handle")
+
     async def test_independent_messages_can_repeat_the_same_picture(self):
         plugin = self.make_plugin()
         media = [{"url": "https://example.com/repeated.png"}]
