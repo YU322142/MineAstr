@@ -24,13 +24,19 @@ def _path(url: str) -> PurePosixPath:
 
 def discord_media(message: Any) -> list[dict[str, str]]:
     media: list[dict[str, str]] = []
-    for attachment in _value(message, "attachments", ()) or ():
+    attachments = _value(message, "attachments", ()) or ()
+    for attachment in attachments:
         url = str(_value(attachment, "url", "") or "").strip()
         name = str(_value(attachment, "filename", "") or _path(url).name or "image")
         mime = str(_value(attachment, "content_type", "") or "").lower()
         if mime.startswith("image/") or (not mime and PurePosixPath(name.lower()).suffix in {".gif", ".png", ".jpg", ".jpeg", ".webp"}):
             media.append({"type": "image", "url": url, "name": name})
-    for embed in _value(message, "embeds", ()) or ():
+    # Discord may expose a replied-to image as an embed while the new message
+    # also has its own attachment. The embed is the quote preview, not a second
+    # attachment to relay. Keep standalone embeds for ordinary image links.
+    has_reply = bool(_value(message, "reference") or _value(message, "message_reference"))
+    embeds = () if has_reply and attachments else (_value(message, "embeds", ()) or ())
+    for embed in embeds:
         image = str(_value(_value(embed, "image"), "url", "") or "").strip()
         thumbnail = str(_value(_value(embed, "thumbnail"), "url", "") or "").strip()
         # Prefer the animated asset over a static embed preview.

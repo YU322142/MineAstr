@@ -32,6 +32,14 @@ class AnimatedMediaTests(unittest.TestCase):
         message = NS(embeds=[NS(image=NS(url="https://example.com/static.png"), thumbnail=NS(url="https://example.com/loop.gif"))])
         self.assertEqual(MEDIA.discord_media(message)[0]["url"], "https://example.com/loop.gif")
 
+    def test_discord_reply_embed_is_quote_preview_when_message_has_attachment(self):
+        message = NS(
+            reference=NS(message_id="quoted"),
+            attachments=[NS(content_type="image/png", filename="new.png", url="https://cdn.discordapp.com/new.png")],
+            embeds=[NS(image=NS(url="https://cdn.discordapp.com/quoted.png"), thumbnail=None)],
+        )
+        self.assertEqual([item["url"] for item in MEDIA.discord_media(message)], ["https://cdn.discordapp.com/new.png"])
+
     def test_discord_gif_sticker_and_unsupported_lottie(self):
         message = NS(stickers=[NS(format="StickerFormatType.gif", url="https://cdn.discordapp.com/face.gif"), NS(format="StickerFormatType.lottie", url="https://cdn.discordapp.com/face.json")])
         self.assertEqual(len(MEDIA.discord_media(message)), 1)
