@@ -1,13 +1,21 @@
-# MineAstr AstrBot 插件 0.8.1 — 图片重复附加修复
+# MineAstr release notes
 
-本次仅更新 AstrBot 插件。Minecraft NeoForge 模组继续使用 0.8，WebSocket 协议号仍为 1；无需更新 MC 模组。
+## Compatibility
 
-- 同一条消息从组件链和平台原始数据提取出同一附件时，合并 Discord CDN/代理/签名链接、QQ 文件标识和 NTQQ 临时链接，避免重复附加。
-- 多个来源最终转换为相同缓存图片时，QQ/Discord 投递只附加一次，GIF 动画继续保留。
-- 去重仅限单条消息。用户在后续独立消息中重复发图仍正常转发；图片准备完成后与文字合并为一条平台消息，避免两条消息造成视觉重复。
+- Minecraft 1.21.1 / NeoForge; Java 21.
+- AstrBot plugin and mod versions are identified in their package metadata.
+- Protocol 1 is retained unless a release explicitly documents a protocol change.
 
-修复前已复现六项失败场景；修复后 231 项 Python 测试、112 项子测试及 Ruff 关键检查通过，包含实际 HTTP 下载和双帧 GIF 缓存处理。平台发送在测试中捕获，尚未向真实 QQ/Discord 群发送测试消息；如果仍出现整条消息被重复发送，需要继续结合对应消息记录排查。
+## Product changes
 
-安装前备份插件目录及配置，通过 AstrBot 插件安装或更新并重载。本次没有配置迁移。此前 0.8 的完整客户端/服务端验证记录见主分支 `docs/VALIDATION_0.8.md`。
+- Recognize official QQ Bot and Webhook adapters, custom instance IDs and QQ notification profiles.
+- Normalize official image attachment URLs and preserve opaque OpenID account boundaries.
+- Skip OneBot-only group-card and notice APIs on official adapters; see README for platform limits.
 
-Deduplicate known platform attachment aliases and identical optimized cache paths within each message. Keep text and media in one platform message, preserve GIF animation and repeated images in later independent messages. Tested with 233 tests and 112 subtests, including a real local HTTP/GIF pipeline and captured platform sends. Live QQ/Discord delivery is not covered by these tests. Compatible with NeoForge mod 0.8 and protocol 1.
+- Separate bridge lifecycle coordination from binding, command, media, translation and notification services.
+- Bound loaded-chunk query work and avoid synchronous profile lookup on the server thread.
+- Preserve account binding and image integrity checks.
+- Deduplicate attachment representations inside one message.
+- Skip image translation when complete equivalent bilingual content already covers the requested languages.
+
+Install the matching plugin and mod packages. See the version-specific changelog and API documentation for limitations. Operational records are not release assets.

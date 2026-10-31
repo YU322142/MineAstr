@@ -1,6 +1,6 @@
 # MineAstr AstrBot 插件
 
-0.8.1 修复同一消息的图片因链接别名、引用预览或相同缓存内容被重复发送；图片和文字合并为一条平台消息，保留 GIF 动画及独立消息重复发图。配套 NeoForge 模组仍为 0.8。[0.8 正式发行包](https://github.com/YU322142/MineAstr/releases/tag/v0.8)和[验证报告](https://github.com/YU322142/MineAstr/blob/main/docs/VALIDATION_0.8.md)保留此前客户端/服务端联调记录；本次插件补丁详情见 `RELEASE_NOTES.md`。
+0.8.3 支持 AstrBot QQ 官方 Bot 适配器的会话、OpenID 与图片附件处理。图片翻译在已有完整等义双语并覆盖请求语言时跳过，需要 MC 模组 0.8.2 或更新版本；详见 [图片接口](IMAGE_TRANSLATION_API.md)。
 
 [![AI Assisted](https://img.shields.io/badge/AI-OpenAI%20Codex%20Assisted-10A37F?style=for-the-badge&logo=openai&logoColor=white)](#ai-制作声明)
 [![Plugin tests](https://github.com/YU322142/MineAstr/actions/workflows/test.yml/badge.svg?branch=astrbot-plugin)](https://github.com/YU322142/MineAstr/actions/workflows/test.yml)
@@ -8,7 +8,7 @@
 > [!IMPORTANT]
 > **AI 制作声明：本插件采用生成式 AI 参与协议设计、编码、文档编写与测试。** AI 生成或修改的内容由项目维护者审阅、验证并承担最终维护责任。
 
-MineAstr 插件 0.8.1 为 AstrBot 提供一个 `minecraft` 平台适配器，当前支持 NeoForge 1.21.1 模组的主动 WebSocket 连接。配套模组版本为 0.8，协议号仍为 1。旧 Fabric 分支已停止支持，仅保留 0.6.28 历史源码，不再提供更新、修复或兼容性保证。
+MineAstr 插件 0.8.3 为 AstrBot 提供一个 `minecraft` 平台适配器，当前支持 NeoForge 1.21.1 模组的主动 WebSocket 连接。配套模组版本为 0.8.2 或更新版本，协议号仍为 1。旧 Fabric 分支已停止支持，仅保留 0.6.28 历史源码，不再提供更新、修复或兼容性保证。
 
 [上一正式版 0.7.39 插件](https://github.com/YU322142/MineAstr/releases/tag/v0.7.39) · [本次修复说明](RELEASE_NOTES.md)
 
@@ -53,6 +53,16 @@ AstrBot 对该会话的文本回复会回传给所有已连接的 Minecraft 服�
 
 ## QQ / OneBot v11 支持
 
+### QQ 官方 Bot
+
+支持 AstrBot 的 `qq_official` 与 `qq_official_webhook`，可使用自定义平台实例 ID。通过 `/mc bridge_add` 添加官方群会话，或在 `relay_sessions` 填写 `实例ID:GroupMessage:群OpenID`；平台通知设置的 `platform_ids` 可填写该实例 ID，未显式匹配时按适配器类型识别 QQ 配置。文字、图片、验证码绑定、查询与通知复用现有工作流，图片使用官方附件原始地址并在消息内去重。
+
+官方 Bot 的用户和群标识为 OpenID，与 OneBot QQ 号和群号没有可推断的对应关系。切换适配器不会自动转移绑定所有权；已有绑定继续有效，需要迁移时由管理员核实身份后使用既有迁移命令。不要用 QQ 号替代 OpenID。
+
+当前 AstrBot 官方适配器未提供 OneBot 的群名片 API、成员退群或消息撤回事件，因此这些自动化仅适用于 OneBot。官方平台不注册 OneBot 监听器，也不执行 `set_group_card`；群名片步骤明确返回跳过，账号绑定仍正常完成。消息发送仍受 QQ 官方权限、主动消息额度和回复时效限制；MineAstr 不绕过平台限制。
+
+### OneBot v11
+
 QQ 复用 AstrBot 的 `aiocqhttp` 平台适配器，不需要 MineAstr 再登录一个 OneBot 客户端。QQ 群中的 `/mc bind`、验证码绑定、解绑、查询、桥接及管理员指令使用该适配器的唯一 ID 保存账号；`v0.6.3` 还直接监听 OneBot `notice.group_decrease`，并可调用 `set_group_card`。
 
 1. 在 AstrBot 中启用 `aiocqhttp`，确认日志显示 OneBot v11 适配器已连接。
@@ -75,14 +85,6 @@ discord:GroupMessage:10001 => default:GroupMessage:20001
 ## Discord 支持
 
 Discord 不需要本插件自行登录 Discord；它复用 AstrBot 官方 Discord 平台适配器，因此权限、代理、分片和斜杠指令仍由 AstrBot 维护。
-
-1. 在 AstrBot WebUI 新增 Discord 适配器，填写 Bot Token，并开启“自动将插件指令注册为 Discord 斜杠指令”。
-2. 在 Discord Developer Portal 的 **Bot → Privileged Gateway Intents** 中启用 `Message Content Intent` 和 `Server Members Intent`。服务器管理员权限不能代替此后台开关。
-3. 给机器人授予 `Send Messages`、`Read Message History`、`Embed Links` 和 `Manage Nicknames`。使用 Administrator 也可以，但机器人角色仍必须排在目标成员最高角色上方；Discord 服务器所有者的昵称无法由机器人修改。
-4. 在 MineAstr 插件配置的 `bridge_admin_users` 中填入你的 AstrBot Discord 适配器 ID 和 Discord 用户 ID，例如 `my-discord:123456789012345678`。如果该用户已经是 AstrBot 管理员，可省略这一步。
-5. 在需要互联的 Discord 频道执行 `/mc bridge_add`。插件会保存该频道准确的 unified message origin，无需手写频道 ID。
-6. 执行 `/mc status` 和 `/mc list` 验证查询，再发送一条普通消息验证 Discord → Minecraft 转发。
-7. 把 `discord_guild_ids` 填为本服务器 Guild ID（建议生产环境明确填写），执行 `/mc discord_status` 检查成员 Intent、退群监听和服务器可见性。
 
 普通桥接消息会进入 Minecraft，但不会额外触发 LLM。v0.6.9 起默认开启 `relay_bot_conversations_to_game`：QQ/Discord 玩家 `@机器人` 的原消息会进入游戏并继续触发 AstrBot，最终纯文本回复也会进入游戏；工具调用前只有 Reply/At 的空中间消息不会转发。斜杠指令仍由 `relay_commands` 单独控制。
 
@@ -245,7 +247,7 @@ pip install -r requirements.txt
 
 “启用游戏内消息自动翻译”处理的是聊天正文：QQ、Discord 和 AstrBot 回复进入游戏前会检测原文语言，并只生成与原文不同的目标语言译文；Mod 再按每位在线玩家的客户端 locale 分别选择。目标语言与原文一致时直接显示原文，不会重复显示同文译文。玩家安装 v0.6.7 客户端 Mod 后可在 F8 设置中关闭译文或关闭原文；没有匹配译文、模型失败或超时时始终显示原文。翻译提示把聊天正文当作不可信数据，不执行其中的指令，但仍建议为此功能使用独立、低成本的 Provider。
 
-“统一翻译提示词/术语表”会作为服主可信规则加入系统提示词，例如每行写 `Motiquies 固定译为 动静交映`。对于同一条源消息，插件会先收集游戏客户端与所有 QQ/Discord 接收会话需要的目标语言，只调用一次模型翻译纯正文，再分别套用游戏模板、平台发送者标签、语言顺序和原文开关。QQ、Discord 和 Discord 频道仍可分别开关聊天翻译、选择一个或多个目标 locale，但不再各自调用模型或维护不同术语表。升级时旧的分平台/频道提示词会自动合并到统一设置。翻译失败时本批次全部回退原文。
+“统一翻译提示词/术语表”会作为服主可信规则加入系统提示词，例如每行写 `ExamplePack 固定译为 示例整合包`。对于同一条源消息，插件会先收集游戏客户端与所有 QQ/Discord 接收会话需要的目标语言，只调用一次模型翻译纯正文，再分别套用游戏模板、平台发送者标签、语言顺序和原文开关。QQ、Discord 和 Discord 频道仍可分别开关聊天翻译、选择一个或多个目标 locale，但不再各自调用模型或维护不同术语表。升级时旧的分平台/频道提示词会自动合并到统一设置。翻译失败时本批次全部回退原文。
 
 如果整合包术语很多，可在 `translation_glossary_path` 指向机器人本机 JSON 文件。普通文字只把命中的英文名、中文名和注册键注入本次翻译；映射同时支持 `en_us` 到 `zh_cn` 和反向翻译。同一显示名存在多个冲突译名时不会强制猜测，只有原文带注册键时才按该键精确套用。图片先由多模态模型完成 OCR 与初译；只有 OCR 原文命中词典时，才使用精确术语进行第二段校正，未命中时仍只有一次模型调用。两段处理共用 27 秒预算，校正超时或无有效结果时保留首轮译文，并且不会阻塞 Minecraft WebSocket 心跳。JSON 文件被替换后会按文件大小和修改时间自动热重载；文件缺失、损坏、过大或条目异常时只禁用词典并记录警告，不会阻断 MineAstr 翻译。推荐把词典放在 `data/plugin_data/mineastr/`，不要放到 Minecraft 客户端。
 

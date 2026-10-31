@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.3 — 2026-11-01
+
+- 支持官方 QQ Bot 和 Webhook 适配器类型、自定义实例 ID、QQ 通知配置及来源平台图标。
+- 官方图片附件按原始 HTTPS 地址提取并去重，支持群 OpenID 和私聊 OpenID；绑定保持平台隔离，不推断旧 QQ 号的归属。
+- 官方适配器跳过 OneBot 专用监听及群名片调用；完整能力边界见 README。
+- Add official QQ routing and attachment normalization while preserving opaque identities and existing OneBot behavior.
+- Protocol 1 retained; bilingual image skip results require NeoForge mod 0.8.2 or newer.
+
+## 0.8.2 — 2026-10-24
+
+- 图片 OCR 同时判定双语语义是否一致；图中完整内容已有等义双语且覆盖请求语言时，返回 `already_bilingual` 成功跳过，不生成译文或原文浮层。
+- 部分双语、意思冲突及尚未覆盖的目标语言继续翻译；跳过术语二次修正，缓存成功判定，失败结果不缓存。
+- Review bilingual equivalence during the existing multimodal call. Cache successful skips and return no display text; preserve translation for incomplete or non-equivalent content and uncovered targets.
+- 配套 MC 0.8.2 接受成功跳过，沿用协议号 1 和现有网络字段；无需迁移配置。
+- 验证：242 项 Python 测试、118 项子测试、Ruff 关键检查通过；语义判断以受控模型响应验证，尚未做真实模型准确率测试或部署。
+
 ## 0.8.1 — 2026-10-17
 
 - 修复同一条消息中的图片重复附加：合并 Discord CDN/代理/签名链接、QQ 文件标识及 NTQQ 临时链接指向的相同附件。
@@ -79,7 +95,6 @@
 - Minecraft 机器人纯图片回复与自定义平台 ID 路由修复。
 - 插件/模组统一版本；31 项模组与 166 项插件测试。Fabric 停止支持，仅同步文档。
 
-
 ## 0.7.23 - 2026-10-03
 
 - 绑定检查缺少监听器、异常或无布尔决定时拒绝登录，明确禁用检查仍可放行。
@@ -100,7 +115,6 @@
 - 原生 Reply 的消息 ID 可关联触发消息，引用链中的图片路径不会被当作文字引用。
 - 插件注册版本、安装包和元数据同步更新；运行日志记录同步目标数和正文/引用译文语言，不记录聊天正文。
 - Preserve configured routes, translation/original preferences and media when relaying Bot replies across platforms.
-
 
 ## 0.6.30 - 2026-08-31
 

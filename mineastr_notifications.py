@@ -112,6 +112,15 @@ class NotificationService:
                                 )
                                 return merged
                 return profile
+        # 自动识别官方 QQ 的自定义实例 ID；显式配置的匹配仍优先。
+        # Recognize custom official QQ IDs after explicit per-platform settings.
+        try:
+            adapter = self.plugin.context.get_platform_inst(platform_id)
+            if str(adapter.meta().name).casefold() in {"qq_official", "qq_official_webhook"}:
+                profile = self.plugin._cfg("qq_notification_settings")
+                return profile if isinstance(profile, dict) else None
+        except (AttributeError, KeyError):
+            pass
         return None
 
     @staticmethod

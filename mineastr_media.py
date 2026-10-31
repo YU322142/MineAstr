@@ -91,6 +91,32 @@ def qq_images(raw: Any) -> list[dict[str, str]]:
     return unique_media(media)
 
 
+def qq_official_media(raw: Any) -> list[dict[str, str]]:
+    """官方群聊附件的 OpenID 场景与 URL 规范化，不调用 OneBot。
+    Normalize official QQ attachments without using OneBot actions.
+    """
+    if not (_value(raw, "group_openid") or _value(_value(raw, "author"), "user_openid")):
+        return []
+    media = []
+    for attachment in _value(raw, "attachments", ()) or ():
+        url = str(_value(attachment, "url", "") or "").strip()
+        if url.startswith("//"):
+            url = "https:" + url
+        elif url and "://" not in url:
+            url = "https://" + url
+        try:
+            parsed = urlparse(url)
+            if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+                continue
+        except ValueError:
+            continue
+        mime = str(_value(attachment, "content_type", "") or _value(attachment, "contentType", "") or "").lower()
+        name = str(_value(attachment, "filename", "") or _path(url).name or "image")
+        if mime.startswith("image/") or (not mime and PurePosixPath(name.lower()).suffix in {".gif", ".png", ".jpg", ".jpeg", ".webp", ".bmp"}):
+            media.append({"type": "image", "url": url, "name": name})
+    return unique_media(media)
+
+
 class QQImageSource:
     """Resolve QQ media only on HTTP fetch; chat delivery never waits for get_image."""
 

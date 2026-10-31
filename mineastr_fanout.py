@@ -66,7 +66,7 @@ class PlatformFanout:
                     return "qq"
             except Exception:
                 continue
-        if platform_id in {"default", "qq", "aiocqhttp", "aqqbot", "qq_official"}:
+        if platform_id in {"default", "qq", "aiocqhttp", "aqqbot", "qq_official", "qq_official_webhook"}:
             return "qq"
         if platform_id in {"discord", "dc"}:
             return "discord"

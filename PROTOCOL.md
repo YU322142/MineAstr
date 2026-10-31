@@ -167,7 +167,9 @@ AstrBot 返回按 locale 聚合的纯文本译文；`show_original`、目标语�
 ```
 
 Mod 必须把 `source_fingerprint` 与译文一起持久化到 Minecraft 世界存档。告示牌原文改变后，旧缓存不得复用；翻译失败或翻译前后规范化文本一致时显示原文。
-如果告示牌同时包含中文和英文，AstrBot 会让模型判断两部分是否表达相近含义。命中时不再生成普通译文；插件缓存该判断，并显式返回 `"already_bilingual": true` 和空的 `"translations": {}`。Mod 应把它持久化为 `skipTranslation`，准星再次指向时不请求模型，也不显示翻译浮层。原生 Minecraft 玩家聊天也复用同一判断与文本级缓存，命中时只广播原文；图片翻译不受此规则影响。
+如果告示牌同时包含中文和英文，AstrBot 会让模型判断两部分是否表达相近含义。命中时不再生成普通译文；插件缓存该判断，并显式返回 `"already_bilingual": true` 和空的 `"translations": {}`。Mod 应把它持久化为 `skipTranslation`，准星再次指向时不请求模型，也不显示翻译浮层。原生 Minecraft 玩家聊天也复用同一判断与文本级缓存，命中时只广播原文。
+
+从 0.8.2 起，图片翻译在原有多模态调用中检查完整语义等价和请求语言覆盖。成功跳过的 `image_translate_result` 为 `ok=true`、`already_bilingual=true`、`source_language="multilingual"`、`source_text=""`、`translations={}`、`show_original=false`，不生成原文或译文浮层，也不进入术语二次翻译。仅混合两种文字或部分双语仍翻译。详见 [图片接口](IMAGE_TRANSLATION_API.md)。
 
 ```json
 {

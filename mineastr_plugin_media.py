@@ -16,6 +16,7 @@ from .mineastr_plugin_runtime import (
     hashlib,
     logger,
     qq_images,
+    qq_official_media,
     qq_market_faces,
     re,
     trim_message,
@@ -56,18 +57,21 @@ class PluginMedia:
         raw = getattr(getattr(event, "message_obj", None), "raw_message", None)
         chain_media = cls._chain_media(cls._event_chain(event))
         raw_qq_media = qq_images(raw)
-        raw_discord_media = discord_media(raw)
+        author = raw.get("author") if isinstance(raw, dict) else getattr(raw, "author", None)
+        group_openid = raw.get("group_openid") if isinstance(raw, dict) else getattr(raw, "group_openid", None)
+        user_openid = author.get("user_openid") if isinstance(author, dict) else getattr(author, "user_openid", None)
+        raw_attachment_media = qq_official_media(raw) if group_openid or user_openid else discord_media(raw)
         # QQ/Discord adapters expose the same attachment twice: once in the
         # normalized AstrBot chain and once in raw platform data. Raw platform
         # media is authoritative because it retains file handles and originals;
         # do not merge a second adapter copy into it when either source exists.
-        if raw_qq_media or raw_discord_media:
+        if raw_qq_media or raw_attachment_media:
             chain_media = []
         return unique_media(
             chain_media
             + raw_qq_media
             + qq_market_faces(raw)
-            + raw_discord_media
+            + raw_attachment_media
         )
 
     @staticmethod

@@ -1,6 +1,6 @@
-# MineAstr 0.8.1 插件开发说明 / Developer guide
+# MineAstr 0.8.3 插件开发说明 / Developer guide
 
-目标为 AstrBot >=4.16,<5，WebSocket 协议号为 1。`metadata.yaml` 与 `main.py` 注册版本保持 0.8.1，配套 MC 模组仍为 0.8。
+目标为 AstrBot >=4.16,<5，WebSocket 协议号为 1。`metadata.yaml` 与 `main.py` 注册版本保持 0.8.3；图片双语跳过结果需要配套 MC 模组 0.8.2 或更新版本。
 
 ## 从哪里开始 / Reading map
 
@@ -66,7 +66,8 @@ Cross-component calls use explicit facade methods. Services mutate their own sta
 3. 绑定快照在锁内读取当前数据库，远端成功后才视为同步成功；同一服务器的重复调度复用任务。授权不读取展示名称缓存。
 4. 缓存和冷却使用各自既有的时间基准；图片翻译的首次请求及修正共享总截止时间，不因模型回退重置预算。
 5. `terminate` 取消并等待清理、绑定及 Discord 重试任务，再移除平台监听器及适配器回调。新增任务必须加入已有的生命周期回收路径。
-6. 图片只在当前消息内按已知附件标识、URL 和最终缓存路径去重，不跨消息吞掉重复图片。任意站点的查询参数仍保留语义；Discord 原始附件优先于缩放代理。下载优化后再次去重，文字投递不等待图片。
+6. 图片只在当前消息内按已知附件标识、URL 和最终缓存路径去重，不跨消息吞掉重复图片。任意站点的查询参数仍保留语义；Discord 原始附件优先于缩放代理。下载优化后再次去重，图片与文字合并为一条平台消息。
+7. 图片翻译的等义双语判断复用首次多模态调用。成功跳过结果清空展示文字、跳过术语修正并缓存；缓存键带 `image-bilingual-v1` 策略版本，以免复用旧翻译结果。不同目标语言独立判定，失败不缓存。图片消息投递规则与图片文字翻译判断分属不同组件。
 
 Keep receiving, original delivery and translation independent. Read current binding snapshots under the synchronization lock. Preserve deadline and clock semantics. Cancel and await owned tasks before detaching callbacks during unload.
 

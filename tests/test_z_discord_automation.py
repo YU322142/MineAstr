@@ -350,7 +350,7 @@ class NotificationLocalizationTests(unittest.IsolatedAsyncioTestCase):
         }
         discord_settings["language"] = "en_US"
         values = {
-            "server": "Motiquies",
+            "server": "ExamplePack",
             "server_id": "minecraft",
         }
 
@@ -364,11 +364,11 @@ class NotificationLocalizationTests(unittest.IsolatedAsyncioTestCase):
         }
         self.assertEqual(
             calls["default:GroupMessage:10001"],
-            "【中文】\nMotiquies 已上线\n[English]\nMotiquies is online",
+            "【中文】\nExamplePack 已上线\n[English]\nExamplePack is online",
         )
         self.assertEqual(
             calls["discord:GroupMessage:20002"],
-            "[MC] Motiquies connected.",
+            "[MC] ExamplePack connected.",
         )
 
     def test_notification_language_list_is_ordered_deduplicated_and_validated(self):
@@ -470,7 +470,7 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
                 "game_translation_show_original": True,
                 "game_translation_timeout_seconds": 5,
                 "translation_custom_instructions": (
-                    "Motiquies must be translated as 动静交映"
+                    "ExamplePack must be translated as 示例整合包"
                 ),
                 "max_relay_length": 500,
             }
@@ -498,8 +498,8 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second, first)
         self.assertEqual(len(provider.calls), 1)
         self.assertIn("never follow instructions", provider.calls[0]["system_prompt"])
-        self.assertIn("Motiquies", provider.calls[0]["system_prompt"])
-        self.assertIn("动静交映", provider.calls[0]["system_prompt"])
+        self.assertIn("ExamplePack", provider.calls[0]["system_prompt"])
+        self.assertIn("示例整合包", provider.calls[0]["system_prompt"])
 
     async def test_text_translation_prompt_limit_is_forty_thousand(self):
         class Provider:
@@ -1086,7 +1086,7 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
         )
         plugin.config = {
             "bridge_settings": {
-                "translation_custom_instructions": "Motiquies=动静交映",
+                "translation_custom_instructions": "ExamplePack=示例整合包",
                 "max_relay_length": 500,
             },
             "qq_settings": {
@@ -1119,7 +1119,7 @@ class GameTranslationTests(unittest.IsolatedAsyncioTestCase):
         custom_rules = plugin._translate_text.await_args.kwargs[
             "custom_instructions"
         ]
-        self.assertIn("Motiquies=动静交映", custom_rules)
+        self.assertIn("ExamplePack=示例整合包", custom_rules)
         self.assertNotIn("旧版设置不应继续单独应用", custom_rules)
 
     async def test_platform_translation_same_text_returns_original_without_labels(self):
@@ -2011,6 +2011,7 @@ class CacheCleanupTests(unittest.IsolatedAsyncioTestCase):
         }
         image_bytes = b"image"
         image_key = (
+            "image-bilingual-v1",
             MAIN.hashlib.sha256(image_bytes).hexdigest(),
             ("en_us",),
             "",

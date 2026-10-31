@@ -68,7 +68,7 @@ def append_glossary_instructions(
     if not fragment:
         return prefix[:max_chars]
     section = (
-        "[Trusted Motiquies terminology]\n"
+        "[Trusted ExamplePack terminology]\n"
         "Each listed pair is an exact en_us <=> zh_cn Minecraft terminology "
         "mapping. Apply it in the direction required by the source and target "
         "locale. Ambiguous source terms are intentionally omitted; do not guess "

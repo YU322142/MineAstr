@@ -62,6 +62,7 @@ from .mineastr_media import (
     QQImageSource,
     discord_media,
     qq_images,
+    qq_official_media,
     qq_market_faces,
     unique_media,
 )

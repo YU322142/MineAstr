@@ -753,7 +753,7 @@ class MinecraftPlatformAdapter(Platform):
             if platform in {"minecraft", "qq", "discord"}:
                 return platform
         platform_id = str(origin or "").split(":", 1)[0].casefold()
-        if platform_id in {"qq", "default", "aiocqhttp", "aqqbot", "qq_official"}: return "qq"
+        if platform_id in {"qq", "default", "aiocqhttp", "aqqbot", "qq_official", "qq_official_webhook"}: return "qq"
         if platform_id in {"discord", "dc"}: return "discord"
         return "minecraft"
 
@@ -1757,8 +1757,14 @@ class MinecraftPlatformAdapter(Platform):
                 result = value
         usable = bool(
             isinstance(result, dict)
-            and isinstance(result.get("translations"), dict)
-            and result.get("translations")
+            and (
+                (isinstance(result.get("translations"), dict) and result.get("translations"))
+                or (
+                    result.get("already_bilingual") is True
+                    and result.get("source_language") == "multilingual"
+                    and result.get("translations") == {}
+                )
+            )
         )
         response: dict[str, Any] = {
             "type": "image_translate_result",

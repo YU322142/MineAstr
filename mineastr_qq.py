@@ -25,7 +25,9 @@ class QQAutomation:
     @staticmethod
     def _is_qq_adapter(adapter: Any) -> bool:
         try:
-            return str(adapter.meta().name).casefold() == "aiocqhttp"
+            return str(adapter.meta().name).casefold() in {
+                "aiocqhttp", "qq_official", "qq_official_webhook",
+            }
         except Exception:
             return False
 
@@ -46,6 +48,10 @@ class QQAutomation:
         if not self.plugin._cfg_bool("qq_auto_unbind_on_leave"):
             return
         for platform_id, adapter in self.plugin._qq_adapters():
+            # 官方 SDK 不提供 OneBot 的 notice.subscribe；不可伪装退群或撤回事件。
+            # Official adapters have no OneBot notice bus; never invent membership events.
+            if str(adapter.meta().name).casefold() != "aiocqhttp":
+                continue
             bot = getattr(adapter, "bot", None)
             if bot is None and hasattr(adapter, "get_client"):
                 bot = adapter.get_client()
@@ -210,7 +216,10 @@ class QQAutomation:
         if not self.plugin._cfg_bool("qq_auto_group_card"):
             return {"ok": True, "skipped": True}
         try:
-            if str(event.get_platform_name()).casefold() != "aiocqhttp":
+            platform_name = str(event.get_platform_name()).casefold()
+            if platform_name in {"qq_official", "qq_official_webhook"}:
+                return {"ok": True, "skipped": True, "reason": "official_group_card_unsupported"}
+            if platform_name != "aiocqhttp":
                 return {"ok": True, "skipped": True}
             group_id = str(event.get_group_id() or "").strip()
             platform_id = str(event.get_platform_id() or "").strip()
