@@ -63,6 +63,4 @@ The two reflective accesses are isolated in the whitelist helper because 1.21.1 
 
 101 项 JUnit 测试通过。其中 `MineAstrWhitelistTest` 覆盖 4096 次无变化放行检查只建一次索引、零保存，513 条真实放行的整批持久化、手工条目保留、UUID 冲突清理、撤销、失败原子替换及磁盘恢复后重试。`MineAstrServerWorkQueueTest` 用可控时钟验证预算、公平性、失败隔离和关服清理。`BindingWhitelistStoreTest` 验证内容顺序变化不写盘、文件丢失重建与损坏数据拒绝放行。
 
-## 生产排查所需证据 / Production follow-up
-
-记录发生回溯的时间、实际加载的 MineAstr 版本、在线人数、TPS/MSPT、GC/Watchdog/“Can't keep up”附近的日志，以及同一时间是否发生绑定对账、玩家登录或区域查询。有 Spark 报告时检查服务器线程的白名单序列化、磁盘写入、Mojang 网络调用和区域扫描占比，并比较应急降级前后的表现。尚未进行生产部署或实机 TPS 压测。
+性能排查应记录准确版本、操作触发方式、TPS/MSPT 及相关线程采样。单元测试不能替代运行环境中的性能测量。

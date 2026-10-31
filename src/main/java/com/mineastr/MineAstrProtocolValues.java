@@ -215,7 +215,7 @@ final class MineAstrProtocolValues {
     /**
      * 剥离 AstrBot 聊天 content 中的图片占位符及服务器端文件路径。
      * 匹配 "[图片]" 标记及其后紧跟的绝对路径（Linux / Windows）、HTTP URL 或 file URL，
-     * 防止 AstrBot 服务器端临时路径（如 /opt/AstrBot/data/temp/...）泄露到游戏聊天栏。
+     * 防止机器人服务的临时路径（如 /srv/bot/cache/...）泄露到游戏聊天栏。
      * 剥离后压缩多余空白。若 content 原本仅为图片占位符，则返回空字符串。
      */
     private static final Pattern IMAGE_PLACEHOLDER_PATTERN = Pattern.compile(

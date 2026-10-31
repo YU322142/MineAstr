@@ -185,7 +185,7 @@ public final class MineAstrDisplayApi {
             return;
         }
 
-        // Fail-soft fallback for installations without Create.  Motiquies has
+        // Fail-soft fallback for installations without Create.  ExamplePack has
         // Create, so its normal path is the renderer above.
         float scale = Math.max(
                 0.50F,

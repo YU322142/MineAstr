@@ -360,6 +360,17 @@ public final class MineAstrPayloads {
             boolean showOriginal,
             boolean ok,
             String error) implements CustomPacketPayload {
+        /** 等义双语成功跳过，沿用现有线格式。 Successful bilingual no-op using the existing wire format. */
+        public static ImageTranslationResult skippedBilingual(String requestId) {
+            return new ImageTranslationResult(requestId, "multilingual", "", Map.of(), false, true, "");
+        }
+
+        /** 无译文也不回退显示 OCR 原文。 Do not use OCR as fallback display text for this result. */
+        public boolean alreadyBilingual() {
+            return ok && "multilingual".equals(sourceLanguage) && sourceText.isEmpty()
+                    && translations.isEmpty() && !showOriginal && error.isEmpty();
+        }
+
         public static final CustomPacketPayload.Type<ImageTranslationResult> TYPE =
                 MineAstrPayloads.type("image_translation_result");
         public static final StreamCodec<RegistryFriendlyByteBuf, ImageTranslationResult> CODEC =

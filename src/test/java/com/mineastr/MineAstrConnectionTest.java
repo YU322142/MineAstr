@@ -83,7 +83,7 @@ class MineAstrConnectionTest {
     void imagePlaceholderCleanupPreservesTranslatedQuoteLineBreaks() {
         assertEquals("↪ Alice: translated quote\ntranslated answer",
                 MineAstrBridge.sanitizeBotContent("↪ Alice: translated quote\ntranslated answer"));
-        assertEquals("answer", MineAstrBridge.sanitizeBotContent("[图片] /opt/AstrBot/data/temp/image.png\nanswer"));
+        assertEquals("answer", MineAstrBridge.sanitizeBotContent("[图片] /srv/bot/cache/image.png\nanswer"));
         assertEquals("answer", MineAstrBridge.sanitizeBotContent("[图片] C:\\temp\\image.png answer"));
         assertEquals("", MineAstrBridge.sanitizeBotContent("[图片] file:///opt/image.png"));
     }

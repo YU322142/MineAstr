@@ -894,22 +894,24 @@ public final class MineAstrBridge implements WebSocket.Listener, MineAstrBridgeC
         }
         boolean showOriginal = getBoolean(payload, "show_original", false);
         String error = trimFlatContent(getString(payload, "error", ""), MineAstrPayloads.MAX_ERROR_LENGTH);
-        boolean usable = ok && (!translations.isEmpty() || !sourceText.isBlank());
+        // 等义双语是成功的跳过结果，不作为失败重试或 OCR 原文浮层显示。
+        // An equivalent bilingual image is a successful no-op, never a retry or OCR overlay.
+        boolean alreadyBilingual = ok
+                && getBoolean(payload, "already_bilingual", false)
+                && "multilingual".equals(sourceLanguage)
+                && translations.isEmpty();
+        boolean usable = ok && (alreadyBilingual || !translations.isEmpty() || !sourceText.isBlank());
+        var result = alreadyBilingual
+                ? MineAstrPayloads.ImageTranslationResult.skippedBilingual(pending.requestId)
+                : new MineAstrPayloads.ImageTranslationResult(
+                        pending.requestId, sourceLanguage, sourceText, translations, showOriginal, usable,
+                        usable ? "" : (error.isBlank() ? "translation_failed" : error));
         currentServer.execute(() -> {
             ServerPlayer player = currentServer.getPlayerList().getPlayer(pending.playerUuid);
             if (player == null) {
                 return;
             }
-            MineAstrNetwork.sendImageTranslationResult(
-                    player,
-                    new MineAstrPayloads.ImageTranslationResult(
-                            pending.requestId,
-                            sourceLanguage,
-                            sourceText,
-                            translations,
-                            showOriginal,
-                            usable,
-                            usable ? "" : (error.isBlank() ? "translation_failed" : error)));
+            MineAstrNetwork.sendImageTranslationResult(player, result);
         });
     }
 

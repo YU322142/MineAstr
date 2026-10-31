@@ -175,6 +175,9 @@ public final class MineAstrClient {
      * Submit an image to the server-side MineAstr bridge for AstrBot's
      * multimodal translation model. The returned future completes on the
      * client thread when the result arrives.
+     * 等义双语成功跳过时不返回可展示文字；调用方应清除旧浮层并缓存判定，避免逐帧重试。
+     * Successful bilingual skips have no display text; callers should remove stale overlays
+     * and retain the decision instead of retrying empty translations.
      */
     public static CompletableFuture<MineAstrPayloads.ImageTranslationResult> requestImageTranslation(
             byte[] imageBytes,

@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.8.2 — 2026-10-24（本地构建 / local build）
+
 ## 0.8.1 — 2026-10-18
 
 - 对来自 AstrBot 的 Bot 图片按内联内容 SHA-256 或远程 URL 去重，防止同一消息的图片在 Minecraft 客户端显示两次。
@@ -108,7 +110,6 @@
 - Optional chat presentation channel; preserve legacy chunk codecs, original ZIP async methods and logging.
 - MC image-only replies and custom platform IDs; 31 mod and 166 plugin tests.
 
-
 [中文](CHANGELOG.zh-CN.md)
 
 Community fork: [YU322142/MineAstr](https://github.com/YU322142/MineAstr) · Upstream: [Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr) · Integration fork: [YU322142/ImmersivePaintings](https://github.com/YU322142/ImmersivePaintings)
@@ -136,7 +137,6 @@ Community fork: [YU322142/MineAstr](https://github.com/YU322142/MineAstr) · Ups
 - Preserve reply/translation line breaks, sanitize image placeholders in translations, and provide capability-aware image delivery with a text fallback.
 - Honour the legacy acceptBotImages opt-out and hide clipped controls outside the scrolling viewport.
 - Localize percentage/size formats and connection hints, fill missing reset-button translations, and use locale-independent enum keys in the F8 settings screens.
-
 
 ## 0.6.30 - NeoForge 1.21.1
 

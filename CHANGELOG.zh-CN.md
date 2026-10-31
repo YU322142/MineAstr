@@ -102,7 +102,6 @@
 - Minecraft 机器人纯图片回复与自定义平台 ID 路由修复。
 - 插件/模组统一版本；31 项模组与 166 项插件测试。Fabric 停止支持，仅同步文档。
 
-
 [English](CHANGELOG.md)
 
 社区 Fork：[YU322142/MineAstr](https://github.com/YU322142/MineAstr) · 原始上游：[Hgit-1/MineAstr](https://github.com/Hgit-1/MineAstr) · 联动 Fork：[YU322142/ImmersivePaintings](https://github.com/YU322142/ImmersivePaintings)
@@ -131,7 +130,6 @@
 - Bot 正文和译文保留换行，并统一清理图片占位中的路径；仅向支持图片显示的客户端发送图片，纯图片消息提供文字回退。
 - 兼容旧 acceptBotImages 关闭设置；滚动面板隐藏越界控件，避免遮挡固定按钮区域。
 - F8 设置的百分比、文件大小单位和本地连接提示统一使用可替换翻译键；补齐恢复默认按钮的中英文翻译，枚举语言键使用固定 Locale。
-
 
 ## 0.6.30 - NeoForge 1.21.1
 
